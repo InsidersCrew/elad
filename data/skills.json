@@ -1,0 +1,115 @@
+{
+  "note": "הסקילים של העיר. כל סקיל הוא מומחה לחיזוק חוליה מסוימת. הסקיל הראשי (mayor) רואה את כל העיר ומתזמר את השאר. הגרסה המלאה של כל סקיל (SKILL.md) נמצאת ב-.claude/skills/.",
+  "skills": [
+    {
+      "id": "mayor",
+      "name": "Co-CEO Mayor",
+      "name_he": "ראש העיר — Co-CEO",
+      "role": "ראש העיר של INSIDERS CityOS: רואה את כל העיר, מזהה את הבעיה המגבילה ביותר, מבין את שורש הבעיה, מעריך את ההשפעה על כלל המערכת ומציע את המהלך בעל המינוף הגבוה ביותר.",
+      "responsibilities": ["אסטרטגיה", "הקצאת משאבים", "Headcount", "סדרי עדיפויות", "כלכלה", "תפעול-על", "Red Team להחלטות"],
+      "principles": ["לחשוב מערכתית", "לזהות צוואר בקבוק אמיתי ולא סימפטום", "להבחין בין בעיית תפוקה, איכות, כלכלה או תזרים", "לשקלל cost of inaction", "לשקלל second-order effects", "לעבוד בגישת prioritization", "להציע מהלכים מדידים"],
+      "input_scope": ["facts.*", "structures.*", "districts.*", "sensitivities", "rootCauses"],
+      "output_schema": ["state_of_the_city", "weakest_3_structures", "bottleneck_ranking", "root_cause_hypothesis", "recommended_moves", "expected_impact", "owner_skill", "priority", "what_to_monitor_next"],
+      "linked_districts": ["cityhall"],
+      "linked_structures": ["mayor_office", "war_room", "resource_desk", "risk_observatory"],
+      "skill_path": ".claude/skills/cityos-mayor/SKILL.md",
+      "prompt": "You are the Co-CEO Mayor of INSIDERS CityOS.\nYour role is to oversee the entire business as if it were a living city.\nEach district represents a stage in the company's value chain.\nEach structure represents a business component, workflow, or capability.\nYour job is to identify weak, overloaded, underperforming, or structurally risky areas in the city, determine root causes, rank bottlenecks by business impact, and recommend the highest-leverage actions.\nYou should think like a CEO, operator, and systems architect combined.\nYou should not focus only on local optimization. You must consider end-to-end flow, economics, service quality, capacity, timing of cash, and strategic trade-offs.\nAlways output:\n1. state of the city\n2. weakest 3 structures\n3. primary bottleneck\n4. root causes\n5. suggested actions\n6. expected business impact\n7. which supporting skill should handle each action\n8. what should be monitored next"
+    },
+    {
+      "id": "acquisition",
+      "name": "Acquisition Skill",
+      "name_he": "סקיל רכישה",
+      "role": "מומחה לשער הכניסה: לידים, תנועה לעיר, CAC, איכות מקורות ותמהיל ערוצים.",
+      "focus": ["לידים", "תנועה לעיר", "CAC", "איכות מקורות", "דפי נחיתה", "WhatsApp entry"],
+      "input_scope": ["leads_*", "cost_per_lead", "lead_quality", "landing_conv", "paid_share", "organic_share", "referral_share", "cost_per_qualified", "cac"],
+      "output_schema": ["diagnosis", "channel_mix_recommendation", "cpl_plan", "quality_actions", "expected_impact"],
+      "linked_districts": ["acquisition"],
+      "linked_structures": ["paid_ads", "organic_hub", "landing_center", "referral_gate", "whatsapp_entry"],
+      "skill_path": ".claude/skills/cityos-acquisition/SKILL.md"
+    },
+    {
+      "id": "qualification",
+      "name": "Qualification Skill",
+      "name_he": "סקיל סינון",
+      "role": "מומחה לרובע הסינון: AI agent, תסריטים, qualification, drop-offs ואיכות ה-handoff לנציג.",
+      "focus": ["AI agent", "scripting", "qualification", "drop-offs", "handoff quality"],
+      "input_scope": ["qual_*", "ai_resolution_rate", "ai_handoff_rate", "human_qual_conversations", "objection_resolve", "handoff_quality", "wa_first_response_min"],
+      "output_schema": ["diagnosis", "script_changes", "qualification_criteria", "handoff_card_spec", "expected_impact"],
+      "linked_districts": ["qualification"],
+      "linked_structures": ["ai_agent", "objection_hub", "qual_engine", "handoff_router"],
+      "skill_path": ".claude/skills/cityos-qualification/SKILL.md"
+    },
+    {
+      "id": "rep_productivity",
+      "name": "Rep Productivity Skill",
+      "name_he": "סקיל תפוקת נציגים",
+      "role": "מומחה לרובע ההתאמה: תפוקת נציגים, שיחות התאמה, זמן שיחה, יעילות אונבורדינג וקיבולת.",
+      "focus": ["תפוקת נציגים", "שיחות התאמה", "זמן שיחה", "onboarding efficiency", "capacity"],
+      "input_scope": ["reps", "rep_*", "calls_*", "fit_conv*", "show_rate*", "call_duration_min", "call_wrapup_min", "scheduling_lag*", "joined*", "group_share", "one_on_one_*", "admin_share"],
+      "output_schema": ["capacity_diagnosis", "call_structure", "scheduling_fixes", "capacity_release_plan", "hire_or_not", "expected_impact"],
+      "linked_districts": ["fitcall"],
+      "linked_structures": ["rep_capacity", "fit_conversion", "scheduling_center", "call_efficiency", "group_onboarding"],
+      "skill_path": ".claude/skills/cityos-rep-productivity/SKILL.md"
+    },
+    {
+      "id": "student_success",
+      "name": "Student Success Skill",
+      "name_he": "סקיל הצלחת תלמידים",
+      "role": "מומחה לאונבורדינג ולהצלחת תלמידים: engagement, activation, follow-up, at-risk ו-retention.",
+      "focus": ["engagement", "activation", "follow-up", "at-risk", "retention"],
+      "input_scope": ["onboarding_attendance", "started_rate", "login_rate", "inactive_7d", "community_join", "time_to_start_days", "engagement_rate", "at_risk_rate", "reactivation_rate", "checkin_coverage", "clinic_attendance", "satisfaction"],
+      "output_schema": ["activation_diagnosis", "onboarding_plan", "at_risk_playbook", "engagement_program", "expected_impact"],
+      "linked_districts": ["onboarding", "success"],
+      "linked_structures": ["group_onboarding", "welcome_automation", "course_access", "community_entry", "checkin_office", "at_risk_center", "clinic_room", "engagement_monitor"],
+      "skill_path": ".claude/skills/cityos-student-success/SKILL.md"
+    },
+    {
+      "id": "broker_handoff",
+      "name": "Broker Handoff Skill",
+      "name_he": "סקיל פתיחת חשבון",
+      "role": "מומחה לרובע פתיחת החשבון: open rate, time-to-open, SLA ברוקר, חסמים טכניים והצלחת ה-handoff.",
+      "focus": ["Open rate", "time-to-open", "broker SLA", "חסמים טכניים", "handoff success"],
+      "input_scope": ["open_rate", "opened", "time_to_open_days", "exception_rate", "exceptions", "broker_sla_*"],
+      "output_schema": ["handoff_diagnosis", "open_assist_flow", "exception_reduction", "broker_sla_plan", "expected_impact"],
+      "linked_districts": ["broker"],
+      "linked_structures": ["broker_routing", "open_assist", "exceptions_queue", "sla_monitor"],
+      "skill_path": ".claude/skills/cityos-broker-handoff/SKILL.md"
+    },
+    {
+      "id": "economics",
+      "name": "Economics Skill",
+      "name_he": "סקיל כלכלה",
+      "role": "מומחה לכלכלת העיר: contribution, seat economics, הכנסה לתלמיד, מרווח, גבייה ותזרים מזומנים.",
+      "focus": ["contribution", "seat economics", "revenue per student", "margin", "cash flow", "collections", "waivers"],
+      "input_scope": ["*revenue*", "contribution*", "net*", "cac*", "cost_*", "waiver_rate", "collection_rate", "cash_*", "*_delay_days", "revenue_leakage", "seat_contribution"],
+      "output_schema": ["unit_economics", "leakage_plan", "cash_plan", "pricing_terms", "expected_impact"],
+      "linked_districts": ["monetization", "cityhall"],
+      "linked_structures": ["account_revenue", "non_open_charge", "collections", "waiver_office", "war_room", "risk_observatory"],
+      "skill_path": ".claude/skills/cityos-economics/SKILL.md"
+    },
+    {
+      "id": "advanced_growth",
+      "name": "Advanced Growth Skill",
+      "name_he": "סקיל צמיחה מתקדמת",
+      "role": "מומחה לרובע ההמשך: אימונים מקצועיים, מעבר למסלול מתקדם, upsell/upgrade וכלכלת השירותים המתקדמים.",
+      "focus": ["אימונים מקצועיים", "advanced transition", "upsell / upgrade", "economics of advanced services"],
+      "input_scope": ["pro_appointment*", "coaching_*", "revenue_per_deal", "rep_bonus_per_deal", "advanced_*", "bonus_per_rep", "engaged_students"],
+      "output_schema": ["pipeline_diagnosis", "offer_design", "meeting_structure", "rep_incentives", "expected_impact"],
+      "linked_districts": ["growth"],
+      "linked_structures": ["pro_matching", "coaching_desk", "advanced_tracker"],
+      "skill_path": ".claude/skills/cityos-advanced-growth/SKILL.md"
+    },
+    {
+      "id": "referral",
+      "name": "Referral Skill",
+      "name_he": "סקיל הפניות",
+      "role": "מומחה לרובע ההפניות: המלצות, referral loops ו-advocacy — סגירת המעגל חזרה לשער העיר.",
+      "focus": ["המלצות", "referral loops", "advocacy", "tracking"],
+      "input_scope": ["referral_*", "leads_referral", "advocates", "effective_cac", "satisfaction"],
+      "output_schema": ["loop_diagnosis", "trigger_moments", "incentive_design", "tracking_spec", "expected_impact"],
+      "linked_districts": ["referral"],
+      "linked_structures": ["referral_engine", "advocate_hub", "referral_tracking", "referral_gate"],
+      "skill_path": ".claude/skills/cityos-referral/SKILL.md"
+    }
+  ]
+}

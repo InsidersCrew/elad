@@ -1,0 +1,514 @@
+{
+  "meta": {
+    "name": "INSIDERS CityOS",
+    "version": "0.1.0",
+    "note": "מיפוי העיר: רבעים (districts) ומבנים (structures). כל מטריקה מצביעה על עובדה (fact) שמחושבת במודל — source. ספים: good/warn לפי כיוון better. target משמש לציון גודל (Size Score)."
+  },
+  "districts": [
+    {
+      "id": "acquisition",
+      "name": "Acquisition District",
+      "name_he": "שער הכניסה לעיר",
+      "stage_order": 1,
+      "description": "כניסת הלידים למערכת: פרסום, אורגני, תוכן, הפניות, דפי נחיתה, טפסים ו-WhatsApp.",
+      "upstream_ids": ["referral"],
+      "downstream_ids": ["qualification"],
+      "owner_skill": "acquisition",
+      "flow": { "in": "visits", "out": "leads_total", "leak": null, "load": null },
+      "kpis": ["leads_total", "cost_per_lead", "lead_quality", "paid_share"]
+    },
+    {
+      "id": "qualification",
+      "name": "Qualification District",
+      "name_he": "רובע הסינון",
+      "stage_order": 2,
+      "description": "AI Agent, WhatsApp, טיפול בהתנגדויות, אימות כוונה ובשלות, העברה לנציג.",
+      "upstream_ids": ["acquisition"],
+      "downstream_ids": ["fitcall"],
+      "owner_skill": "qualification",
+      "flow": { "in": "leads_total", "out": "qualified", "leak": "qual_dropoff_count", "load": null },
+      "kpis": ["qual_rate_effective", "qual_time_hours", "qual_dropoff", "ai_handoff_rate"]
+    },
+    {
+      "id": "fitcall",
+      "name": "Fit Call District",
+      "name_he": "רובע ההתאמה",
+      "stage_order": 3,
+      "description": "שיחות ההתאמה עם הנציגים, המרה להצטרפות, חתימה על התחייבות.",
+      "upstream_ids": ["qualification"],
+      "downstream_ids": ["onboarding"],
+      "owner_skill": "rep_productivity",
+      "flow": { "in": "qualified", "out": "joined", "leak": "fitcall_leak", "load": "rep_utilization" },
+      "kpis": ["calls_completed", "fit_conv_effective", "call_duration_min", "joined_per_rep", "rep_utilization"]
+    },
+    {
+      "id": "onboarding",
+      "name": "Onboarding District",
+      "name_he": "רובע ההצטרפות והאונבורדינג",
+      "stage_order": 4,
+      "description": "תחילת הקשר הפעיל: אונבורדינג קבוצתי, welcome sequence, דשבורד, קורס, קהילה, לייבים.",
+      "upstream_ids": ["fitcall"],
+      "downstream_ids": ["broker"],
+      "owner_skill": "student_success",
+      "flow": { "in": "joined", "out": "started", "leak": "dormant_students", "load": null },
+      "kpis": ["onboarding_attendance", "started_rate", "login_rate", "inactive_7d"]
+    },
+    {
+      "id": "broker",
+      "name": "Broker Handoff District",
+      "name_he": "רובע פתיחת החשבון",
+      "stage_order": 5,
+      "description": "המעבר מהליווי של INSIDERS לפתיחת חשבון אצל הברוקר: handoff, סיוע טכני, מסמכים, הפקדה ראשונה, חריגים.",
+      "upstream_ids": ["onboarding"],
+      "downstream_ids": ["monetization"],
+      "owner_skill": "broker_handoff",
+      "flow": { "in": "started", "out": "started", "leak": null, "load": "broker_sla_ratio" },
+      "kpis": ["open_rate", "time_to_open_days", "exception_rate", "broker_sla_actual_days"]
+    },
+    {
+      "id": "monetization",
+      "name": "Monetization District",
+      "name_he": "רובע המימוש הכלכלי",
+      "stage_order": 6,
+      "description": "השלב שבו INSIDERS מייצרת הכנסה מכל תלמיד: חשבון שנפתח, או חיוב אי-פתיחה של 980 ₪.",
+      "upstream_ids": ["broker"],
+      "downstream_ids": ["success"],
+      "owner_skill": "economics",
+      "flow": { "in": "started", "out": "started", "leak": "revenue_leakage_count", "load": null },
+      "kpis": ["revenue_per_student", "open_revenue", "non_open_revenue", "collection_rate", "waiver_rate", "weighted_cash_delay_days"]
+    },
+    {
+      "id": "success",
+      "name": "Student Success District",
+      "name_he": "רובע ההצלחה",
+      "stage_order": 7,
+      "description": "התקדמות והצלחת התלמיד: check-ins, קבוצות קטנות, at-risk, מעורבות, פתרון חסמים, retention.",
+      "upstream_ids": ["monetization"],
+      "downstream_ids": ["growth", "referral"],
+      "owner_skill": "student_success",
+      "flow": { "in": "active_students", "out": "engaged_students", "leak": "net_churn_risk", "load": null },
+      "kpis": ["engagement_rate", "at_risk_rate", "reactivation_rate", "satisfaction"]
+    },
+    {
+      "id": "growth",
+      "name": "Growth & Upgrade District",
+      "name_he": "רובע ההמשך והשדרוג",
+      "stage_order": 8,
+      "description": "הצעד הבא לתלמיד שרוצה יותר: פגישות עם סוחרים מקצועיים, אימונים אישיים, מסלול מתקדם.",
+      "upstream_ids": ["success"],
+      "downstream_ids": ["referral"],
+      "owner_skill": "advanced_growth",
+      "flow": { "in": "engaged_students", "out": "coaching_deals", "leak": null, "load": null },
+      "kpis": ["pro_appointments", "coaching_deals", "coaching_conv", "revenue_per_deal", "coaching_contribution"]
+    },
+    {
+      "id": "referral",
+      "name": "Referral District",
+      "name_he": "רובע ההפניות",
+      "stage_order": 9,
+      "description": "מנוע ההמלצות: בקשת referral, מעקב, הפניות מתלמידים קיימים — סוגר את המעגל חזרה לשער העיר.",
+      "upstream_ids": ["success", "growth"],
+      "downstream_ids": ["acquisition"],
+      "owner_skill": "referral",
+      "flow": { "in": "referral_requests", "out": "leads_referral", "leak": null, "load": null },
+      "kpis": ["referral_rate", "leads_referral", "referral_to_join", "effective_cac"]
+    },
+    {
+      "id": "cityhall",
+      "name": "City Hall",
+      "name_he": "בית העירייה",
+      "stage_order": 10,
+      "description": "שכבת הניהול העליונה: Co-CEO, דשבורד-על, התראות, סדרי עדיפויות, החלטות אסטרטגיות ותזמור הסקילים.",
+      "upstream_ids": [],
+      "downstream_ids": [],
+      "owner_skill": "mayor",
+      "flow": null,
+      "kpis": ["total_revenue", "contribution", "net", "contribution_margin", "cac", "rep_utilization"]
+    }
+  ],
+  "structures": [
+    {
+      "id": "paid_ads", "district_id": "acquisition", "name": "Paid Ads Tower", "name_he": "מגדל הפרסום הממומן", "type": "volume",
+      "description": "קמפיינים ממומנים — הנפח הגדול ביותר שנכנס לעיר, והיקר ביותר.",
+      "owner_skill": "acquisition", "primary_lever": "cost_per_lead", "footprint": 1.35,
+      "metrics": [
+        { "id": "leads_paid", "name": "לידים ממומנים", "source": "leads_paid", "fmt": "int", "target": 1100, "good": 950, "warn": 700, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "cost_per_lead", "name": "עלות לליד (CPL)", "source": "cost_per_lead", "fmt": "money", "target": 35, "good": 38, "warn": 48, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "lead_quality", "name": "איכות ליד", "source": "lead_quality", "fmt": "pct", "target": 0.7, "good": 0.66, "warn": 0.58, "better": "up", "weight": 2, "role": "quality" },
+        { "id": "cost_per_qualified", "name": "עלות ל-Qualified", "source": "cost_per_qualified", "fmt": "money", "target": 70, "good": 80, "warn": 100, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "organic_hub", "district_id": "acquisition", "name": "Organic Content Hub", "name_he": "מרכז התוכן האורגני", "type": "volume",
+      "description": "יוטיוב, תוכן, רשתות — לידים זולים ואיכותיים יותר, אבל בנפח נמוך.",
+      "owner_skill": "acquisition", "primary_lever": "leads_organic", "footprint": 1.0,
+      "metrics": [
+        { "id": "leads_organic", "name": "לידים אורגניים", "source": "leads_organic", "fmt": "int", "target": 450, "good": 400, "warn": 300, "better": "up", "weight": 3, "role": "volume" },
+        { "id": "organic_share", "name": "נתח אורגני מסך הלידים", "source": "organic_share", "fmt": "pct", "target": 0.35, "good": 0.3, "warn": 0.2, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "landing_center", "district_id": "acquisition", "name": "Landing Page Center", "name_he": "מרכז דפי הנחיתה", "type": "conversion",
+      "description": "דפי נחיתה וטפסים — ממירים ביקורים ללידים.",
+      "owner_skill": "acquisition", "primary_lever": "landing_conv", "footprint": 0.9,
+      "metrics": [
+        { "id": "landing_conv", "name": "המרת דף נחיתה", "source": "landing_conv", "fmt": "pct", "target": 0.08, "good": 0.07, "warn": 0.05, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "visits", "name": "ביקורים (מוערך)", "source": "visits", "fmt": "int", "target": 15000, "good": 13000, "warn": 9000, "better": "up", "weight": 1, "role": "volume" }
+      ]
+    },
+    {
+      "id": "referral_gate", "district_id": "acquisition", "name": "Referral Gate", "name_he": "שער ההפניות", "type": "volume",
+      "description": "הלידים שמגיעים מהפניות של תלמידים — הכניסה האיכותית ביותר לעיר.",
+      "owner_skill": "referral", "primary_lever": "referral_rate", "footprint": 0.8,
+      "metrics": [
+        { "id": "leads_referral", "name": "לידים מהפניות", "source": "leads_referral", "fmt": "int", "target": 80, "good": 60, "warn": 35, "better": "up", "weight": 3, "role": "volume" },
+        { "id": "referral_share", "name": "נתח הפניות מסך הלידים", "source": "referral_share", "fmt": "pct", "target": 0.08, "good": 0.05, "warn": 0.03, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "whatsapp_entry", "district_id": "acquisition", "name": "WhatsApp Entry Point", "name_he": "נקודת הכניסה ב-WhatsApp", "type": "channel",
+      "description": "רוב הלידים נכנסים דרך WhatsApp — מהירות התגובה הראשונה קובעת את איכות ההמשך.",
+      "owner_skill": "acquisition", "primary_lever": "wa_first_response_min", "footprint": 0.9,
+      "metrics": [
+        { "id": "whatsapp_leads", "name": "לידים דרך WhatsApp", "source": "whatsapp_leads", "fmt": "int", "target": 900, "good": 750, "warn": 500, "better": "up", "weight": 1, "role": "volume" },
+        { "id": "wa_first_response_min", "name": "זמן תגובה ראשון (דק׳)", "source": "wa_first_response_min", "fmt": "min", "target": 2, "good": 3, "warn": 6, "better": "down", "weight": 3, "role": "quality" }
+      ]
+    },
+
+    {
+      "id": "ai_agent", "district_id": "qualification", "name": "AI Agent Core", "name_he": "ליבת ה-AI Agent", "type": "engine",
+      "description": "הסוכן שמסנן, מסביר על התוכנית ומאמת כוונה — חוסך שיחות אנושיות.",
+      "owner_skill": "qualification", "primary_lever": "ai_resolution_rate", "footprint": 1.3,
+      "metrics": [
+        { "id": "human_calls_saved", "name": "שיחות אנושיות שנחסכו", "source": "human_calls_saved", "fmt": "int", "target": 1000, "good": 850, "warn": 600, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "ai_resolution_rate", "name": "סגירה ע״י AI ללא נציג", "source": "ai_resolution_rate", "fmt": "pct", "target": 0.75, "good": 0.7, "warn": 0.55, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "qual_time_hours", "name": "זמן עד Qualification (שעות)", "source": "qual_time_hours", "fmt": "hours", "target": 3, "good": 4, "warn": 6, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "objection_hub", "district_id": "qualification", "name": "Objection Handling Hub", "name_he": "מרכז הטיפול בהתנגדויות", "type": "quality",
+      "description": "מענה להתנגדויות בסיסיות לפני שהליד מגיע לנציג.",
+      "owner_skill": "qualification", "primary_lever": "objection_resolve", "footprint": 0.85,
+      "metrics": [
+        { "id": "objection_resolve", "name": "פתרון התנגדויות", "source": "objection_resolve", "fmt": "pct", "target": 0.7, "good": 0.62, "warn": 0.5, "better": "up", "weight": 3, "role": "quality" }
+      ]
+    },
+    {
+      "id": "qual_engine", "district_id": "qualification", "name": "Qualification Logic Engine", "name_he": "מנוע לוגיקת הסינון", "type": "conversion",
+      "description": "החוקים שמחליטים מי Qualified — הנפח שיוצא מהרובע ומה שדולף ממנו.",
+      "owner_skill": "qualification", "primary_lever": "qual_rate", "footprint": 1.2,
+      "metrics": [
+        { "id": "qualified", "name": "לידים Qualified", "source": "qualified", "fmt": "int", "target": 700, "good": 600, "warn": 450, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "qual_rate", "name": "Qualified rate", "source": "qual_rate_effective", "fmt": "pct", "target": 0.5, "good": 0.46, "warn": 0.38, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "qual_dropoff", "name": "Drop-off rate", "source": "qual_dropoff", "fmt": "pct", "target": 0.2, "good": 0.25, "warn": 0.32, "better": "down", "weight": 3, "role": "quality" }
+      ]
+    },
+    {
+      "id": "handoff_router", "district_id": "qualification", "name": "Handoff Router", "name_he": "נתב ההעברה לנציג", "type": "handoff",
+      "description": "מעביר לידים לנציג — כמה עוברים, ובאיזו איכות (הקשר, ציפיות, בשלות).",
+      "owner_skill": "qualification", "primary_lever": "handoff_quality", "footprint": 0.9,
+      "metrics": [
+        { "id": "ai_handoff_rate", "name": "AI → human handoff rate", "source": "ai_handoff_rate", "fmt": "pct", "target": 0.25, "good": 0.3, "warn": 0.45, "better": "down", "weight": 2, "role": "quality" },
+        { "id": "handoff_quality", "name": "איכות handoff", "source": "handoff_quality", "fmt": "pct", "target": 0.8, "good": 0.75, "warn": 0.65, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "human_qual_conversations", "name": "שיחות סינון אנושיות", "source": "human_qual_conversations", "fmt": "int", "target": 350, "good": 420, "warn": 600, "better": "down", "weight": 1, "role": "volume" }
+      ]
+    },
+
+    {
+      "id": "rep_capacity", "district_id": "fitcall", "name": "Rep Capacity Tower", "name_he": "מגדל קיבולת הנציגים", "type": "capacity",
+      "description": "כמה שיחות הצוות באמת יכול לבצע אחרי אונבורדינג 1:1, follow-up, חריגים ואדמין.",
+      "owner_skill": "rep_productivity", "primary_lever": "reps", "footprint": 1.4,
+      "metrics": [
+        { "id": "rep_utilization", "name": "ניצולת נציגים", "source": "rep_utilization", "fmt": "pct", "target": 0.8, "good": 0.82, "warn": 0.9, "better": "down", "weight": 3, "role": "load" },
+        { "id": "calls_capacity", "name": "קיבולת שיחות / חודש", "source": "calls_capacity", "fmt": "int", "target": 550, "good": 480, "warn": 380, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "calls_per_rep", "name": "שיחות לנציג", "source": "calls_per_rep", "fmt": "num", "target": 110, "good": 95, "warn": 70, "better": "up", "weight": 1, "role": "volume" },
+        { "id": "rep_headroom_calls", "name": "מרווח קיבולת (שיחות)", "source": "rep_headroom_calls", "fmt": "int", "target": 120, "good": 80, "warn": 30, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "fit_conversion", "district_id": "fitcall", "name": "Fit Call Conversion Building", "name_he": "בניין ההמרה", "type": "conversion",
+      "description": "שיחת ההתאמה עצמה: כמה מהשיחות הופכות להצטרפות.",
+      "owner_skill": "rep_productivity", "primary_lever": "fit_conv", "footprint": 1.25,
+      "metrics": [
+        { "id": "fit_conv", "name": "Fit Call → Joined", "source": "fit_conv_effective", "fmt": "pct", "target": 0.36, "good": 0.33, "warn": 0.28, "better": "up", "weight": 4, "role": "quality" },
+        { "id": "joined", "name": "תלמידים חדשים (Joined)", "source": "joined", "fmt": "int", "target": 140, "good": 120, "warn": 90, "better": "up", "weight": 3, "role": "volume" },
+        { "id": "joined_per_rep", "name": "תלמידים חדשים לנציג", "source": "joined_per_rep", "fmt": "num", "target": 35, "good": 30, "warn": 22, "better": "up", "weight": 1, "role": "quality" },
+        { "id": "cac", "name": "עלות רכישת תלמיד (CAC)", "source": "cac", "fmt": "money", "target": 800, "good": 900, "warn": 1100, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "scheduling_center", "district_id": "fitcall", "name": "Scheduling Center", "name_he": "מרכז התיאומים", "type": "flow",
+      "description": "תיאום השיחות: כמה מהמתאימים באמת מגיעים לשיחה, ותוך כמה זמן.",
+      "owner_skill": "rep_productivity", "primary_lever": "show_rate", "footprint": 0.9,
+      "metrics": [
+        { "id": "calls_completed", "name": "שיחות התאמה שבוצעו", "source": "calls_completed", "fmt": "int", "target": 420, "good": 380, "warn": 300, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "show_rate", "name": "שיעור הגעה לשיחה", "source": "show_rate_effective", "fmt": "pct", "target": 0.75, "good": 0.7, "warn": 0.62, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "scheduling_lag", "name": "ימים עד השיחה", "source": "scheduling_lag_effective", "fmt": "days", "target": 1.5, "good": 2, "warn": 3.5, "better": "down", "weight": 2, "role": "quality" },
+        { "id": "calls_overflow", "name": "שיחות שלא בוצעו מחוסר קיבולת", "source": "calls_overflow", "fmt": "int", "target": 0, "good": 5, "warn": 25, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "call_efficiency", "district_id": "fitcall", "name": "Call Time Efficiency Unit", "name_he": "יחידת יעילות זמן השיחה", "type": "efficiency",
+      "description": "משך השיחה וזמן הסיכום — כל דקה כאן היא קיבולת בכל העיר.",
+      "owner_skill": "rep_productivity", "primary_lever": "call_duration_min", "footprint": 0.85,
+      "metrics": [
+        { "id": "call_duration_min", "name": "משך שיחה ממוצע (דק׳)", "source": "call_duration_min", "fmt": "min", "target": 13, "good": 14, "warn": 17, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "minutes_per_call", "name": "דק׳ כוללות לשיחה (כולל סיכום)", "source": "minutes_per_call", "fmt": "min", "target": 18, "good": 20, "warn": 24, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+
+    {
+      "id": "group_onboarding", "district_id": "onboarding", "name": "Weekly Group Onboarding Hall", "name_he": "אולם האונבורדינג הקבוצתי", "type": "capacity",
+      "description": "המפגש הקבוצתי השבועי — הדרך הזולה והאחידה להתחיל תלמידים.",
+      "owner_skill": "student_success", "primary_lever": "onboarding_attendance", "footprint": 1.3,
+      "metrics": [
+        { "id": "onboarding_attendance", "name": "נוכחות באונבורדינג", "source": "onboarding_attendance", "fmt": "pct", "target": 0.75, "good": 0.68, "warn": 0.58, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "group_share", "name": "נתח אונבורדינג בקבוצה", "source": "group_share", "fmt": "pct", "target": 0.8, "good": 0.7, "warn": 0.55, "better": "up", "weight": 2, "role": "quality" },
+        { "id": "onboarding_attended", "name": "משתתפים באונבורדינג", "source": "onboarding_attended", "fmt": "int", "target": 100, "good": 80, "warn": 55, "better": "up", "weight": 2, "role": "volume" }
+      ]
+    },
+    {
+      "id": "welcome_automation", "district_id": "onboarding", "name": "Welcome Automation Center", "name_he": "מרכז אוטומציית הקבלה", "type": "engine",
+      "description": "רצף הברוכים הבאים: מיילים, WhatsApp, תזכורות — מביא תלמידים לדשבורד ולצעדים הראשונים.",
+      "owner_skill": "student_success", "primary_lever": "login_rate", "footprint": 0.95,
+      "metrics": [
+        { "id": "login_rate", "name": "כניסה לדשבורד", "source": "login_rate", "fmt": "pct", "target": 0.9, "good": 0.85, "warn": 0.75, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "time_to_start_days", "name": "ימים עד התחלה", "source": "time_to_start_days", "fmt": "days", "target": 3, "good": 3.5, "warn": 5, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "course_access", "district_id": "onboarding", "name": "Course Access Terminal", "name_he": "טרמינל הגישה לקורס", "type": "conversion",
+      "description": "המעבר מהצטרפות להתחלה בפועל — התלמידים ה\"רדומים\" דולפים כאן.",
+      "owner_skill": "student_success", "primary_lever": "started_rate", "footprint": 1.15,
+      "metrics": [
+        { "id": "started", "name": "תלמידים שהתחילו (Started)", "source": "started", "fmt": "int", "target": 110, "good": 90, "warn": 65, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "started_rate", "name": "Joined → Started", "source": "started_rate", "fmt": "pct", "target": 0.85, "good": 0.8, "warn": 0.7, "better": "up", "weight": 4, "role": "quality" },
+        { "id": "inactive_7d", "name": "לא פעילים אחרי 7 ימים", "source": "inactive_7d", "fmt": "pct", "target": 0.15, "good": 0.2, "warn": 0.3, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "community_entry", "district_id": "onboarding", "name": "Community Entry Building", "name_he": "בניין הכניסה לקהילה", "type": "engagement",
+      "description": "הצטרפות לקהילה וללייבים — מנבא חזק להמשך מעורבות.",
+      "owner_skill": "student_success", "primary_lever": "community_join", "footprint": 0.85,
+      "metrics": [
+        { "id": "community_join", "name": "הצטרפות לקהילה", "source": "community_join", "fmt": "pct", "target": 0.7, "good": 0.6, "warn": 0.45, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "community_joined", "name": "מצטרפים לקהילה", "source": "community_joined", "fmt": "int", "target": 90, "good": 70, "warn": 45, "better": "up", "weight": 1, "role": "volume" }
+      ]
+    },
+
+    {
+      "id": "broker_routing", "district_id": "broker", "name": "Broker Routing Hub", "name_he": "מרכז הניתוב לברוקר", "type": "handoff",
+      "description": "ה-handoff עצמו: כמה תלמידים מועברים ותוך כמה זמן נפתח החשבון.",
+      "owner_skill": "broker_handoff", "primary_lever": "time_to_open_days", "footprint": 1.1,
+      "metrics": [
+        { "id": "handoffs", "name": "העברות לברוקר", "source": "started", "fmt": "int", "target": 110, "good": 90, "warn": 65, "better": "up", "weight": 1, "role": "volume" },
+        { "id": "time_to_open_days", "name": "ימים עד פתיחת חשבון", "source": "time_to_open_days", "fmt": "days", "target": 7, "good": 8, "warn": 11, "better": "down", "weight": 3, "role": "quality" }
+      ]
+    },
+    {
+      "id": "open_assist", "district_id": "broker", "name": "Open Account Assistance Desk", "name_he": "דלפק הסיוע לפתיחת חשבון", "type": "conversion",
+      "description": "סיוע טכני, מסמכים והפקדה ראשונה — הופך Started לחשבון פתוח.",
+      "owner_skill": "broker_handoff", "primary_lever": "open_rate", "footprint": 1.25,
+      "metrics": [
+        { "id": "opened", "name": "חשבונות שנפתחו", "source": "opened", "fmt": "int", "target": 70, "good": 55, "warn": 35, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "open_rate", "name": "Open rate", "source": "open_rate", "fmt": "pct", "target": 0.65, "good": 0.6, "warn": 0.5, "better": "up", "weight": 4, "role": "quality" }
+      ]
+    },
+    {
+      "id": "exceptions_queue", "district_id": "broker", "name": "Exceptions Queue", "name_he": "תור החריגים", "type": "queue",
+      "description": "חסמים שחוזרים לנציג: מסמכים, זיהוי, הפקדה — כל חריג עולה זמן נציג.",
+      "owner_skill": "broker_handoff", "primary_lever": "exception_rate", "footprint": 0.9,
+      "metrics": [
+        { "id": "exception_rate", "name": "שיעור חזרה לנציג", "source": "exception_rate", "fmt": "pct", "target": 0.1, "good": 0.14, "warn": 0.2, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "exceptions", "name": "חריגים / חודש", "source": "exceptions", "fmt": "int", "target": 8, "good": 12, "warn": 18, "better": "down", "weight": 2, "role": "volume" }
+      ]
+    },
+    {
+      "id": "sla_monitor", "district_id": "broker", "name": "SLA Monitor", "name_he": "מוניטור ה-SLA", "type": "monitor",
+      "description": "ה-SLA של הברוקר מול היעד — תלות חיצונית שהעיר לא שולטת בה ישירות.",
+      "owner_skill": "broker_handoff", "primary_lever": "broker_sla_actual_days", "footprint": 0.8,
+      "metrics": [
+        { "id": "broker_sla_actual_days", "name": "SLA ברוקר בפועל (ימים)", "source": "broker_sla_actual_days", "fmt": "days", "target": 5, "good": 5.5, "warn": 7, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "broker_sla_gap_days", "name": "פער מהיעד (ימים)", "source": "broker_sla_gap_days", "fmt": "days", "target": 0, "good": 0.5, "warn": 2, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+
+    {
+      "id": "account_revenue", "district_id": "monetization", "name": "Account Revenue Tower", "name_he": "מגדל הכנסות החשבונות", "type": "revenue",
+      "description": "ההכנסה מחשבונות שנפתחו — המנוע הכלכלי הראשי של העיר.",
+      "owner_skill": "economics", "primary_lever": "revenue_per_open", "footprint": 1.4,
+      "metrics": [
+        { "id": "open_revenue", "name": "הכנסה מחשבונות", "source": "open_revenue", "fmt": "money", "target": 180000, "good": 140000, "warn": 90000, "better": "up", "weight": 3, "role": "volume" },
+        { "id": "revenue_per_student", "name": "הכנסה לתלמיד", "source": "revenue_per_student", "fmt": "money", "target": 1600, "good": 1400, "warn": 1100, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "revenue_per_open", "name": "הכנסה לחשבון", "source": "revenue_per_open", "fmt": "money", "target": 3200, "good": 3000, "warn": 2500, "better": "up", "weight": 1, "role": "quality" }
+      ]
+    },
+    {
+      "id": "non_open_charge", "district_id": "monetization", "name": "Non-Open Charge Processing Center", "name_he": "מרכז חיובי אי-הפתיחה", "type": "revenue",
+      "description": "חיוב 980 ₪ למי שלא פתח חשבון — הכנסה משנית שתלויה בגבייה ובוויתורים.",
+      "owner_skill": "economics", "primary_lever": "collection_rate", "footprint": 1.0,
+      "metrics": [
+        { "id": "non_open_revenue", "name": "הכנסה מחיובי אי-פתיחה", "source": "non_open_revenue", "fmt": "money", "target": 30000, "good": 24000, "warn": 15000, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "non_open_charge_rate", "name": "שיעור חיוב אפקטיבי", "source": "non_open_charge_rate", "fmt": "pct", "target": 0.7, "good": 0.6, "warn": 0.45, "better": "up", "weight": 3, "role": "quality" }
+      ]
+    },
+    {
+      "id": "collections", "district_id": "monetization", "name": "Collections Unit", "name_he": "יחידת הגבייה", "type": "cash",
+      "description": "גבייה בפועל ועיכוב המזומן — פה נקבע מתי ההכנסה הופכת לכסף.",
+      "owner_skill": "economics", "primary_lever": "collection_rate", "footprint": 0.9,
+      "metrics": [
+        { "id": "collection_rate", "name": "שיעור גבייה", "source": "collection_rate", "fmt": "pct", "target": 0.85, "good": 0.78, "warn": 0.68, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "cash_delay_days", "name": "עיכוב מזומן (ימים)", "source": "cash_delay_days", "fmt": "days", "target": 21, "good": 25, "warn": 32, "better": "down", "weight": 2, "role": "quality" },
+        { "id": "uncollected_value", "name": "לא נגבה (₪)", "source": "uncollected_value", "fmt": "money", "target": 3000, "good": 5000, "warn": 9000, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "waiver_office", "district_id": "monetization", "name": "Waiver Control Office", "name_he": "משרד בקרת הוויתורים", "type": "control",
+      "description": "כמה מהחיובים מוותרים עליהם — כל ויתור הוא דליפת הכנסה שקטה.",
+      "owner_skill": "economics", "primary_lever": "waiver_rate", "footprint": 0.8,
+      "metrics": [
+        { "id": "waiver_rate", "name": "שיעור ויתור", "source": "waiver_rate", "fmt": "pct", "target": 0.1, "good": 0.15, "warn": 0.22, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "waived_value", "name": "ויתורים (₪)", "source": "waived_value", "fmt": "money", "target": 3000, "good": 5000, "warn": 8000, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+
+    {
+      "id": "checkin_office", "district_id": "success", "name": "Check-in Office", "name_he": "משרד ה-Check-ins", "type": "service",
+      "description": "מעקב יזום אחרי תלמידים — כיסוי נמוך מייצר at-risk מאוחר.",
+      "owner_skill": "student_success", "primary_lever": "checkin_coverage", "footprint": 1.0,
+      "metrics": [
+        { "id": "checkin_coverage", "name": "כיסוי Check-ins", "source": "checkin_coverage", "fmt": "pct", "target": 0.85, "good": 0.75, "warn": 0.6, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "checkins_done", "name": "Check-ins בוצעו", "source": "checkins_done", "fmt": "int", "target": 550, "good": 480, "warn": 380, "better": "up", "weight": 1, "role": "volume" }
+      ]
+    },
+    {
+      "id": "at_risk_center", "district_id": "success", "name": "At-Risk Rescue Center", "name_he": "מרכז החילוץ לתלמידים בסיכון", "type": "service",
+      "description": "זיהוי והחזרה של תלמידים שנעצרו.",
+      "owner_skill": "student_success", "primary_lever": "at_risk_rate", "footprint": 1.1,
+      "metrics": [
+        { "id": "at_risk_rate", "name": "שיעור בסיכון", "source": "at_risk_rate", "fmt": "pct", "target": 0.12, "good": 0.16, "warn": 0.22, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "reactivation_rate", "name": "שיעור החזרה לפעילות", "source": "reactivation_rate", "fmt": "pct", "target": 0.5, "good": 0.4, "warn": 0.3, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "net_churn_risk", "name": "תלמידים בסיכון נטו", "source": "net_churn_risk", "fmt": "int", "target": 40, "good": 60, "warn": 100, "better": "down", "weight": 2, "role": "volume" }
+      ]
+    },
+    {
+      "id": "clinic_room", "district_id": "success", "name": "Clinic Room", "name_he": "חדר הקליניקה", "type": "service",
+      "description": "קבוצות קטנות ופתרון חסמים — הערך המורגש של הליווי.",
+      "owner_skill": "student_success", "primary_lever": "clinic_attendance", "footprint": 0.9,
+      "metrics": [
+        { "id": "clinic_attendance", "name": "נוכחות בקליניקות", "source": "clinic_attendance", "fmt": "pct", "target": 0.5, "good": 0.42, "warn": 0.32, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "clinic_attendees", "name": "משתתפים בקליניקות", "source": "clinic_attendees", "fmt": "int", "target": 320, "good": 270, "warn": 200, "better": "up", "weight": 1, "role": "volume" }
+      ]
+    },
+    {
+      "id": "engagement_monitor", "district_id": "success", "name": "Engagement Monitor", "name_he": "מוניטור המעורבות", "type": "monitor",
+      "description": "מעורבות ושביעות רצון — הבסיס לשדרוג ולהפניות.",
+      "owner_skill": "student_success", "primary_lever": "engagement_rate", "footprint": 1.2,
+      "metrics": [
+        { "id": "engagement_rate", "name": "שיעור מעורבות", "source": "engagement_rate", "fmt": "pct", "target": 0.7, "good": 0.65, "warn": 0.55, "better": "up", "weight": 4, "role": "quality" },
+        { "id": "engaged_students", "name": "תלמידים מעורבים", "source": "engaged_students", "fmt": "int", "target": 450, "good": 400, "warn": 320, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "satisfaction", "name": "שביעות רצון (1–5)", "source": "satisfaction", "fmt": "score5", "target": 4.5, "good": 4.3, "warn": 3.9, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+
+    {
+      "id": "pro_matching", "district_id": "growth", "name": "Professional Trader Matching Office", "name_he": "משרד ההתאמה לסוחר מקצועי", "type": "flow",
+      "description": "פגישות עם סוחרים מקצועיים — הפתח למסלול המתקדם.",
+      "owner_skill": "advanced_growth", "primary_lever": "pro_appointment_rate", "footprint": 1.0,
+      "metrics": [
+        { "id": "pro_appointments", "name": "פגישות סוחר מקצועי", "source": "pro_appointments", "fmt": "num", "target": 45, "good": 35, "warn": 22, "better": "up", "weight": 3, "role": "volume" },
+        { "id": "pro_appointment_rate", "name": "שיעור פגישות מתוך מעורבים", "source": "pro_appointment_rate", "fmt": "pct", "target": 0.12, "good": 0.1, "warn": 0.06, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "coaching_desk", "district_id": "growth", "name": "Personal Coaching Deals Desk", "name_he": "דלפק עסקאות האימון האישי", "type": "revenue",
+      "description": "עסקאות אימון מקצועי — ההכנסה בעלת המרווח הגבוה ביותר בעיר.",
+      "owner_skill": "advanced_growth", "primary_lever": "coaching_conv", "footprint": 1.25,
+      "metrics": [
+        { "id": "coaching_deals", "name": "עסקאות אימון", "source": "coaching_deals", "fmt": "num", "target": 16, "good": 12, "warn": 7, "better": "up", "weight": 3, "role": "volume" },
+        { "id": "coaching_conv", "name": "המרה לעסקה", "source": "coaching_conv", "fmt": "pct", "target": 0.45, "good": 0.4, "warn": 0.3, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "revenue_per_deal", "name": "הכנסה לעסקה", "source": "revenue_per_deal", "fmt": "money", "target": 8000, "good": 7000, "warn": 5500, "better": "up", "weight": 2, "role": "quality" },
+        { "id": "coaching_contribution", "name": "תרומה נטו מאימונים", "source": "coaching_contribution", "fmt": "money", "target": 50000, "good": 35000, "warn": 20000, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "advanced_tracker", "district_id": "growth", "name": "Advanced Opportunity Tracker", "name_he": "מעקב הזדמנויות מתקדמות", "type": "monitor",
+      "description": "צנרת המועמדים למסלול המתקדם, ובונוס לנציג.",
+      "owner_skill": "advanced_growth", "primary_lever": "advanced_candidate_rate", "footprint": 0.8,
+      "metrics": [
+        { "id": "advanced_candidates", "name": "מועמדים למסלול מתקדם", "source": "advanced_candidates", "fmt": "num", "target": 80, "good": 60, "warn": 40, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "bonus_per_rep", "name": "בונוס לנציג (₪)", "source": "bonus_per_rep", "fmt": "money", "target": 2500, "good": 1800, "warn": 1000, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+
+    {
+      "id": "referral_engine", "district_id": "referral", "name": "Referral Engine", "name_he": "מנוע ההפניות", "type": "engine",
+      "description": "כמה מהתלמידים באמת מפנים — המנוע שמוריד את ה-CAC של כל העיר.",
+      "owner_skill": "referral", "primary_lever": "referral_rate", "footprint": 1.2,
+      "metrics": [
+        { "id": "referral_rate", "name": "שיעור מפנים", "source": "referral_rate", "fmt": "pct", "target": 0.2, "good": 0.16, "warn": 0.12, "better": "up", "weight": 4, "role": "quality" },
+        { "id": "leads_referral_out", "name": "הפניות שנוצרו", "source": "leads_referral", "fmt": "int", "target": 80, "good": 60, "warn": 35, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "effective_cac", "name": "CAC אפקטיבי (כולל הפניות)", "source": "effective_cac", "fmt": "money", "target": 750, "good": 850, "warn": 1050, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "advocate_hub", "district_id": "referral", "name": "Advocate Trigger Hub", "name_he": "מרכז הטריגרים לממליצים", "type": "engine",
+      "description": "הרגעים שבהם מבקשים הפניה — אחרי הצלחה, אחרי פתיחת חשבון, אחרי קליניקה טובה.",
+      "owner_skill": "referral", "primary_lever": "referral_request_rate", "footprint": 0.9,
+      "metrics": [
+        { "id": "referral_request_rate", "name": "תלמידים שמתבקשים להפנות", "source": "referral_request_rate", "fmt": "pct", "target": 0.5, "good": 0.4, "warn": 0.3, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "referral_requests", "name": "בקשות הפניה", "source": "referral_requests", "fmt": "int", "target": 320, "good": 250, "warn": 180, "better": "up", "weight": 1, "role": "volume" }
+      ]
+    },
+    {
+      "id": "referral_tracking", "district_id": "referral", "name": "Referral Tracking Center", "name_he": "מרכז מעקב ההפניות", "type": "monitor",
+      "description": "מעקב וייחוס — בלי מעקב, ההפניות נספרות כלידים אורגניים והמנוע נראה קטן ממה שהוא.",
+      "owner_skill": "referral", "primary_lever": "referral_tracking_coverage", "footprint": 0.8,
+      "metrics": [
+        { "id": "referral_to_join", "name": "הפניה → הצטרפות", "source": "referral_to_join", "fmt": "pct", "target": 0.2, "good": 0.16, "warn": 0.1, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "referral_tracking_coverage", "name": "כיסוי מעקב", "source": "referral_tracking_coverage", "fmt": "pct", "target": 0.9, "good": 0.8, "warn": 0.6, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+
+    {
+      "id": "mayor_office", "district_id": "cityhall", "name": "Mayor Office (Co-CEO)", "name_he": "לשכת ראש העיר (Co-CEO)", "type": "strategic",
+      "description": "ראש העיר: רואה את כל העיר, מתעדף, מזהה צווארי בקבוק ומתזמר את הסקילים.",
+      "owner_skill": "mayor", "primary_lever": null, "footprint": 1.5,
+      "metrics": [
+        { "id": "total_revenue", "name": "סך הכנסות / חודש", "source": "total_revenue", "fmt": "money", "target": 260000, "good": 220000, "warn": 160000, "better": "up", "weight": 2, "role": "volume" },
+        { "id": "net", "name": "רווח נקי / חודש", "source": "net", "fmt": "money", "target": 50000, "good": 25000, "warn": 0, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "lead_to_joined", "name": "ליד → תלמיד (end-to-end)", "source": "lead_to_joined", "fmt": "pct", "target": 0.1, "good": 0.085, "warn": 0.065, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "war_room", "district_id": "cityhall", "name": "Strategy War Room", "name_he": "חדר המלחמה האסטרטגי", "type": "strategic",
+      "description": "כלכלת העיר: תרומה, מרווח, CAC מול הכנסה לתלמיד.",
+      "owner_skill": "economics", "primary_lever": null, "footprint": 1.1,
+      "metrics": [
+        { "id": "contribution", "name": "תרומה (לפני קבועות)", "source": "contribution", "fmt": "money", "target": 100000, "good": 75000, "warn": 45000, "better": "up", "weight": 3, "role": "volume" },
+        { "id": "contribution_margin", "name": "מרווח תרומה", "source": "contribution_margin", "fmt": "pct", "target": 0.4, "good": 0.35, "warn": 0.25, "better": "up", "weight": 3, "role": "quality" },
+        { "id": "contribution_per_student", "name": "תרומה לתלמיד (ליבה)", "source": "contribution_per_student", "fmt": "money", "target": 600, "good": 400, "warn": 150, "better": "up", "weight": 2, "role": "quality" }
+      ]
+    },
+    {
+      "id": "resource_desk", "district_id": "cityhall", "name": "Resource Allocation Desk", "name_he": "דלפק הקצאת המשאבים", "type": "strategic",
+      "description": "Headcount, עומס נציגים והתאמת קיבולת לביקוש.",
+      "owner_skill": "mayor", "primary_lever": "reps", "footprint": 1.0,
+      "metrics": [
+        { "id": "rep_utilization_city", "name": "ניצולת נציגים", "source": "rep_utilization", "fmt": "pct", "target": 0.8, "good": 0.82, "warn": 0.9, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "seat_contribution", "name": "תרומה למושב נציג", "source": "seat_contribution", "fmt": "money", "target": 12000, "good": 8000, "warn": 3000, "better": "up", "weight": 2, "role": "quality" },
+        { "id": "joined_per_rep_city", "name": "תלמידים חדשים לנציג", "source": "joined_per_rep", "fmt": "num", "target": 35, "good": 30, "warn": 22, "better": "up", "weight": 1, "role": "quality" }
+      ]
+    },
+    {
+      "id": "risk_observatory", "district_id": "cityhall", "name": "Risk Observatory", "name_he": "מצפה הסיכונים", "type": "strategic",
+      "description": "מזומן, דליפות ותלויות חיצוניות — מה עלול לשבור את העיר.",
+      "owner_skill": "economics", "primary_lever": null, "footprint": 0.95,
+      "metrics": [
+        { "id": "weighted_cash_delay_days", "name": "עיכוב מזומן משוקלל (ימים)", "source": "weighted_cash_delay_days", "fmt": "days", "target": 25, "good": 30, "warn": 40, "better": "down", "weight": 3, "role": "quality" },
+        { "id": "cash_tied_up", "name": "מזומן כלוא (₪)", "source": "cash_tied_up", "fmt": "money", "target": 90000, "good": 120000, "warn": 170000, "better": "down", "weight": 2, "role": "quality" },
+        { "id": "revenue_leakage", "name": "דליפת הכנסה (₪)", "source": "revenue_leakage", "fmt": "money", "target": 6000, "good": 10000, "warn": 16000, "better": "down", "weight": 2, "role": "quality" }
+      ]
+    }
+  ]
+}

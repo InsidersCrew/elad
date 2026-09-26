@@ -1,0 +1,16 @@
+{
+  "note": "חוקים ראשוניים לזיהוי חוליה חלשה. כל הספים ניתנים לעריכה.",
+  "weak_health": 60,
+  "attention_health": 75,
+  "strong_health": 85,
+  "small_gap": 0.2,
+  "overload_load": 0.85,
+  "critical_load": 0.95,
+  "fragile_periods": 3,
+  "critical_bottleneck_score": 60,
+  "critical_downstream_weight": 0.4,
+  "economic_margin_min": 0.25,
+  "leak_metrics": ["qual_dropoff", "inactive_7d", "waiver_rate", "calls_overflow", "exception_rate", "uncollected_value", "at_risk_rate", "net_churn_risk", "waived_value"],
+  "economic_metrics": ["contribution_margin", "coaching_contribution", "contribution_per_student", "seat_contribution", "net", "cac", "effective_cac"],
+  "sensitivity_step": 0.10
+}

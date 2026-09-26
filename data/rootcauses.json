@@ -1,0 +1,615 @@
+{
+  "note": "מנוע הסיבות. כל חוק: תנאים (when) על עובדות מהמודל, ראיות (evidence) להצגה, ופעולות עם שינוי ידית (lever) שהמערכת יכולה לסמלץ כדי להעריך השפעה. אופרטורים: > < >= <= ==. עובדה מיוחדת: health = ציון הבריאות של המבנה.",
+  "rules": [
+    {
+      "id": "paid_cpl_rising",
+      "structure_id": "paid_ads",
+      "title": "עלות לליד עולה בזמן שאיכות הליד יורדת",
+      "description": "הקמפיינים מביאים יותר נפח אבל בליד יקר יותר ופחות בשל. סימן לשחיקת קהלים / קריאייטיב, או להרחבה לקהלים קרים.",
+      "when": [ { "fact": "cost_per_lead", "op": ">", "value": 38 }, { "fact": "lead_quality", "op": "<", "value": 0.66 } ],
+      "evidence": ["cost_per_lead", "lead_quality", "cost_per_qualified"],
+      "confidence": 0.7,
+      "impact": "כל שקל ב-CPL מוכפל ב-1,000 לידים — ואיכות נמוכה מעמיסה על הסינון ועל הנציגים.",
+      "actions": [
+        { "id": "creative_refresh", "title": "ריענון קריאייטיב + ניקוי קהלים חלשים (הורדת CPL ל-36)", "lever": "cost_per_lead", "set": 36, "effort": "medium", "owner_skill": "acquisition" },
+        { "id": "prequal_form", "title": "שאלת סינון בטופס — פחות לידים, איכותיים יותר", "lever": "lead_quality", "set": 0.68, "effort": "low", "owner_skill": "acquisition" }
+      ]
+    },
+    {
+      "id": "organic_small",
+      "structure_id": "organic_hub",
+      "title": "הנתח האורגני קטן מדי — העיר תלויה בפרסום ממומן",
+      "description": "רוב הלידים ממומנים. כל עליית CPL פוגעת ישירות ברווחיות. יוטיוב ותוכן הם המנוע הזול ביותר לטווח ארוך.",
+      "when": [ { "fact": "organic_share", "op": "<", "value": 0.3 } ],
+      "evidence": ["leads_organic", "organic_share", "paid_share"],
+      "confidence": 0.65,
+      "impact": "תלות בערוץ אחד = סיכון מבני. אורגני מוריד CAC משוקלל.",
+      "actions": [
+        { "id": "organic_push", "title": "תוכנית תוכן יוטיוב שבועית + CTA לוואטסאפ (+25% אורגני)", "lever": "leads_organic", "mul": 1.25, "effort": "medium", "owner_skill": "acquisition" }
+      ]
+    },
+    {
+      "id": "landing_low_conv",
+      "structure_id": "landing_center",
+      "title": "דף הנחיתה ממיר מתחת ליעד",
+      "description": "אותו תקציב פרסום מייצר פחות לידים. בדרך כלל: מסר לא תואם למודעה, טופס ארוך, או חוסר הוכחה חברתית.",
+      "when": [ { "fact": "landing_conv", "op": "<", "value": 0.07 } ],
+      "evidence": ["landing_conv", "visits", "cost_per_lead"],
+      "confidence": 0.6,
+      "impact": "שיפור המרה בדף = יותר לידים באותו תקציב = CPL נמוך יותר.",
+      "actions": [
+        { "id": "landing_cro", "title": "CRO לדף הנחיתה: התאמת מסר, קיצור טופס, עדויות (CPL −12%)", "lever": "cost_per_lead", "mul": 0.88, "effort": "low", "owner_skill": "acquisition" }
+      ]
+    },
+    {
+      "id": "referral_gate_small",
+      "structure_id": "referral_gate",
+      "title": "כמעט לא נכנסים לידים מהפניות",
+      "description": "שער ההפניות כמעט סגור: מעט תלמידים מתבקשים להפנות, ומעט מפנים. זה הליד הזול והאיכותי ביותר בעיר.",
+      "when": [ { "fact": "referral_share", "op": "<", "value": 0.05 } ],
+      "evidence": ["leads_referral", "referral_share", "referral_request_rate", "referral_rate"],
+      "confidence": 0.7,
+      "impact": "הפניות מורידות CAC אפקטיבי ומגיעות עם qualification גבוה פי 1.6.",
+      "actions": [
+        { "id": "referral_moments", "title": "טריגר הפניה אוטומטי אחרי פתיחת חשבון ואחרי קליניקה (בקשות 28%→45%)", "lever": "referral_request_rate", "set": 0.45, "effort": "low", "owner_skill": "referral" }
+      ]
+    },
+    {
+      "id": "wa_slow_response",
+      "structure_id": "whatsapp_entry",
+      "title": "תגובה ראשונה איטית ב-WhatsApp",
+      "description": "ליד שמחכה יותר מ-3 דקות מתקרר. ה-AI Agent אמור לענות מיידית — עיכוב מעיד על תור, ניתוב ידני או שעות ללא כיסוי.",
+      "when": [ { "fact": "wa_first_response_min", "op": ">", "value": 3 } ],
+      "evidence": ["wa_first_response_min", "whatsapp_leads", "qual_dropoff"],
+      "confidence": 0.6,
+      "impact": "זמן תגובה הוא המנבא החזק ביותר ל-drop-off בסינון.",
+      "actions": [
+        { "id": "wa_instant", "title": "מענה AI מיידי 24/7 + הודעת החזקה (drop-off −4 נק׳)", "lever": "qual_dropoff", "add": -0.04, "effort": "low", "owner_skill": "qualification" }
+      ]
+    },
+
+    {
+      "id": "ai_handoff_heavy",
+      "structure_id": "ai_agent",
+      "title": "ה-AI מעביר יותר מדי שיחות לבני אדם",
+      "description": "יותר משליש מהלידים דורשים נציג עוד לפני שיחת ההתאמה. זה זמן נציג שנגרע ישירות מקיבולת שיחות ההתאמה.",
+      "when": [ { "fact": "ai_resolution_rate", "op": "<", "value": 0.7 } ],
+      "evidence": ["ai_resolution_rate", "human_qual_conversations", "rep_utilization"],
+      "confidence": 0.75,
+      "impact": "כל 10 נק׳ בסגירה ע״י AI = ~140 שיחות אנושיות פחות בחודש = ~23 שעות נציג.",
+      "actions": [
+        { "id": "ai_scripts", "title": "הרחבת תסריטי ה-AI: FAQ, התנגדויות בסיסיות, תיאום עצמאי (סגירת AI 64%→75%)", "lever": "ai_resolution_rate", "set": 0.75, "effort": "medium", "owner_skill": "qualification" }
+      ]
+    },
+    {
+      "id": "qual_slow",
+      "structure_id": "ai_agent",
+      "title": "זמן עד Qualification מתארך",
+      "description": "לידים מחכים שעות עד שהם מסווגים. ככל שהזמן מתארך — יותר לידים נעלמים לפני שיחת ההתאמה.",
+      "when": [ { "fact": "qual_time_hours", "op": ">", "value": 4 } ],
+      "evidence": ["qual_time_hours", "qual_dropoff"],
+      "confidence": 0.6,
+      "impact": "קיצור זמן הסינון מוריד drop-off ומעלה show-rate.",
+      "actions": [
+        { "id": "qual_sla", "title": "SLA סינון של 2 שעות + תזכורת אוטומטית (drop-off −3 נק׳, show +2)", "lever": "qual_dropoff", "add": -0.03, "effort": "low", "owner_skill": "qualification" }
+      ]
+    },
+    {
+      "id": "objection_weak",
+      "structure_id": "objection_hub",
+      "title": "התנגדויות בסיסיות מגיעות לנציג במקום להיפתר ב-AI",
+      "description": "\"כמה זה עולה\", \"אין לי זמן\", \"זה מתאים למתחילים?\" — התנגדויות שחוזרות על עצמן ואפשר לענות עליהן בתסריט.",
+      "when": [ { "fact": "objection_resolve", "op": "<", "value": 0.62 } ],
+      "evidence": ["objection_resolve", "ai_resolution_rate", "fit_conv_effective"],
+      "confidence": 0.6,
+      "impact": "התנגדות שנפתרה לפני השיחה = שיחת התאמה קצרה יותר וממירה יותר.",
+      "actions": [
+        { "id": "objection_library", "title": "ספריית 12 ההתנגדויות הנפוצות בתסריט ה-AI (משך שיחה −2 דק׳)", "lever": "call_duration_min", "add": -2, "effort": "low", "owner_skill": "qualification" }
+      ]
+    },
+    {
+      "id": "qual_dropoff_high",
+      "structure_id": "qual_engine",
+      "title": "שליש מהלידים דולפים בסינון",
+      "description": "לידים נכנסים ונעלמים לפני החלטה. שילוב של תגובה איטית, מסר לא ברור ותהליך ארוך.",
+      "when": [ { "fact": "qual_dropoff", "op": ">", "value": 0.3 } ],
+      "evidence": ["qual_dropoff", "qual_dropoff_count", "qual_time_hours", "wa_first_response_min"],
+      "confidence": 0.75,
+      "impact": "כל 5 נק׳ drop-off = ~70 לידים בחודש = ~7 תלמידים חדשים.",
+      "actions": [
+        { "id": "dropoff_recovery", "title": "רצף החזרה אוטומטי (3 נגיעות ב-48 שעות) ללידים ששתקו (drop-off 33%→26%)", "lever": "qual_dropoff", "set": 0.26, "effort": "low", "owner_skill": "qualification" }
+      ]
+    },
+    {
+      "id": "qual_rate_low",
+      "structure_id": "qual_engine",
+      "title": "שיעור ה-Qualified נמוך מהיעד",
+      "description": "יכול להיות סינון קפדני מדי, או לידים לא מתאימים מהפרסום. יש להצליב עם איכות ליד.",
+      "when": [ { "fact": "qual_rate_effective", "op": "<", "value": 0.46 } ],
+      "evidence": ["qual_rate_effective", "lead_quality", "qualified"],
+      "confidence": 0.55,
+      "impact": "Qualified rate גבוה יותר = יותר שיחות התאמה — אבל רק אם יש קיבולת נציגים.",
+      "actions": [
+        { "id": "qual_criteria", "title": "כיול קריטריוני הבשלות (Qualified 41%→46%)", "lever": "qual_rate", "set": 0.46, "effort": "medium", "owner_skill": "qualification" }
+      ]
+    },
+    {
+      "id": "handoff_quality_low",
+      "structure_id": "handoff_router",
+      "title": "לידים מגיעים לנציג בלי הקשר ובלי ציפיות מתואמות",
+      "description": "ה-handoff לא מעביר סיכום, מטרות ותנאי התוכנית. הנציג מתחיל את השיחה מאפס — שיחה ארוכה יותר, המרה נמוכה יותר.",
+      "when": [ { "fact": "handoff_quality", "op": "<", "value": 0.75 } ],
+      "evidence": ["handoff_quality", "call_duration_min", "fit_conv_effective"],
+      "confidence": 0.7,
+      "impact": "handoff איכותי מקצר שיחות ומעלה המרה — משפיע על שני צווארי בקבוק במקביל.",
+      "actions": [
+        { "id": "handoff_summary", "title": "כרטיס handoff אוטומטי (סיכום AI + מטרה + התנגדויות) לפני כל שיחה (משך שיחה −3 דק׳, המרה +2 נק׳)", "lever": "call_duration_min", "add": -3, "also": [ { "lever": "fit_conv", "add": 0.02 } ], "effort": "low", "owner_skill": "qualification" }
+      ]
+    },
+
+    {
+      "id": "reps_overloaded",
+      "structure_id": "rep_capacity",
+      "title": "הנציגים מעל 85% ניצולת — הקיבולת נגמרה",
+      "description": "שיחות התאמה, אונבורדינג 1:1, follow-up, חריגי ברוקר ושיחות handoff מתחרים על אותן שעות. כל גידול בלידים כבר לא הופך לתלמידים.",
+      "when": [ { "fact": "rep_utilization", "op": ">", "value": 0.85 } ],
+      "evidence": ["rep_utilization", "calls_capacity", "rep_headroom_calls", "one_on_one_sessions", "human_qual_conversations"],
+      "confidence": 0.85,
+      "impact": "עומס מעל 85% מאריך תיאומים, מוריד show-rate ופוגע בהמרה — צוואר בקבוק שמקטין את כל הרבעים במורד הזרם.",
+      "actions": [
+        { "id": "group_onboarding_80", "title": "העברת אונבורדינג לקבוצה (55%→80% קבוצתי) — משחרר ~שעות נציג", "lever": "group_share", "set": 0.8, "effort": "low", "owner_skill": "rep_productivity" },
+        { "id": "add_rep", "title": "גיוס נציג נוסף", "lever": "reps", "add": 1, "effort": "high", "owner_skill": "mayor" },
+        { "id": "cut_admin", "title": "אוטומציה של אדמין (CRM, סיכומים) — אדמין 30%→22%", "lever": "admin_share", "set": 0.22, "effort": "medium", "owner_skill": "rep_productivity" }
+      ]
+    },
+    {
+      "id": "reps_underused",
+      "structure_id": "rep_capacity",
+      "title": "יש קיבולת נציגים פנויה",
+      "description": "הנציגים מתחת ל-65% ניצולת. אפשר להזרים יותר לידים או להוסיף משימות ערך (check-ins, הפניות).",
+      "when": [ { "fact": "rep_utilization", "op": "<", "value": 0.65 } ],
+      "evidence": ["rep_utilization", "rep_headroom_calls", "calls_capacity"],
+      "confidence": 0.7,
+      "impact": "קיבולת פנויה היא עלות קבועה בלי הכנסה — הזמן להגדיל נפח בשער.",
+      "actions": [
+        { "id": "scale_leads", "title": "הגדלת תקציב לידים ב-20%", "lever": "leads_paid", "mul": 1.2, "effort": "low", "owner_skill": "acquisition" }
+      ]
+    },
+    {
+      "id": "fitconv_declining",
+      "structure_id": "fit_conversion",
+      "title": "המרת שיחת ההתאמה יורדת ברציפות",
+      "description": "המרה שיורדת חודש אחרי חודש בזמן שהנפח עולה מעידה על שחיקה: שיחות ארוכות, נציגים עמוסים, לידים פחות בשלים.",
+      "when": [ { "fact": "fit_conv_effective", "op": "<", "value": 0.33 } ],
+      "evidence": ["fit_conv_effective", "call_duration_min", "rep_utilization", "handoff_quality", "lead_quality"],
+      "confidence": 0.8,
+      "impact": "המרה היא המכפיל של כל העיר: +8 נק׳ המרה = ~+28% תלמידים חדשים באותו תקציב.",
+      "actions": [
+        { "id": "fit_script", "title": "תסריט שיחה ממוקד + הכשרת נציגים (המרה 28%→34%)", "lever": "fit_conv", "set": 0.34, "effort": "medium", "owner_skill": "rep_productivity" },
+        { "id": "fit_script_36", "title": "יעד המרה 36% (תסריט + AI סיכום + חתימה דיגיטלית בשיחה)", "lever": "fit_conv", "set": 0.36, "effort": "high", "owner_skill": "rep_productivity" }
+      ]
+    },
+    {
+      "id": "fitconv_overload_penalty",
+      "structure_id": "fit_conversion",
+      "title": "ההמרה נפגעת מעומס הנציגים",
+      "description": "המודל מזהה קנס המרה בגלל ניצולת גבוהה: פחות הכנה לשיחה, פחות follow-up אחריה.",
+      "when": [ { "fact": "rep_utilization", "op": ">", "value": 0.85 }, { "fact": "fit_conv_effective", "op": "<", "value": 0.33 } ],
+      "evidence": ["rep_utilization", "fit_conv_effective", "scheduling_lag_effective"],
+      "confidence": 0.65,
+      "impact": "שחרור קיבולת מחזיר את ההמרה לרמת הבסיס בלי הכשרה.",
+      "actions": [
+        { "id": "call_13", "title": "מבנה שיחה של 13 דקות (18→13) — משחרר קיבולת ומחזיר המרה", "lever": "call_duration_min", "set": 13, "effort": "medium", "owner_skill": "rep_productivity" }
+      ]
+    },
+    {
+      "id": "show_rate_low",
+      "structure_id": "scheduling_center",
+      "title": "שליש מהמתאימים לא מגיעים לשיחה",
+      "description": "show-rate נמוך = עבודת סינון שנזרקת. הסיבות: זמן המתנה ארוך לשיחה, חוסר תזכורות, שעות לא נוחות.",
+      "when": [ { "fact": "show_rate_effective", "op": "<", "value": 0.7 } ],
+      "evidence": ["show_rate_effective", "scheduling_lag_effective", "calls_overflow"],
+      "confidence": 0.7,
+      "impact": "+5 נק׳ show-rate = +25 שיחות בחודש בלי ליד נוסף אחד.",
+      "actions": [
+        { "id": "reminders", "title": "תזכורות WhatsApp אוטומטיות 24h/2h + אישור הגעה (show 66%→73%)", "lever": "show_rate", "set": 0.73, "effort": "low", "owner_skill": "rep_productivity" },
+        { "id": "self_scheduling", "title": "תיאום עצמי ביומן מתוך ה-AI (lag 2.8→1.5 ימים)", "lever": "scheduling_lag_days", "set": 1.5, "effort": "medium", "owner_skill": "qualification" }
+      ]
+    },
+    {
+      "id": "calls_overflow",
+      "structure_id": "scheduling_center",
+      "title": "שיחות לא מתבצעות מחוסר קיבולת",
+      "description": "יש יותר ביקוש לשיחות ממה שהצוות יכול לבצע — לידים מתאימים מחכים ונעלמים.",
+      "when": [ { "fact": "calls_overflow", "op": ">", "value": 10 } ],
+      "evidence": ["calls_overflow", "calls_capacity", "calls_demand", "rep_utilization"],
+      "confidence": 0.85,
+      "impact": "ביקוש שלא נענה = הכסף שכבר שולם על הליד הולך לאיבוד.",
+      "actions": [
+        { "id": "add_rep_overflow", "title": "גיוס נציג נוסף", "lever": "reps", "add": 1, "effort": "high", "owner_skill": "mayor" }
+      ]
+    },
+    {
+      "id": "long_calls",
+      "structure_id": "call_efficiency",
+      "title": "שיחת ההתאמה ארוכה מדי",
+      "description": "18 דקות + 7 דקות סיכום = 25 דקות לשיחה. חלק מהזמן חוזר על מה שה-AI כבר הסביר.",
+      "when": [ { "fact": "call_duration_min", "op": ">", "value": 14 } ],
+      "evidence": ["call_duration_min", "minutes_per_call", "handoff_quality", "calls_capacity"],
+      "confidence": 0.75,
+      "impact": "5 דקות פחות לשיחה = +20% קיבולת שיחות באותו צוות.",
+      "actions": [
+        { "id": "call_13b", "title": "מבנה שיחה של 13 דקות + סיכום AI אוטומטי (סיכום 7→3 דק׳)", "lever": "call_duration_min", "set": 13, "also": [ { "lever": "call_wrapup_min", "set": 3 } ], "effort": "medium", "owner_skill": "rep_productivity" }
+      ]
+    },
+
+    {
+      "id": "onboarding_attendance_low",
+      "structure_id": "group_onboarding",
+      "title": "נוכחות נמוכה באונבורדינג הקבוצתי",
+      "description": "פחות מ-60% מגיעים למפגש הקבוצתי. מי שלא מגיע — או מקבל 1:1 יקר, או לא מתחיל בכלל.",
+      "when": [ { "fact": "onboarding_attendance", "op": "<", "value": 0.68 } ],
+      "evidence": ["onboarding_attendance", "group_share", "started_rate", "one_on_one_sessions"],
+      "confidence": 0.75,
+      "impact": "נוכחות היא הדרך הזולה ביותר להעלות Started ולשחרר זמן נציג.",
+      "actions": [
+        { "id": "onboarding_slots", "title": "2 מועדים שבועיים + הרשמה בתוך שיחת ההתאמה + תזכורת (נוכחות 58%→72%, Started +5 נק׳)", "lever": "onboarding_attendance", "set": 0.72, "also": [ { "lever": "started_rate", "add": 0.05 } ], "effort": "low", "owner_skill": "student_success" }
+      ]
+    },
+    {
+      "id": "too_much_one_on_one",
+      "structure_id": "group_onboarding",
+      "title": "יותר מדי אונבורדינג 1:1",
+      "description": "כמעט חצי מהתלמידים מקבלים אונבורדינג אישי — 45 דקות נציג לכל אחד, במקום מפגש קבוצתי אחיד.",
+      "when": [ { "fact": "group_share", "op": "<", "value": 0.7 } ],
+      "evidence": ["group_share", "one_on_one_sessions", "rep_utilization"],
+      "confidence": 0.8,
+      "impact": "1:1 = חוסר אחידות במסר + עומס נציג. הקבוצה מקבלת חוויה טובה יותר בעלות נמוכה יותר.",
+      "actions": [
+        { "id": "group_default", "title": "אונבורדינג קבוצתי כברירת מחדל; 1:1 רק לחריגים (80% קבוצתי)", "lever": "group_share", "set": 0.8, "effort": "low", "owner_skill": "student_success" }
+      ]
+    },
+    {
+      "id": "login_low",
+      "structure_id": "welcome_automation",
+      "title": "תלמידים לא נכנסים לדשבורד בימים הראשונים",
+      "description": "רצף הקבלה לא מוביל לפעולה ראשונה ברורה. בלי כניסה ב-48 השעות הראשונות, הסיכוי להתחיל צונח.",
+      "when": [ { "fact": "login_rate", "op": "<", "value": 0.85 } ],
+      "evidence": ["login_rate", "time_to_start_days", "started_rate"],
+      "confidence": 0.65,
+      "impact": "כניסה מוקדמת מנבאת Started ומעורבות לאורך זמן.",
+      "actions": [
+        { "id": "welcome_seq", "title": "רצף קבלה: קישור כניסה מיידי + משימה ראשונה של 10 דקות + תזכורת יום 2 (Started +4 נק׳)", "lever": "started_rate", "add": 0.04, "effort": "low", "owner_skill": "student_success" }
+      ]
+    },
+    {
+      "id": "started_low",
+      "structure_id": "course_access",
+      "title": "כמעט 30% מהמצטרפים לא מתחילים",
+      "description": "תלמידים \"רדומים\": הצטרפו, לא נכנסו, לא התחילו. הם לא פותחים חשבון ולא משלמים — ההכנסה מהם אפס.",
+      "when": [ { "fact": "started_rate", "op": "<", "value": 0.8 } ],
+      "evidence": ["started_rate", "inactive_7d", "dormant_students", "onboarding_attendance", "login_rate"],
+      "confidence": 0.8,
+      "impact": "כל תלמיד רדום הוא CAC ששולם בלי הכנסה. +10 נק׳ Started = +10% הכנסה ישירה.",
+      "actions": [
+        { "id": "dormant_rescue", "title": "מסלול הצלה לרדומים: שיחת 5 דק׳ ביום 3 + קבוצת התחלה מחודשת (Started 71%→80%)", "lever": "started_rate", "set": 0.8, "effort": "medium", "owner_skill": "student_success" }
+      ]
+    },
+    {
+      "id": "community_low",
+      "structure_id": "community_entry",
+      "title": "מעט תלמידים מצטרפים לקהילה",
+      "description": "הקהילה היא מנוע המעורבות וההפניות — פחות מחצי מצטרפים אליה.",
+      "when": [ { "fact": "community_join", "op": "<", "value": 0.6 } ],
+      "evidence": ["community_join", "engagement_rate", "referral_rate"],
+      "confidence": 0.55,
+      "impact": "הצטרפות לקהילה מעלה מעורבות ואת הסיכוי להפניה.",
+      "actions": [
+        { "id": "community_onboard", "title": "הצטרפות לקהילה כחלק מהאונבורדינג + פוסט היכרות (מעורבות +3 נק׳)", "lever": "engagement_rate", "add": 0.03, "effort": "low", "owner_skill": "student_success" }
+      ]
+    },
+
+    {
+      "id": "time_to_open_long",
+      "structure_id": "broker_routing",
+      "title": "פתיחת החשבון לוקחת יותר מ-10 ימים",
+      "description": "בין הסיום אצלנו לפתיחה אצל הברוקר עוברים ימים רבים — התלהבות דועכת, מסמכים נתקעים.",
+      "when": [ { "fact": "time_to_open_days", "op": ">", "value": 8 } ],
+      "evidence": ["time_to_open_days", "broker_sla_actual_days", "exception_rate", "open_rate"],
+      "confidence": 0.7,
+      "impact": "כל יום נוסף עד פתיחה מוריד open-rate ומעכב מזומן.",
+      "actions": [
+        { "id": "open_in_session", "title": "פתיחת חשבון מודרכת בתוך מפגש (\"Open Day\") — ימים עד פתיחה 12→7, open-rate +6 נק׳", "lever": "time_to_open_days", "set": 7, "also": [ { "lever": "open_rate", "add": 0.06 } ], "effort": "medium", "owner_skill": "broker_handoff" }
+      ]
+    },
+    {
+      "id": "open_rate_low",
+      "structure_id": "open_assist",
+      "title": "רק כמחצית מהמתחילים פותחים חשבון",
+      "description": "המעבר לברוקר הוא הקפיצה הכי גדולה בעיר: חשש, מסמכים, הפקדה ראשונה. בלי ליווי צמוד — חצי נשארים בחוץ.",
+      "when": [ { "fact": "open_rate", "op": "<", "value": 0.6 } ],
+      "evidence": ["open_rate", "opened", "time_to_open_days", "exception_rate"],
+      "confidence": 0.8,
+      "impact": "open-rate מכריע בין הכנסה של 2,800 ₪ לבין חיוב של 980 ₪ שנגבה רק בחלקו.",
+      "actions": [
+        { "id": "open_assist_flow", "title": "ליווי פתיחה: צ׳קליסט מסמכים מראש + שיחת עזרה טכנית + מעקב 48 שעות (open-rate 51%→60%)", "lever": "open_rate", "set": 0.6, "effort": "medium", "owner_skill": "broker_handoff" }
+      ]
+    },
+    {
+      "id": "exceptions_high",
+      "structure_id": "exceptions_queue",
+      "title": "יותר מדי חריגים חוזרים לנציג",
+      "description": "אחד מחמישה תלמידים חוזר לנציג עם חסם טכני. זה זמן נציג שנגרע משיחות התאמה, ותלמיד שמתקרר.",
+      "when": [ { "fact": "exception_rate", "op": ">", "value": 0.14 } ],
+      "evidence": ["exception_rate", "exceptions", "rep_utilization"],
+      "confidence": 0.7,
+      "impact": "הורדת חריגים משחררת קיבולת ומקצרת time-to-open.",
+      "actions": [
+        { "id": "exception_kb", "title": "מדריך וידאו לחסמים החוזרים + בדיקת מסמכים מראש (חריגים 21%→12%)", "lever": "exception_rate", "set": 0.12, "effort": "low", "owner_skill": "broker_handoff" }
+      ]
+    },
+    {
+      "id": "sla_breach",
+      "structure_id": "sla_monitor",
+      "title": "הברוקר חורג מה-SLA",
+      "description": "תלות חיצונית: הברוקר לוקח יותר ימים מהמוסכם. זה משפיע על time-to-open ועל open-rate בלי שלנו יש שליטה ישירה.",
+      "when": [ { "fact": "broker_sla_gap_days", "op": ">", "value": 1 } ],
+      "evidence": ["broker_sla_actual_days", "broker_sla_target_days", "broker_sla_gap_days", "time_to_open_days"],
+      "confidence": 0.65,
+      "impact": "SLA שנשמר מקצר time-to-open ומשחרר חריגים.",
+      "actions": [
+        { "id": "sla_escalation", "title": "נציג קשר ייעודי בברוקר + דוח SLA שבועי + אסקלציה (SLA 7.8→5.5 ימים, פתיחה −2 ימים)", "lever": "broker_sla_actual_days", "set": 5.5, "also": [ { "lever": "time_to_open_days", "add": -2 } ], "effort": "medium", "owner_skill": "broker_handoff" }
+      ]
+    },
+
+    {
+      "id": "revenue_per_student_low",
+      "structure_id": "account_revenue",
+      "title": "ההכנסה לתלמיד נמוכה מהיעד",
+      "description": "ההכנסה לתלמיד היא תוצאה של open-rate, הכנסה לחשבון וגבייה מאי-פותחים. הבעיה כאן היא בדרך כלל במעלה הזרם (Started, Open) ולא במחיר.",
+      "when": [ { "fact": "revenue_per_student", "op": "<", "value": 1400 } ],
+      "evidence": ["revenue_per_student", "open_rate", "started_rate", "revenue_per_open", "cac"],
+      "confidence": 0.7,
+      "impact": "הכנסה לתלמיד מול CAC היא המשוואה של העיר כולה.",
+      "actions": [
+        { "id": "broker_terms", "title": "משא ומתן על תנאי הברוקר (הכנסה לחשבון 2,800→3,200)", "lever": "revenue_per_open", "set": 3200, "effort": "high", "owner_skill": "economics" }
+      ]
+    },
+    {
+      "id": "non_open_charge_low",
+      "structure_id": "non_open_charge",
+      "title": "רוב חיובי אי-הפתיחה לא הופכים להכנסה",
+      "description": "אחרי ויתורים ואי-גבייה, פחות מחצי מהחיובים נגבים. מסלול החיוב קיים על הנייר אבל לא בפועל.",
+      "when": [ { "fact": "non_open_charge_rate", "op": "<", "value": 0.6 } ],
+      "evidence": ["non_open_charge_rate", "waiver_rate", "collection_rate", "non_open_revenue", "revenue_leakage"],
+      "confidence": 0.75,
+      "impact": "חיוב שנגבה מכסה את ה-CAC של תלמיד שלא פתח חשבון.",
+      "actions": [
+        { "id": "charge_upfront", "title": "אמצעי תשלום נשמר בהצטרפות + חיוב אוטומטי ביום 30 (גבייה 66%→85%)", "lever": "collection_rate", "set": 0.85, "effort": "medium", "owner_skill": "economics" }
+      ]
+    },
+    {
+      "id": "collection_low",
+      "structure_id": "collections",
+      "title": "הגבייה נמוכה והמזומן מתעכב",
+      "description": "שליש מהחיובים לא נגבים, והשאר מגיעים אחרי חודש ויותר. תהליך ידני ומאוחר.",
+      "when": [ { "fact": "collection_rate", "op": "<", "value": 0.78 } ],
+      "evidence": ["collection_rate", "cash_delay_days", "uncollected_value"],
+      "confidence": 0.75,
+      "impact": "גבייה אוטומטית מעלה הכנסה ומקצרת מזומן בו-זמנית.",
+      "actions": [
+        { "id": "auto_collect", "title": "גבייה אוטומטית + 3 תזכורות + פריסה (גבייה 85%, עיכוב 36→20 ימים)", "lever": "collection_rate", "set": 0.85, "also": [ { "lever": "cash_delay_days", "set": 20 } ], "effort": "medium", "owner_skill": "economics" }
+      ]
+    },
+    {
+      "id": "waiver_high",
+      "structure_id": "waiver_office",
+      "title": "כרבע מהחיובים מוותרים",
+      "description": "ויתורים ניתנים בלי מדיניות ברורה — לרוב כדי להימנע מעימות. כל ויתור הוא הכנסה שנעלמת בשקט.",
+      "when": [ { "fact": "waiver_rate", "op": ">", "value": 0.15 } ],
+      "evidence": ["waiver_rate", "waived_value", "revenue_leakage"],
+      "confidence": 0.7,
+      "impact": "מדיניות ויתור ברורה (רק במקרים מוגדרים) מחזירה הכנסה בלי לפגוע בשירות.",
+      "actions": [
+        { "id": "waiver_policy", "title": "מדיניות ויתור: אישור מנהל + 3 קריטריונים בלבד (ויתור 24%→12%)", "lever": "waiver_rate", "set": 0.12, "effort": "low", "owner_skill": "economics" }
+      ]
+    },
+
+    {
+      "id": "checkin_coverage_low",
+      "structure_id": "checkin_office",
+      "title": "כיסוי ה-Check-ins חלקי",
+      "description": "שליש מהתלמידים לא מקבלים בדיקת מצב יזומה. את ה-at-risk מגלים מאוחר מדי.",
+      "when": [ { "fact": "checkin_coverage", "op": "<", "value": 0.75 } ],
+      "evidence": ["checkin_coverage", "at_risk_rate", "reactivation_rate"],
+      "confidence": 0.65,
+      "impact": "check-in מוקדם מוריד at-risk ומעלה שיעור החזרה.",
+      "actions": [
+        { "id": "checkin_auto", "title": "Check-in אוטומטי (WhatsApp) בימים 7/21/45 + דגל at-risk לנציג (at-risk −5 נק׳)", "lever": "at_risk_rate", "add": -0.05, "effort": "low", "owner_skill": "student_success" }
+      ]
+    },
+    {
+      "id": "at_risk_growing",
+      "structure_id": "at_risk_center",
+      "title": "רבע מהתלמידים בסיכון, ורק שליש חוזרים",
+      "description": "at-risk עולה חודש אחרי חודש בזמן ששיעור ההחזרה יורד. מרכז החילוץ לא עומד בקצב.",
+      "when": [ { "fact": "at_risk_rate", "op": ">", "value": 0.16 }, { "fact": "reactivation_rate", "op": "<", "value": 0.4 } ],
+      "evidence": ["at_risk_rate", "reactivation_rate", "net_churn_risk", "checkin_coverage"],
+      "confidence": 0.75,
+      "impact": "תלמיד בסיכון לא פותח חשבון, לא משדרג ולא מפנה — הוא מאבד את שלושת מנועי ההכנסה.",
+      "actions": [
+        { "id": "rescue_playbook", "title": "פלייבוק חילוץ: קליניקת \"התחלה מחדש\" שבועית + מסלול 14 יום (החזרה 30%→45%)", "lever": "reactivation_rate", "set": 0.45, "effort": "medium", "owner_skill": "student_success" }
+      ]
+    },
+    {
+      "id": "clinic_low",
+      "structure_id": "clinic_room",
+      "title": "נוכחות נמוכה בקליניקות",
+      "description": "הקליניקות הן הערך המורגש של הליווי — ופחות מ-40% מגיעים.",
+      "when": [ { "fact": "clinic_attendance", "op": "<", "value": 0.42 } ],
+      "evidence": ["clinic_attendance", "engagement_rate", "satisfaction"],
+      "confidence": 0.55,
+      "impact": "נוכחות בקליניקה מנבאת מעורבות, שדרוג והפניה.",
+      "actions": [
+        { "id": "clinic_format", "title": "קליניקות נושאיות קצרות (30 דק׳) + הקלטה + תזכורת (מעורבות +4 נק׳)", "lever": "engagement_rate", "add": 0.04, "effort": "low", "owner_skill": "student_success" }
+      ]
+    },
+    {
+      "id": "engagement_low",
+      "structure_id": "engagement_monitor",
+      "title": "מעורבות מתחת ליעד ובירידה",
+      "description": "המעורבות היא הבסיס לשדרוג ולהפניות. ירידה איטית ועקבית = בעיה מבנית בליווי, לא אירוע חד-פעמי.",
+      "when": [ { "fact": "engagement_rate", "op": "<", "value": 0.65 } ],
+      "evidence": ["engagement_rate", "engaged_students", "clinic_attendance", "checkin_coverage", "satisfaction"],
+      "confidence": 0.7,
+      "impact": "+10 נק׳ מעורבות = +10% פגישות סוחר מקצועי ועסקאות אימון.",
+      "actions": [
+        { "id": "engagement_program", "title": "תוכנית מעורבות 30 יום: מסלול משימות + קבוצות קטנות + הכרה (מעורבות 56%→65%)", "lever": "engagement_rate", "set": 0.65, "effort": "medium", "owner_skill": "student_success" }
+      ]
+    },
+
+    {
+      "id": "pro_appointments_low",
+      "structure_id": "pro_matching",
+      "title": "מעט תלמידים מגיעים לפגישת סוחר מקצועי",
+      "description": "רק 7% מהמעורבים נפגשים עם סוחר מקצועי. ההצעה לא מוצגת בזמן הנכון (אחרי הצלחה ראשונה).",
+      "when": [ { "fact": "pro_appointment_rate", "op": "<", "value": 0.1 } ],
+      "evidence": ["pro_appointment_rate", "pro_appointments", "engaged_students"],
+      "confidence": 0.65,
+      "impact": "פגישות הן הצינור להכנסה בעלת המרווח הגבוה ביותר.",
+      "actions": [
+        { "id": "pro_trigger", "title": "טריגר הצעה אוטומטי אחרי אבן דרך (פגישות 7%→9.5%)", "lever": "pro_appointment_rate", "set": 0.095, "effort": "low", "owner_skill": "advanced_growth" }
+      ]
+    },
+    {
+      "id": "coaching_conv_low",
+      "structure_id": "coaching_desk",
+      "title": "ההמרה מפגישה לעסקת אימון נמוכה",
+      "description": "שני שלישים מהפגישות לא נסגרות. אין מבנה פגישה, אין הצעה ברורה, אין follow-up.",
+      "when": [ { "fact": "coaching_conv", "op": "<", "value": 0.4 } ],
+      "evidence": ["coaching_conv", "coaching_deals", "revenue_per_deal", "coaching_contribution"],
+      "confidence": 0.65,
+      "impact": "+10 נק׳ המרה = ~+30% עסקאות אימון — ההכנסה עם המרווח הגבוה ביותר בעיר.",
+      "actions": [
+        { "id": "coaching_offer", "title": "מבנה פגישה + הצעה כתובה + follow-up 48 שעות (המרה 34%→42%)", "lever": "coaching_conv", "set": 0.42, "effort": "medium", "owner_skill": "advanced_growth" },
+        { "id": "deal_value", "title": "חבילת אימון מורחבת (הכנסה לעסקה 6,500→7,500)", "lever": "revenue_per_deal", "set": 7500, "effort": "medium", "owner_skill": "advanced_growth" }
+      ]
+    },
+    {
+      "id": "advanced_pipeline_thin",
+      "structure_id": "advanced_tracker",
+      "title": "צנרת המסלול המתקדם דלילה",
+      "description": "אין מעקב שיטתי אחרי תלמידים שמתאימים למסלול המתקדם — ההזדמנויות מתגלות במקרה.",
+      "when": [ { "fact": "advanced_candidate_rate", "op": "<", "value": 0.2 } ],
+      "evidence": ["advanced_candidates", "advanced_candidate_rate", "bonus_per_rep"],
+      "confidence": 0.5,
+      "impact": "צנרת גלויה = בונוסים לנציגים = מוטיבציה לזהות מועמדים.",
+      "actions": [
+        { "id": "advanced_scoring", "title": "ניקוד מועמדות אוטומטי בדשבורד הנציג (מועמדים 14%→20%, פגישות +2 נק׳)", "lever": "advanced_candidate_rate", "set": 0.2, "also": [ { "lever": "pro_appointment_rate", "add": 0.02 } ], "effort": "low", "owner_skill": "advanced_growth" }
+      ]
+    },
+
+    {
+      "id": "referral_rate_low",
+      "structure_id": "referral_engine",
+      "title": "מנוע ההפניות כמעט כבוי",
+      "description": "רק כעשירית מהמתבקשים מפנים, והשיעור יורד. אין תמריץ, אין רגע נכון, אין קלות.",
+      "when": [ { "fact": "referral_rate", "op": "<", "value": 0.16 } ],
+      "evidence": ["referral_rate", "leads_referral", "effective_cac", "satisfaction"],
+      "confidence": 0.7,
+      "impact": "הפניות הן הליד הכי זול והכי איכותי — הן מורידות CAC אפקטיבי לכל העיר.",
+      "actions": [
+        { "id": "referral_program", "title": "תוכנית הפניות: קישור אישי + הטבה לשני הצדדים + הצגה בקליניקה (מפנים 11%→18%)", "lever": "referral_rate", "set": 0.18, "effort": "medium", "owner_skill": "referral" }
+      ]
+    },
+    {
+      "id": "referral_requests_low",
+      "structure_id": "advocate_hub",
+      "title": "לא מבקשים הפניות",
+      "description": "פחות משליש מהתלמידים בכלל מתבקשים להפנות. הרגעים הנכונים (אחרי פתיחת חשבון, אחרי רווח ראשון) עוברים בלי בקשה.",
+      "when": [ { "fact": "referral_request_rate", "op": "<", "value": 0.4 } ],
+      "evidence": ["referral_request_rate", "referral_requests", "opened"],
+      "confidence": 0.75,
+      "impact": "הכפלת הבקשות = הכפלת ההפניות, בעלות אפס.",
+      "actions": [
+        { "id": "referral_triggers", "title": "3 טריגרים אוטומטיים לבקשת הפניה (בקשות 28%→50%)", "lever": "referral_request_rate", "set": 0.5, "effort": "low", "owner_skill": "referral" }
+      ]
+    },
+    {
+      "id": "referral_untracked",
+      "structure_id": "referral_tracking",
+      "title": "כמעט חצי מההפניות לא מיוחסות",
+      "description": "בלי קישור אישי ומעקב ב-CRM, הפניות נספרות כאורגני — המנוע נראה קטן ממה שהוא ואי אפשר לתגמל ממליצים.",
+      "when": [ { "fact": "referral_tracking_coverage", "op": "<", "value": 0.8 } ],
+      "evidence": ["referral_tracking_coverage", "referral_tracked", "referral_to_join"],
+      "confidence": 0.6,
+      "impact": "מעקב מלא מאפשר תגמול, מדידה ואופטימיזציה של המנוע.",
+      "actions": [
+        { "id": "referral_links", "title": "קישור הפניה אישי + שדה \"מי הפנה\" בטופס + סנכרון CRM (כיסוי 55%→90%)", "lever": "referral_tracking_coverage", "set": 0.9, "effort": "low", "owner_skill": "referral" }
+      ]
+    },
+
+    {
+      "id": "city_breakeven",
+      "structure_id": "mayor_office",
+      "title": "העיר מייצרת הכנסה אבל לא רווח",
+      "description": "ההכנסות מכסות בקושי את העלויות. הבעיה אינה מחסור בלידים אלא המרה ותפעול במורד הזרם.",
+      "when": [ { "fact": "net_margin", "op": "<", "value": 0.1 } ],
+      "evidence": ["total_revenue", "net", "net_margin", "cac", "revenue_per_student"],
+      "confidence": 0.8,
+      "impact": "בלי מרווח אין מקום לטעויות ואין תקציב להשקעה.",
+      "actions": []
+    },
+    {
+      "id": "cac_vs_revenue",
+      "structure_id": "war_room",
+      "title": "CAC קרוב מדי להכנסה לתלמיד",
+      "description": "עלות רכישת תלמיד (פרסום + נציגים + AI) מול ההכנסה ממנו — המרווח לתלמיד דק.",
+      "when": [ { "fact": "contribution_per_student", "op": "<", "value": 400 } ],
+      "evidence": ["cac", "revenue_per_student", "contribution_per_student", "contribution_margin"],
+      "confidence": 0.75,
+      "impact": "מרווח לתלמיד קובע אם צמיחה בלידים מוסיפה רווח או הפסד.",
+      "actions": []
+    },
+    {
+      "id": "headcount_pressure",
+      "structure_id": "resource_desk",
+      "title": "הקיבולת לא מותאמת לביקוש",
+      "description": "ניצולת נציגים גבוהה מהיעד. לפני גיוס — לבדוק אם אפשר לשחרר קיבולת (קבוצה, AI, שיחה קצרה).",
+      "when": [ { "fact": "rep_utilization", "op": ">", "value": 0.85 } ],
+      "evidence": ["rep_utilization", "seat_contribution", "joined_per_rep", "calls_overflow"],
+      "confidence": 0.75,
+      "impact": "גיוס עולה 14,000 ₪ בחודש; שחרור קיבולת עולה כמעט כלום.",
+      "actions": [
+        { "id": "capacity_first", "title": "שחרור קיבולת לפני גיוס: קבוצה 80% + שיחה 13 דק׳", "lever": "group_share", "set": 0.8, "also": [ { "lever": "call_duration_min", "set": 13 } ], "effort": "medium", "owner_skill": "rep_productivity" },
+        { "id": "hire_rep", "title": "גיוס נציג נוסף (בדיקת כדאיות)", "lever": "reps", "add": 1, "effort": "high", "owner_skill": "mayor" }
+      ]
+    },
+    {
+      "id": "cash_slow",
+      "structure_id": "risk_observatory",
+      "title": "המזומן מגיע באיחור של יותר מחודש",
+      "description": "הכנסה מוכרת עכשיו, כסף אחרי 40+ ימים. בצמיחה זה יוצר פער תזרימי שגדל עם ההצלחה.",
+      "when": [ { "fact": "weighted_cash_delay_days", "op": ">", "value": 30 } ],
+      "evidence": ["weighted_cash_delay_days", "cash_tied_up", "broker_payout_delay_days", "cash_delay_days"],
+      "confidence": 0.7,
+      "impact": "עיכוב מזומן מגביל את היכולת להשקיע בלידים ובגיוס.",
+      "actions": [
+        { "id": "payout_terms", "title": "משא ומתן על תשלום ברוקר (45→30 ימים) + גבייה אוטומטית (36→20)", "lever": "broker_payout_delay_days", "set": 30, "also": [ { "lever": "cash_delay_days", "set": 20 } ], "effort": "high", "owner_skill": "economics" }
+      ]
+    },
+    {
+      "id": "leakage_high",
+      "structure_id": "risk_observatory",
+      "title": "דליפת הכנסה מוויתורים ואי-גבייה",
+      "description": "הכנסה שכבר \"הרווחנו\" ולא הגיעה: ויתורים + חיובים שלא נגבו.",
+      "when": [ { "fact": "revenue_leakage", "op": ">", "value": 10000 } ],
+      "evidence": ["revenue_leakage", "waived_value", "uncollected_value"],
+      "confidence": 0.75,
+      "impact": "דליפה היא הרווח הכי זול להחזיר — הלקוח כבר קיים.",
+      "actions": [
+        { "id": "leak_fix", "title": "מדיניות ויתור + גבייה אוטומטית (ויתור 12%, גבייה 85%)", "lever": "waiver_rate", "set": 0.12, "also": [ { "lever": "collection_rate", "set": 0.85 } ], "effort": "low", "owner_skill": "economics" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "insiders-cityos",
+  "version": "0.1.0",
+  "description": "INSIDERS CityOS — a 3D city-based business operating system that models the INSIDERS value chain as a living city, scores every structure, explains root causes, simulates what-if scenarios and orchestrates specialist skills through a Co-CEO Mayor.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.js",
+    "mayor": "node scripts/mayor.mjs",
+    "snapshot": "node scripts/snapshot.mjs",
+    "report": "node scripts/report.mjs",
+    "screenshot": "node scripts/screenshot.mjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}

@@ -1,0 +1,353 @@
+{
+  "$schema": "./schema/model.schema.json",
+  "meta": {
+    "name": "INSIDERS CityOS — מודל תפעולי",
+    "currency": "₪",
+    "note": "נתוני דוגמה (seed). החליפו את הערכים ב-inputs וב-history בנתונים אמיתיים. כל ערך ב-inputs הוא ידית (lever) שאפשר להזיז במצב סימולציה.",
+    "source": "seed",
+    "updated": "2026-09-26"
+  },
+  "period": {
+    "unit": "month",
+    "labels": [
+      "אפר׳ 26",
+      "מאי 26",
+      "יוני 26",
+      "יולי 26",
+      "אוג׳ 26",
+      "ספט׳ 26"
+    ]
+  },
+  "inputs": {
+    "leads_paid": 1000,
+    "leads_organic": 350,
+    "cost_per_lead": 42,
+    "landing_conv": 0.062,
+    "lead_quality": 0.61,
+    "whatsapp_share": 0.57,
+    "wa_first_response_min": 4.5,
+    "qual_rate": 0.41,
+    "qual_dropoff": 0.33,
+    "ai_resolution_rate": 0.64,
+    "qual_time_hours": 6.5,
+    "objection_resolve": 0.52,
+    "handoff_quality": 0.68,
+    "handoff_conv_min": 10,
+    "reps": 4,
+    "rep_hours_week": 28,
+    "admin_share": 0.3,
+    "call_duration_min": 18,
+    "call_wrapup_min": 7,
+    "show_rate": 0.66,
+    "fit_conv": 0.28,
+    "scheduling_lag_days": 2.8,
+    "onboarding_attendance": 0.58,
+    "started_rate": 0.71,
+    "login_rate": 0.79,
+    "group_share": 0.55,
+    "one_on_one_min": 45,
+    "followup_min": 25,
+    "community_join": 0.47,
+    "time_to_start_days": 4.6,
+    "open_rate": 0.51,
+    "time_to_open_days": 12,
+    "exception_rate": 0.21,
+    "exception_handling_min": 20,
+    "broker_sla_target_days": 5,
+    "broker_sla_actual_days": 7.8,
+    "revenue_per_open": 2800,
+    "non_open_charge": 980,
+    "waiver_rate": 0.24,
+    "collection_rate": 0.66,
+    "cash_delay_days": 36,
+    "broker_payout_delay_days": 45,
+    "active_students": 640,
+    "engagement_rate": 0.56,
+    "at_risk_rate": 0.25,
+    "reactivation_rate": 0.3,
+    "checkin_coverage": 0.62,
+    "clinic_attendance": 0.36,
+    "satisfaction": 4.0,
+    "pro_appointment_rate": 0.07,
+    "coaching_conv": 0.34,
+    "revenue_per_deal": 6500,
+    "rep_bonus_per_deal": 600,
+    "coaching_delivery_cost_share": 0.45,
+    "advanced_candidate_rate": 0.14,
+    "referral_request_rate": 0.28,
+    "referral_rate": 0.11,
+    "referrals_per_advocate": 1.4,
+    "referral_quality_mult": 1.6,
+    "referral_tracking_coverage": 0.55,
+    "rep_cost_month": 14000,
+    "ai_agent_cost_month": 3500,
+    "fixed_costs_month": 40000,
+    "utilization_target": 0.8
+  },
+  "history": {
+    "leads_paid": [
+      720,
+      790,
+      850,
+      910,
+      960,
+      1000
+    ],
+    "leads_organic": [
+      300,
+      310,
+      320,
+      335,
+      345,
+      350
+    ],
+    "cost_per_lead": [
+      39,
+      39,
+      40,
+      41,
+      42,
+      42
+    ],
+    "lead_quality": [
+      0.63,
+      0.6,
+      0.64,
+      0.62,
+      0.6,
+      0.61
+    ],
+    "qual_rate": [
+      0.42,
+      0.4,
+      0.43,
+      0.41,
+      0.42,
+      0.41
+    ],
+    "qual_dropoff": [
+      0.28,
+      0.29,
+      0.3,
+      0.31,
+      0.32,
+      0.33
+    ],
+    "ai_resolution_rate": [
+      0.58,
+      0.6,
+      0.61,
+      0.62,
+      0.63,
+      0.64
+    ],
+    "qual_time_hours": [
+      5.8,
+      6.9,
+      5.5,
+      6.1,
+      7.0,
+      6.5
+    ],
+    "handoff_quality": [
+      0.7,
+      0.67,
+      0.71,
+      0.69,
+      0.66,
+      0.68
+    ],
+    "call_duration_min": [
+      15,
+      15.5,
+      16,
+      17,
+      17.5,
+      18
+    ],
+    "show_rate": [
+      0.7,
+      0.69,
+      0.68,
+      0.68,
+      0.67,
+      0.66
+    ],
+    "fit_conv": [
+      0.33,
+      0.32,
+      0.31,
+      0.3,
+      0.29,
+      0.28
+    ],
+    "scheduling_lag_days": [
+      2.2,
+      2.9,
+      2.4,
+      3.1,
+      2.6,
+      2.8
+    ],
+    "onboarding_attendance": [
+      0.63,
+      0.62,
+      0.61,
+      0.6,
+      0.59,
+      0.58
+    ],
+    "started_rate": [
+      0.72,
+      0.7,
+      0.73,
+      0.71,
+      0.72,
+      0.71
+    ],
+    "group_share": [
+      0.4,
+      0.44,
+      0.47,
+      0.5,
+      0.53,
+      0.55
+    ],
+    "time_to_start_days": [
+      4.2,
+      4.9,
+      4.4,
+      4.1,
+      4.8,
+      4.6
+    ],
+    "open_rate": [
+      0.55,
+      0.55,
+      0.54,
+      0.53,
+      0.52,
+      0.51
+    ],
+    "time_to_open_days": [
+      9,
+      9.5,
+      10,
+      11,
+      11.5,
+      12
+    ],
+    "exception_rate": [
+      0.19,
+      0.22,
+      0.18,
+      0.23,
+      0.2,
+      0.21
+    ],
+    "broker_sla_actual_days": [
+      6.2,
+      6.9,
+      6.5,
+      7.1,
+      7.4,
+      7.8
+    ],
+    "waiver_rate": [
+      0.18,
+      0.19,
+      0.2,
+      0.21,
+      0.23,
+      0.24
+    ],
+    "collection_rate": [
+      0.72,
+      0.71,
+      0.7,
+      0.69,
+      0.67,
+      0.66
+    ],
+    "cash_delay_days": [
+      35,
+      37,
+      34,
+      36,
+      38,
+      36
+    ],
+    "active_students": [
+      520,
+      545,
+      570,
+      595,
+      620,
+      640
+    ],
+    "engagement_rate": [
+      0.57,
+      0.55,
+      0.58,
+      0.56,
+      0.57,
+      0.56
+    ],
+    "at_risk_rate": [
+      0.21,
+      0.22,
+      0.23,
+      0.23,
+      0.24,
+      0.25
+    ],
+    "reactivation_rate": [
+      0.33,
+      0.29,
+      0.32,
+      0.28,
+      0.31,
+      0.3
+    ],
+    "satisfaction": [
+      4.1,
+      3.9,
+      4.2,
+      4.0,
+      4.1,
+      4.0
+    ],
+    "pro_appointment_rate": [
+      0.05,
+      0.055,
+      0.06,
+      0.065,
+      0.07,
+      0.07
+    ],
+    "coaching_conv": [
+      0.3,
+      0.31,
+      0.32,
+      0.33,
+      0.34,
+      0.34
+    ],
+    "referral_rate": [
+      0.13,
+      0.13,
+      0.12,
+      0.12,
+      0.11,
+      0.11
+    ],
+    "referral_request_rate": [
+      0.34,
+      0.33,
+      0.31,
+      0.3,
+      0.29,
+      0.28
+    ]
+  }
+}
