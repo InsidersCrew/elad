@@ -10,6 +10,7 @@
     "test": "node --test test/*.test.js",
     "mayor": "node scripts/mayor.mjs",
     "snapshot": "node scripts/snapshot.mjs",
+    "period": "node scripts/period.mjs",
     "report": "node scripts/report.mjs",
     "screenshot": "node scripts/screenshot.mjs"
   },

@@ -42,6 +42,7 @@ const shots = [
   ['detail-fitcall', () => { window.__cityos.setLens('health'); window.__cityos.select('fit_conversion'); }],
   ['scenario', () => { window.__cityos.openScenario(); window.__cityos.setScenario({ fit_conv: 0.36, call_duration_min: 13 }); }],
   ['reports', () => window.__cityos.openReports('daily')],
+  ['data', () => { window.__cityos.closeAll(); window.__cityos.openData(); }],
 ];
 for (const [name, fn] of shots) {
   await page.evaluate(fn);

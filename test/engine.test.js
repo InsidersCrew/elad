@@ -170,3 +170,36 @@ test('determinism: same inputs → same city', () => {
   const s = simulate(city.inputs);
   assert.equal(s.joined, city.facts.joined);
 });
+
+test('periods: add / set / remove keep inputs and history in sync', async () => {
+  const { addPeriod, setValues, removeLastPeriod, valuesAt, normalizeModel, nextPeriodLabel, changedLevers } = await import('../src/engine/periods.js');
+  const m0 = normalizeModel(data.model);
+  const n = m0.period.labels.length;
+  assert.equal(nextPeriodLabel('ספט׳ 26'), 'אוק׳ 26');
+  assert.equal(nextPeriodLabel('דצמ׳ 26'), 'ינו׳ 27');
+  assert.equal(nextPeriodLabel('תקופה 3'), 'תקופה 4');
+
+  const m1 = addPeriod(m0, 'אוק׳ 26', { fit_conv: 0.31, leads_paid: 1050 });
+  assert.equal(m1.period.labels.length, n + 1);
+  assert.equal(m1.inputs.fit_conv, 0.31);
+  assert.equal(m1.inputs.leads_paid, 1050);
+  assert.equal(m1.history.fit_conv.length, n + 1);
+  assert.equal(m1.history.fit_conv[n - 1], m0.inputs.fit_conv, 'previous month untouched');
+  assert.equal(valuesAt(m1, n).open_rate, m0.inputs.open_rate, 'unchanged levers carry forward');
+  assert.ok(changedLevers(m1, n).includes('fit_conv'));
+  assert.throws(() => addPeriod(m1, 'אוק׳ 26'), /כבר קיימת/);
+
+  const m2 = setValues(m1, n - 1, { open_rate: 0.53 });
+  assert.equal(valuesAt(m2, n - 1).open_rate, 0.53);
+  assert.equal(m2.inputs.open_rate, m0.inputs.open_rate, 'editing a past month does not change the current one');
+
+  const m3 = removeLastPeriod(m2);
+  assert.equal(m3.period.labels.length, n);
+  assert.equal(m3.inputs.fit_conv, m0.inputs.fit_conv);
+  assert.equal(m3.inputs.open_rate, 0.53, 'previous month becomes current');
+  const city2 = buildCity({ ...data, model: m1 });
+  assert.equal(city2.periodLabel, 'אוק׳ 26');
+  assert.equal(city2.factsHistory.length, n + 1);
+  // the original data object was never mutated
+  assert.equal(data.model.period.labels.length, n);
+});

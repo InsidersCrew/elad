@@ -95,6 +95,11 @@ function createStore() {
     lsSet(LS.model, data.model);
     s.recompute();
   };
+  s.updateModel = (m, source = 'edited') => {
+    data.model = { ...m, meta: { ...(m.meta ?? {}), source, updated: new Date().toISOString().slice(0, 10) } };
+    lsSet(LS.model, data.model);
+    s.recompute();
+  };
   s.replaceModel = (m) => {
     data.model = { ...structuredClone(modelSeed), ...m, meta: { ...(m.meta ?? {}), source: 'imported', updated: new Date().toISOString().slice(0, 10) } };
     lsSet(LS.model, data.model);

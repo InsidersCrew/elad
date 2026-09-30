@@ -17,6 +17,7 @@ npm run mayor      # Daily Mayor Brief בטרמינל (Markdown)
 npm run mayor -- --set fit_conv=0.36 --set call_duration_min=13   # דוח What-if + Brief על התרחיש
 npm run report -- weekly     # daily | weekly | monthly
 npm run snapshot   # out/city-snapshot.json — הקלט לסקילים
+npm run period -- add "אוק׳ 26" fit_conv=31%   # הזנת חודש חדש ל-data/model.json (ראו "הזנת נתונים לחודש")
 npm run screenshot # בדיקת עשן ויזואלית (Chromium headless) → out/*.png
 ```
 
@@ -70,7 +71,28 @@ data/rootcauses ──► rootcause.js             ──► למה, עם ראי
 
 `data/model.json` הוא מקור האמת. `inputs` = ערכי התקופה הנוכחית (כל ערך הוא ידית), `history` = ערכים לתקופות קודמות (למגמות). כל הערכים כרגע הם **נתוני דוגמה** — החליפו בנתונים אמיתיים (Pipedrive, דשבורד נציגים, ברוקר, Brevo).
 
-באפליקציה: **נתונים** → עריכה ידנית, ייבוא JSON, ייצוא `model.json` / `city-snapshot.json`. הנתונים נשמרים בדפדפן בלבד (localStorage); ל"אמת" משותפת מעדכנים את הקובץ במאגר.
+### הזנת נתונים לחודש
+
+כל תקופה (חודש) היא עמודה: `period.labels[i]` ↔ `history[lever][i]`. התקופה האחרונה היא העיר שרואים; הקודמות מזינות מגמות (3 תקופות רעות ברצף = שביר) ואת ה-Weekly Review.
+
+**באפליקציה** — **נתונים** → שורת התקופות למעלה:
+1. **+ חודש חדש** — נוסף חודש (השם מחושב אוטומטית, למשל ספט׳ 26 → אוק׳ 26, ואפשר לשנות). כל הערכים מועתקים מהחודש הקודם, כך שמזינים רק מה שהשתנה.
+2. לוחצים על תקופה כלשהי כדי לערוך אותה. ליד כל ידית מופיע הערך של החודש הקודם; נקודה כחולה = השתנה מול החודש הקודם.
+3. **שמור**. הנתונים נשמרים בדפדפן הזה (localStorage). כדי שהמאגר יהיה מקור האמת: **ייצא model.json** והחליפו את `data/model.json`.
+
+**במאגר (CLI)** — מעדכן את `data/model.json` ישירות:
+
+```bash
+npm run period -- list                                   # התקופות ומה השתנה בכל אחת
+npm run period -- add "אוק׳ 26"                          # חודש חדש, ערכים מועתקים מהקודם
+npm run period -- add "אוק׳ 26" fit_conv=31% leads_paid=1050 open_rate=0.53
+npm run period -- set "ספט׳ 26" call_duration_min=16     # תיקון של חודש קיים
+npm run period -- set last waiver_rate=0.2               # "last" = התקופה הנוכחית
+npm run period -- show last                              # כל הידיות של התקופה
+npm run period -- remove-last
+```
+
+אחוזים מתקבלים כשבר (0.31) או עם סימן אחוז (31%). אחרי עדכון: `npm run mayor` ל-Brief על החודש החדש, ו-`npm run report -- weekly` להשוואה מול החודש הקודם.
 
 מבנה הישויות (District, Structure, Metric, Skill, RootCause, Scenario) — ראו `data/*.json`; הסכמה מתועדת בתוך הקבצים.
 
@@ -90,7 +112,7 @@ data/            city.json · model.json · rules.json · rootcauses.json · ski
 src/engine/      המנוע (pure JS, רץ ב-Node ובדפדפן)
 src/app/         Three.js: scene · layout · city · traffic · lenses · labels · interaction
 src/app/ui/      topbar · mayorPanel · detailPanel · scenarioDrawer · reports · data · skill
-scripts/         build · dev · mayor · report · snapshot · screenshot
+scripts/         build · dev · mayor · report · snapshot · period · screenshot
 test/            בדיקות המנוע (node --test)
 .claude/skills/  9 סקילים
 ```

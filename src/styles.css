@@ -352,12 +352,25 @@ a { color: var(--brand-sky); }
 .md code { font-family: var(--mono); font-size: 12px; background: var(--glass-07); padding: 1px 5px; border-radius: 4px; }
 .md pre { background: var(--glass-07); padding: 10px 12px; border-radius: 10px; overflow: auto; direction: ltr; text-align: left; font-family: var(--mono); font-size: 12px; }
 
-.data-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; }
+.data-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; }
 .data-row { display: grid; grid-template-columns: 1fr 96px; gap: 8px; align-items: center; padding: 4px 0; font-size: 12px; }
 .data-row input { width: 100%; padding: 5px 8px; border-radius: 8px; background: var(--glass-07); border: 1px solid var(--glass-12); font-family: var(--mono); font-size: 12px; direction: ltr; text-align: right; }
 .data-row input:focus { outline: none; border-color: var(--brand-accent); }
-.data-row .lbl { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data-row .lbl { color: var(--text-secondary); line-height: 1.25; }
 textarea.json { width: 100%; min-height: 160px; padding: 10px; border-radius: 10px; background: var(--glass-07); border: 1px solid var(--glass-12); font-family: var(--mono); font-size: 12px; direction: ltr; text-align: left; resize: vertical; }
+.period-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.period-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--glass-07); border: 1px solid var(--glass-12); color: var(--text-secondary); }
+.period-chip:hover { color: var(--text-primary); border-color: var(--glass-25); }
+.period-chip.active { background: var(--brand-accent); color: #fff; border-color: transparent; }
+.period-chip.current:not(.active) { border-color: rgba(131, 205, 255, 0.5); }
+.period-chip.add { border-style: dashed; color: var(--brand-sky); }
+.period-chip .tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); }
+.period-chip .tag.muted { background: var(--glass-12); font-family: var(--mono); }
+.period-name { padding: 5px 9px; border-radius: 8px; background: var(--glass-07); border: 1px solid var(--glass-12); font-size: 13px; font-weight: 600; width: 130px; }
+.period-name:focus { outline: none; border-color: var(--brand-accent); }
+.data-row.changed .lbl::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--brand-sky); margin-inline-end: 6px; vertical-align: middle; }
+.data-row .prev { display: block; color: var(--text-tertiary); font-size: 10.5px; font-family: var(--mono); margin-top: 1px; }
+.data-row input.edited { border-color: var(--brand-highlight); }
 .group-title { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--brand-sky); margin: 10px 0 2px; text-transform: uppercase; }
 
 .skill-prompt { white-space: pre-wrap; font-family: var(--mono); font-size: 11.5px; direction: ltr; text-align: left; background: var(--glass-07); border: 1px solid var(--glass-12); border-radius: 10px; padding: 10px; max-height: 220px; overflow: auto; }
