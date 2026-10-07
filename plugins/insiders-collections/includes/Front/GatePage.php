@@ -31,6 +31,7 @@ final class GatePage {
 			'root'   => esc_url_raw( rest_url( 'icol/v1' ) ),
 			'id'     => $valid ? $id : '',
 			'secure' => WebAuthn::secure_context(),
+			'logo'   => ICOL_URL . 'assets/brand/logo-white.svg',
 		);
 		status_header( $valid ? 200 : 404 );
 		include ICOL_DIR . 'templates/gate-phone.php';

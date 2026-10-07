@@ -27,7 +27,7 @@
 	}
 	function screen() {
 		while (card.firstChild) { card.removeChild(card.firstChild); }
-		card.appendChild(h('div', { class: 'icolg-logo' }, 'IN', h('span', { text: '/' }), 'SIDERS'));
+		card.appendChild(h('div', { class: 'icolg-logo' }, h('img', { src: C.logo, alt: 'INSIDERS' })));
 		for (var i = 0; i < arguments.length; i++) { if (arguments[i]) { card.appendChild(arguments[i]); } }
 	}
 	function done(icon, kind, title, text) {

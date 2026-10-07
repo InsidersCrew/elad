@@ -186,7 +186,7 @@
 	function lockScreen(root, s) {
 		var body = h('div', { class: 'icol-gate-body' });
 		var card = h('div', { class: 'icol-card icol-gate-card' },
-			h('div', { class: 'icol-logo' }, 'IN', h('span', { text: '/' }), 'SIDERS'),
+			h('div', { class: 'icol-logo' }, h('img', { src: G.logo, alt: 'INSIDERS' })),
 			h('h1', { text: 'מערכת התשלומים נעולה' }),
 			h('p', { class: 'hint', text: 'הנתונים נפתחים רק בסריקה מטלפון מחובר, עם זיהוי פנים או טביעת אצבע.' }),
 			body

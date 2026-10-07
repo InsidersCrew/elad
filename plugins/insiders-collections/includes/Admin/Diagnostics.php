@@ -98,7 +98,11 @@ final class Diagnostics {
 
 	/** The real parser, for a host without php -l. Brace counting misses a broken heredoc; this doesn't. */
 	private static function syntax(): void {
-		$it  = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( ICOL_DIR . 'includes' ) );
+		// Templates too: a broken template only fails when a customer opens the pay page.
+		$it  = new \AppendIterator();
+		foreach ( array( 'includes', 'templates' ) as $dir ) {
+			$it->append( new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( ICOL_DIR . $dir, \FilesystemIterator::SKIP_DOTS ) ) );
+		}
 		$bad = 0;
 		$n   = 0;
 		foreach ( $it as $f ) {

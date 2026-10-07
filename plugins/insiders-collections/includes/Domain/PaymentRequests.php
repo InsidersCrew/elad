@@ -118,7 +118,9 @@ final class PaymentRequests {
 			'request'      => $req,
 			'amount_minor' => $summary['due_balance_minor'],
 			'currency'     => $summary['currency'],
-			'items'        => array_map( static fn( $i ) => array( 'description' => $i['description'] ?: ( 'תשלום ' . gmdate( 'd/m/Y', strtotime( $i['due_at'] ) ) ), 'amount_minor' => (int) $i['cached_balance_minor'] ), $items ),
+			'items'        => array_map( static fn( $i ) => array( 'description' => $i['description'] ?: ( 'תשלום ' . gmdate( 'm/Y', strtotime( $i['due_at'] ) ) ), 'amount_minor' => (int) $i['cached_balance_minor'] ), $items ),
+			// What the WhatsApp message said, so a changed page can explain the difference.
+			'sent_minor'   => (int) $req['amount_minor'],
 			'first_name'   => Customers::greeting_name( $customer ),
 			'link_route'   => self::link_allowed( $case ),
 		);

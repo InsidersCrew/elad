@@ -35,6 +35,7 @@ final class Admin {
 				'root'   => esc_url_raw( rest_url( 'icol/v1' ) ),
 				'nonce'  => wp_create_nonce( 'wp_rest' ),
 				'locked' => $locked,
+				'logo'   => ICOL_URL . 'assets/brand/logo-white.svg',
 				// Install order needs genkey/syntax/schema before the first phone exists; these tools show no data.
 				'tools'  => current_user_can( 'manage_options' ) ? html_entity_decode( wp_nonce_url( admin_url( 'admin.php?icol_diag=tools' ), 'icol_diag' ) ) : null,
 			)
@@ -58,6 +59,7 @@ final class Admin {
 				'user'    => array( 'id' => get_current_user_id(), 'name' => wp_get_current_user()->display_name, 'role' => Capabilities::role_of( get_current_user_id() ) ),
 				'caps'    => $caps,
 				'version' => ICOL_VERSION,
+				'logo'    => ICOL_URL . 'assets/brand/logo-white.svg',
 				'gate'    => array( 'enforced' => Gate::enforced(), 'off' => Gate::off(), 'is_owner' => Gate::is_owner() ),
 				'diag'    => current_user_can( 'manage_options' ) ? array(
 					'tools' => html_entity_decode( wp_nonce_url( admin_url( 'admin.php?icol_diag=tools' ), 'icol_diag' ) ),

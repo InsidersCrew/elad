@@ -26,8 +26,8 @@
 /* Shell */
 .icol-shell{display:grid;grid-template-columns:232px 1fr;min-height:calc(100vh - 32px)}
 .icol-side{background:var(--bg2);border-inline-start:0;border-inline-end:1px solid var(--line);padding:18px 12px;position:sticky;top:32px;height:calc(100vh - 32px);overflow:auto}
-.icol-logo{font-weight:900;font-size:20px;letter-spacing:.5px;direction:ltr;text-align:right;padding:4px 10px 2px}
-.icol-logo span{color:var(--hl)}
+.icol-logo{padding:6px 10px 4px;display:flex;justify-content:flex-start}
+.icol-logo img{height:18px;width:auto;display:block}
 .icol-sub{color:var(--t3);font-size:12px;padding:0 10px 16px}
 .icol-nav{display:flex;flex-direction:column;gap:2px}
 .icol-nav a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-radius:10px;color:var(--t2);font-weight:500}

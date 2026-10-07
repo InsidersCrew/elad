@@ -250,7 +250,7 @@
 
 	clear(root);
 	add(root, h('div', { class: 'icol-shell' },
-		h('aside', { class: 'icol-side' }, h('div', { class: 'icol-logo' }, 'IN', h('span', { text: '/' }), 'SIDERS'), h('div', { class: 'icol-sub', text: 'תשלומים וגבייה · ' + (C.version || '') }), nav),
+		h('aside', { class: 'icol-side' }, h('div', { class: 'icol-logo' }, h('img', { src: C.logo, alt: 'INSIDERS' })), h('div', { class: 'icol-sub', text: 'תשלומים וגבייה · ' + (C.version || '') }), nav),
 		add2(main, [topbar, page])
 	));
 	function add2(el, kids) { add(el, kids); return el; }
@@ -966,7 +966,7 @@
 			['tranzila_cycle_strategy', 'זיהוי מחזור', [['manual', 'ידני (בטוח)'], ['schedule', 'לפי לוח החיובים של ההוראה'], ['field', 'לפי שדה שאושר']]], ['tranzila_cycle_field', 'שדה מחזור (אם אושר)'],
 			['tranzila_charge_tranmodes', 'קידומות tranmode של חיוב'], ['tranzila_pr_match_field', 'שדה pr_id ב-Notify'], ['tranzila_hmac_order', 'סדר HMAC', [['secret_time_nonce', 'secret+time+nonce'], ['time_nonce_secret', 'time+nonce+secret']]], ['tranzila_report_amount_unit', 'יחידת סכום בדוחות', [['major', 'שקלים'], ['minor', 'אגורות']]],
 			['wati_api_base', 'כתובת API של WATI'], ['wati_channel_number', 'channel_number ב-WATI'], ['wati_conversation_attr', 'שם מאפיין בעלות השיחה'],
-			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['fallback_owner_id', 'מזהה בעלים חלופי'],
+			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['pay_theme', 'מראה דף התשלום', [['dark', 'כהה (מומלץ)'], ['light', 'בהיר']]], ['accessibility_url', 'קישור להצהרת הנגישות באתר'], ['fallback_owner_id', 'מזהה בעלים חלופי'],
 			['ai_model', 'מודל AI'], ['ai_effort', 'עומק חשיבה', [['low', 'low'], ['medium', 'medium'], ['high', 'high']]],
 			['revenue_meta_deadline', 'דשבורד הכנסות: מפתח מועד אחרון'], ['revenue_meta_opened', 'דשבורד הכנסות: מפתח חשבון נפתח'], ['revenue_meta_joined', 'דשבורד הכנסות: מפתח הצטרפות'], ['revenue_meta_extension', 'דשבורד הכנסות: מפתח הארכה'], ['revenue_meta_phone', 'מפתח טלפון במשתמש'], ['revenue_candidate_horizon_days', 'ימים קדימה למועמדים'], ['revenue_max_staleness_hours', 'דשבורד הכנסות: שעות מרביות מהסנכרון האחרון']
 		];

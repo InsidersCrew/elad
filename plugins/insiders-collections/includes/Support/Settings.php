@@ -52,6 +52,8 @@ final class Settings {
 		'alert_email'                 => '',
 		'support_whatsapp'            => '',
 		'pay_base_path'               => 'pay',
+		'pay_theme'                   => 'dark',  // designer: dark by default (recognition builds trust); 'light' for an A/B test
+		'accessibility_url'           => '',      // the site's accessibility statement; the pay page links to it when set
 		'reconcile_stale_minutes'     => 30,
 		'card_task_due_business_days' => 1,
 		'revenue_meta_joined'         => '',

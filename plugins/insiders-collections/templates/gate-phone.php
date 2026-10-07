@@ -18,8 +18,8 @@ html{background:#05142F}
 .icolg{--bg:#05142F;--hl:#460FFF;--hl-h:#3A0BD6;--sky:#83CDFF;--g07:rgba(239,244,248,.07);--g12:rgba(239,244,248,.12);--t2:rgba(255,255,255,.72);--t3:rgba(255,255,255,.48);--ok:#00C28A;--bad:#ff8a87;margin:0;min-height:100vh;background:radial-gradient(120% 60% at 85% 0%,rgba(70,15,255,.16),transparent 60%),var(--bg);color:#fff;font-family:Heebo,system-ui,sans-serif;display:flex;justify-content:center;padding:28px 16px 40px;box-sizing:border-box}
 .icolg *{box-sizing:border-box}
 .icolg-card{width:100%;max-width:420px;background:var(--g07);border:1px solid var(--g12);border-radius:24px;padding:26px 20px}
-.icolg-logo{font-weight:900;font-size:21px;letter-spacing:.5px;margin:0 0 22px;direction:ltr;text-align:right}
-.icolg-logo span{color:var(--hl)}
+.icolg-logo{margin:0 0 22px;display:flex;justify-content:flex-start}
+.icolg-logo img{height:17px;width:auto;display:block}
 .icolg h1{font-size:24px;font-weight:800;margin:0 0 6px;line-height:1.25}
 .icolg p{color:var(--t2);margin:0 0 16px;font-size:16px;line-height:1.55}
 .icolg-meta{background:rgba(0,0,0,.18);border:1px solid var(--g12);border-radius:14px;padding:12px 14px;margin:0 0 18px;font-size:14px;color:var(--t2);line-height:1.7}
@@ -43,7 +43,7 @@ html{background:#05142F}
 </head>
 <body class="icolg">
 <main class="icolg-card" id="icolg" aria-live="polite">
-	<div class="icolg-logo">IN<span>/</span>SIDERS</div>
+	<div class="icolg-logo"><img src="<?php echo esc_url( ICOL_URL . 'assets/brand/logo-white.svg' ); ?>" alt="INSIDERS" width="54" height="17"></div>
 	<h1>רגע…</h1>
 </main>
 <script nonce="<?php echo esc_attr( $nonce ); ?>">window.ICOL_GATE_PHONE = <?php echo wp_json_encode( $config ); ?>;</script>
