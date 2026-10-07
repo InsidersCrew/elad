@@ -70,6 +70,8 @@
 			return res.text().then(function (t) {
 				var data = null;
 				try { data = t ? JSON.parse(t) : null; } catch (e) { data = { message: t }; }
+				// Idle or expired gate session: the page reloads into the lock screen (no data stays on screen).
+				if (res.status === 401 && data && data.code === 'gate_locked') { location.reload(); }
 				if (!res.ok) { var err = new Error((data && data.message) || ('HTTP ' + res.status)); err.status = res.status; err.data = data || {}; throw err; }
 				return data;
 			});
@@ -199,7 +201,8 @@
 		['#/new', 'חוב חדש', null, 'icol_create_draft'],
 		['#/handover', 'המשך טיפול', null, 'icol_create_draft'],
 		['sep'],
-		['#/settings', 'הגדרות ובריאות', null, 'icol_admin']
+		['#/settings', 'הגדרות ובריאות', null, 'icol_admin'],
+		['#/security', 'אבטחה וטלפונים', null]
 	];
 	function renderNav() {
 		clear(nav);
@@ -221,13 +224,15 @@
 			else { add(chips, chip('משלוחים פעילים', 'ok')); }
 			if (!mode.policy_approved) { add(chips, chip('מדיניות פנייה טרם אושרה', 'warn')); }
 		}
+		if (C.gate && C.gate.off) { add(chips, chip('שער הסריקה כבוי (ICOL_GATE_OFF)', 'bad')); }
 		var ks = null;
 		if (can('icol_work_case') && mode) {
 			ks = mode.kill_switch
 				? (can('icol_admin') ? h('button', { class: 'icol-btn sm', text: 'ביטול מתג העצירה', onclick: function () { killSwitch(false); } }) : null)
 				: h('button', { class: 'icol-btn sm danger', text: 'עצירת כל המשלוחים', onclick: function () { killSwitch(true); } });
 		}
-		add(topbar, [chips, h('div', { class: 'icol-actions' }, ks, h('span', { class: 'who', text: (C.user && C.user.name) + ' · ' + roleLabel(C.user && C.user.role) }))]);
+		var lock = C.gate && C.gate.enforced && window.ICOLGate ? h('button', { class: 'icol-btn sm', text: 'נעילה', title: 'סגירת המערכת במחשב הזה עד הסריקה הבאה', onclick: function () { window.ICOLGate.lock(); } }) : null;
+		add(topbar, [chips, h('div', { class: 'icol-actions' }, ks, lock, h('span', { class: 'who', text: (C.user && C.user.name) + ' · ' + roleLabel(C.user && C.user.role) }))]);
 	}
 	function roleLabel(r) { return { admin: 'מנהל', collector: 'אחראי גבייה', rep: 'נציג', viewer: 'צופה' }[r] || 'ללא תפקיד'; }
 	function killSwitch(on) {
@@ -275,6 +280,7 @@
 		if (r.path === '/candidates') { return viewCandidates(); }
 		if (r.path.indexOf('/tasks') === 0) { return viewTasks(); }
 		if (r.path.indexOf('/settings') === 0) { return viewSettings(r.path.split('/')[2] || 'health'); }
+		if (r.path === '/security') { return viewSecurity(); }
 		clear(page); add(page, h('div', { class: 'icol-empty', text: 'העמוד לא נמצא' }));
 	}
 	window.addEventListener('hashchange', route);
@@ -797,24 +803,84 @@
 
 	/* ---------- candidates ---------- */
 	function viewCandidates() {
-		api.get('/candidates').then(function (rows) {
+		api.get('/candidates').then(function (res) {
+			var rows = res.rows || [];
 			clear(page);
-			add(page, pageHead('מועמדים לחיוב, מדשבורד ההכנסות', 'תלמידים שהמועד לפתיחת חשבון עבר והחשבון לא נפתח. המערכת לא קובעת חיוב בעצמה: יצירת טיוטה דורשת סכום, בסיס ואישור.'));
+			add(page, pageHead('מועמדים לחיוב, מדשבורד ההכנסות', 'תלמידים שעברו 90 יום מההצטרפות בלי לפתוח חשבון ובלי לשלם. המערכת לא קובעת חיוב בעצמה: יצירת טיוטה דורשת סכום, בסיס ואישור.'));
+			if (res.sync && res.sync.stale) {
+				add(page, h('div', { class: 'icol-banner stop', text: 'דשבורד ההכנסות לא סנכרן את פייפדרייב ' + (res.sync.age_hours === null ? 'אף פעם' : res.sync.age_hours + ' שעות') + '. מועמדים חדשים לא נקלטים עד שהסנכרון יתעדכן, כי ייתכן שתלמיד פתח חשבון והדשבורד עוד לא יודע.' }));
+			} else if (res.sync) {
+				add(page, h('p', { class: 'muted', text: 'סנכרון אחרון של הדשבורד מול פייפדרייב: ' + res.sync.ok_at }));
+			}
 			add(page, table([
-				['name', 'תלמיד', function (c) { return h('span', {}, c.snapshot.name || ('#' + c.wp_user_id), h('span', { class: 'sub', text: [c.snapshot.phone, c.snapshot.email].filter(Boolean).join(' · ') })); }],
-				['program', 'תוכנית', function (c) { return c.snapshot.program; }],
-				['joined', 'הצטרפות', function (c) { return c.snapshot.joined_at; }],
-				['deadline', 'מועד אחרון', function (c) { return h('span', {}, c.deadline, c.snapshot.extension_until ? h('span', { class: 'sub', text: 'כולל הארכה' }) : null); }],
-				['days', 'ימים מאז', function (c) { return c.snapshot.days_left !== null ? h('span', { class: 'num', text: String(-c.snapshot.days_left) }) : null; }],
+				['name', 'תלמיד', function (c) { var s = c.snapshot || {}; return h('span', {}, s.name || ('#' + (c.pipedrive_person_id || c.wp_user_id)), h('span', { class: 'sub', text: [s.phone, s.email].filter(Boolean).join(' · ') || (s.enrich_error ? 'פרטי קשר לא נמשכו מפייפדרייב' : '') })); }],
+				['owner', 'נציג', function (c) { return (c.snapshot || {}).owner_name || null; }],
+				['joined', 'הצטרפות', function (c) { return (c.snapshot || {}).joined_at; }],
+				['deadline', 'מועד אחרון', function (c) { return h('span', {}, c.deadline, (c.snapshot || {}).extension_until ? h('span', { class: 'sub', text: 'כולל הארכה' }) : null); }],
+				['days', 'ימים מאז', function (c) { var d = (c.snapshot || {}).days_left; return d !== null && d !== undefined ? h('span', { class: 'num', text: String(-d) }) : null; }],
 				['act', '', function (c) { return can('icol_create_draft') ? h('span', { class: 'icol-actions' }, h('button', { class: 'icol-btn sm blue', text: 'יצירת טיוטת חוב', onclick: function () { candidateDraft(c); } }), h('button', { class: 'icol-btn sm', text: 'לא רלוונטי', onclick: function () { simpleModal('סימון כלא רלוונטי', '', [field('note', 'סיבה', 'textarea', { required: true })], function (fs) { return api.post('/candidates/' + c.id + '/dismiss', { note: val(fs[0]) }); }); } })) : null; }]
 			], rows));
-			if (!rows.length) { add(page, h('p', { class: 'muted', text: 'אין מועמדים חדשים. אם החיבור לדשבורד ההכנסות עוד לא הוגדר, ראו הגדרות ← חיבורים, או כלי האבחון revenue_probe.' })); }
+			if (!rows.length) { add(page, h('p', { class: 'muted', text: res.source === 'none' ? 'החיבור לדשבורד ההכנסות לא נמצא. יש לוודא שתוסף הדשבורד פעיל, או להריץ את כלי האבחון revenue_probe.' : 'אין מועמדים חדשים.' })); }
 		}).catch(fail);
 	}
 	function candidateDraft(c) {
-		var fs = [field('amount', 'סכום לחיוב לפי ההסכם', 'text', { required: true, inputmode: 'decimal', help: 'לא נקבע מחיר אחיד: הסכום מוזן להסכם המסוים.' }), field('due_at', 'מועד פירעון', 'date', { value: new Date().toISOString().slice(0, 10) }), field('approval_basis', 'בסיס החיוב', 'textarea', { required: true }), field('document_ref', 'קישור להסכם', 'text'), field('clarification_first', 'להתחיל בבירור לפני דרישת תשלום', 'checkbox', { value: true })];
-		modal({ title: 'טיוטת חוב, ' + (c.snapshot.name || ''), lead: 'הטיוטה נשמרת בלי שליחה. אחראי גבייה מאשר ומפעיל מתוך התיק.', body: h('div', { class: 'icol-form' }, fs.map(function (f2) { return f2.el; })),
+		var s = c.snapshot || {};
+		var fs = [field('amount', 'סכום לחיוב לפי ההסכם', 'text', { required: true, inputmode: 'decimal', value: s.suggested_amount_minor ? String(s.suggested_amount_minor / 100) : '', help: s.suggested_amount_minor ? 'הוצע לפי מחיר מוצר הקנס בפייפדרייב. יש לוודא מול ההסכם של התלמיד.' : 'לא נקבע מחיר אחיד: הסכום מוזן להסכם המסוים.' }), field('due_at', 'מועד פירעון', 'date', { value: new Date().toISOString().slice(0, 10) }), field('approval_basis', 'בסיס החיוב', 'textarea', { required: true, value: c.pipedrive_deal_id ? 'לא נפתח חשבון עד ' + c.deadline + ' לפי דשבורד ההכנסות (דיל ' + c.pipedrive_deal_id + ')' : '' }), field('document_ref', 'קישור להסכם', 'text'), field('clarification_first', 'להתחיל בבירור לפני דרישת תשלום', 'checkbox', { value: true })];
+		modal({ title: 'טיוטת חוב, ' + (s.name || ''), lead: 'הטיוטה נשמרת בלי שליחה. אחראי גבייה מאשר ומפעיל מתוך התיק.', body: h('div', { class: 'icol-form' }, fs.map(function (f2) { return f2.el; })),
 			actions: [{ label: 'יצירת טיוטה', kind: 'primary', onClick: function () { return api.post('/candidates/' + c.id + '/draft', { amount: val(fs[0]), due_at: val(fs[1]), approval_basis: val(fs[2]), document_ref: val(fs[3]), clarification_first: val(fs[4]) }).then(function (r) { location.hash = '#/cases/' + r.case_id; }); } }] });
+	}
+
+	/* ---------- security: phones and open sessions ---------- */
+	var DEV = { active: ['פעיל', 'ok'], pending: ['ממתין לאישור', 'warn'], revoked: ['נותק', ''] };
+	function viewSecurity() {
+		Promise.all([api.get('/gate/devices'), api.get('/gate/sessions'), api.get('/gate/state')]).then(function (res) {
+			var devices = res[0], sessions = res[1], st = res[2];
+			clear(page);
+			add(page, pageHead('אבטחה וטלפונים', 'המערכת נפתחת רק בסריקה מטלפון מחובר. ' + (st.is_owner ? 'טלפונים חדשים של אחרים נפתחים רק אחרי אישור שלך.' : 'טלפון חדש ממתין לאישור של ' + st.owner_name + '.'),
+				[h('button', { class: 'icol-btn primary', text: 'חיבור טלפון נוסף', onclick: pairModal })]));
+			if (st.off) { add(page, h('div', { class: 'icol-banner stop', text: 'ICOL_GATE_OFF מוגדר ב-wp-config.php: כרגע אין צורך בסריקה. אחרי שחזור הגישה יש למחוק את השורה.' })); }
+			add(page, h('h2', { class: 'icol-section-title', text: 'טלפונים' }));
+			add(page, table([
+				['label', 'טלפון', function (d) { return h('span', {}, d.label, h('span', { class: 'sub', text: d.synced ? 'מפתח מסונכרן לחשבון הענן של הטלפון' : 'מפתח שמור במכשיר בלבד' })); }],
+				['user', 'משתמש', 'user'],
+				['status', 'מצב', function (d) { var x = DEV[d.status] || [d.status, '']; return chip(x[0], x[1]); }],
+				['created', 'חובר', 'created'],
+				['last', 'שימוש אחרון', 'last_used'],
+				['act', '', function (d) {
+					return h('span', { class: 'icol-actions' },
+						d.can_approve ? h('button', { class: 'icol-btn sm blue', text: 'אישור', onclick: function () { api.post('/gate/devices/' + d.id + '/approve').then(function () { toast('הטלפון אושר', 'ok'); viewSecurity(); }).catch(fail); } }) : null,
+						d.can_revoke ? h('button', { class: 'icol-btn sm danger', text: 'ניתוק', onclick: function () { modal({ title: 'ניתוק הטלפון "' + d.label + '"', lead: 'הטלפון לא יוכל לפתוח את המערכת, וכל החיבורים שנפתחו בו נסגרים מיד.' + (d.is_mine && st.active_devices <= 1 ? ' זה הטלפון היחיד שלך: אחרי הניתוק יהיה צורך לחבר טלפון חדש.' : ''), actions: [{ label: 'ניתוק', kind: 'danger', onClick: function () { return api.post('/gate/devices/' + d.id + '/revoke').then(function () { toast('הטלפון נותק', 'ok'); viewSecurity(); }); } }] }); } }) : null);
+				}]
+			], devices));
+			add(page, h('h2', { class: 'icol-section-title', text: 'חיבורים פתוחים' }));
+			add(page, table([
+				['user', 'משתמש', function (x) { return h('span', {}, x.user, x.current ? h('span', { class: 'sub', text: 'המחשב הזה' }) : null); }],
+				['device', 'נפתח בטלפון', 'device'],
+				['browser', 'מחשב', function (x) { return h('span', {}, x.browser, h('span', { class: 'sub', text: x.ip, dir: 'ltr' })); }],
+				['started', 'נפתח', 'started'],
+				['seen', 'פעילות אחרונה', 'last_seen'],
+				['act', '', function (x) { return h('button', { class: 'icol-btn sm', text: x.current ? 'נעילה' : 'סגירה', onclick: function () { api.post('/gate/sessions/' + x.id + '/revoke').then(function () { if (x.current) { location.reload(); } else { viewSecurity(); } }).catch(fail); } }); }]
+			], sessions));
+			if (st.is_owner) {
+				var idle = field('idle_minutes', 'נעילה אחרי חוסר פעילות (דקות)', 'number', { value: st.idle_minutes, help: '5 עד 240' });
+				var hours = field('session_hours', 'משך חיבור מרבי (שעות)', 'number', { value: st.session_hours, help: '1 עד 24. אחרי הזמן הזה סורקים שוב.' });
+				add(page, h('h2', { class: 'icol-section-title', text: 'הגדרות' }));
+				add(page, h('div', { class: 'icol-card' }, h('div', { class: 'icol-fields' }, idle.el, hours.el),
+					h('div', { class: 'icol-actions', style: 'margin-top:12px' }, h('button', { class: 'icol-btn primary', text: 'שמירה', onclick: function () { api.post('/gate/settings', { idle_minutes: Number(val(idle)), session_hours: Number(val(hours)) }).then(function () { toast('נשמר', 'ok'); }).catch(function (e) { showFieldErrors(page, e); fail(e); }); } }))));
+			}
+		}).catch(fail);
+	}
+	function pairModal() {
+		var slot = h('div', {});
+		var ctl = null;
+		var close = modal({ title: 'חיבור טלפון נוסף', lead: 'הטלפון יפתח את המערכת עם זיהוי פנים או טביעת אצבע. ' + (C.gate && C.gate.is_owner ? 'טלפון שלך מתחבר מיד.' : 'הטלפון ימתין לאישור של בעל המערכת.'), body: slot, wide: true, actions: [], cancelLabel: 'סגירה' });
+		ctl = window.ICOLGate.pair(slot, { needsPassword: true }, function (r) {
+			close();
+			toast(r.status === 'active' ? 'הטלפון חובר' : 'הטלפון חובר וממתין לאישור', 'ok');
+			viewSecurity();
+		});
+		var obs = new MutationObserver(function () { if (!document.body.contains(slot)) { if (ctl) { ctl.stop(); } obs.disconnect(); } });
+		obs.observe(document.body, { childList: true });
 	}
 
 	/* ---------- tasks ---------- */
@@ -902,7 +968,7 @@
 			['wati_api_base', 'כתובת API של WATI'], ['wati_channel_number', 'channel_number ב-WATI'], ['wati_conversation_attr', 'שם מאפיין בעלות השיחה'],
 			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['fallback_owner_id', 'מזהה בעלים חלופי'],
 			['ai_model', 'מודל AI'], ['ai_effort', 'עומק חשיבה', [['low', 'low'], ['medium', 'medium'], ['high', 'high']]],
-			['revenue_meta_deadline', 'דשבורד הכנסות: מפתח מועד אחרון'], ['revenue_meta_opened', 'דשבורד הכנסות: מפתח חשבון נפתח'], ['revenue_meta_joined', 'דשבורד הכנסות: מפתח הצטרפות'], ['revenue_meta_extension', 'דשבורד הכנסות: מפתח הארכה'], ['revenue_meta_phone', 'מפתח טלפון במשתמש'], ['revenue_candidate_horizon_days', 'ימים קדימה למועמדים']
+			['revenue_meta_deadline', 'דשבורד הכנסות: מפתח מועד אחרון'], ['revenue_meta_opened', 'דשבורד הכנסות: מפתח חשבון נפתח'], ['revenue_meta_joined', 'דשבורד הכנסות: מפתח הצטרפות'], ['revenue_meta_extension', 'דשבורד הכנסות: מפתח הארכה'], ['revenue_meta_phone', 'מפתח טלפון במשתמש'], ['revenue_candidate_horizon_days', 'ימים קדימה למועמדים'], ['revenue_max_staleness_hours', 'דשבורד הכנסות: שעות מרביות מהסנכרון האחרון']
 		];
 		var fs = keys.map(function (k) { return { key: k[0], f: Array.isArray(k[2]) ? field(k[0], k[1], 'select', { value: st[k[0]], options: k[2] }) : field(k[0], k[1], 'text', { value: st[k[0]] === undefined ? '' : st[k[0]] }) }; });
 		var secrets = [['tranzila_app_key', 'Tranzila app key'], ['tranzila_secret', 'Tranzila secret'], ['wati_token', 'WATI token'], ['pipedrive_token', 'Pipedrive API token'], ['anthropic_api_key', 'Anthropic API key']];

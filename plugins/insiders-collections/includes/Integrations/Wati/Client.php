@@ -155,6 +155,11 @@ final class Client {
 		if ( ! $c || empty( $c['phone_e164'] ) ) {
 			return array( 'outcome' => Http::PERMANENT, 'error' => 'no phone' );
 		}
+		if ( 'simulate' === \Insiders\Collections\Domain\SendGuard::mode() ) {
+			// Display-only writes nothing to WATI: the owner attribute silences the registration agent
+			// for this contact, which is a real effect. Recorded as what would have been written.
+			return array( 'outcome' => Http::OK, 'error' => '', 'result' => array( 'simulated' => true, 'attribute' => (string) Settings::get( 'wati_conversation_attr' ), 'value' => $owner ) );
+		}
 		$r = self::call( 'POST', '/api/v1/updateContactAttributes/' . rawurlencode( Phone::wa_id( $c['phone_e164'] ) ), array(), array( 'customParams' => array( array( 'name' => (string) Settings::get( 'wati_conversation_attr' ), 'value' => $owner ) ) ), true );
 		return array( 'outcome' => Http::UNKNOWN === $r['outcome'] ? Http::RETRYABLE : $r['outcome'], 'error' => $r['error'] );
 	}

@@ -7,6 +7,8 @@ use Insiders\Collections\Support\Clock;
 use Insiders\Collections\Support\Db;
 use Insiders\Collections\Support\Money;
 
+use Insiders\Collections\Integrations\RevenueDashboard\Adapter as Revenue;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -132,18 +134,39 @@ final class Matching {
 		if ( ! $pc ) {
 			throw new DomainError( 'not_found', 'המועמד לא נמצא', 404 );
 		}
+		if ( 'new' !== $pc['status'] ) {
+			throw new DomainError( 'already_decided', 'כבר התקבלה החלטה על המועמד הזה', 409 );
+		}
+		if ( $pc['pipedrive_deal_id'] && \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::deal_resolution( (int) $pc['pipedrive_person_id'], (int) $pc['pipedrive_deal_id'] ) ) {
+			// Checked again at the moment of decision: the list can be a day old.
+			throw new DomainError( 'candidate_resolved', 'לפי דשבורד ההכנסות התלמיד כבר פתח חשבון או שילם. אין ליצור חיוב.', 409 );
+		}
+		if ( $pc['pipedrive_person_id'] ) {
+			Revenue::enrich( $candidate_id ); // best effort; a failure leaves contact details for a person to fill
+			$pc = Db::row( 'SELECT * FROM ' . Db::t( 'program_candidates' ) . ' WHERE id = %d', $candidate_id );
+		}
 		$snap = (array) json_decode( (string) $pc['snapshot'], true );
-		$cid  = (int) Db::value( 'SELECT id FROM ' . Db::t( 'customers' ) . ' WHERE wp_user_id = %d LIMIT 1', (int) $pc['wp_user_id'] );
+		$cid  = 0;
+		if ( $pc['pipedrive_person_id'] ) {
+			$cid = (int) Db::value( 'SELECT id FROM ' . Db::t( 'customers' ) . ' WHERE pipedrive_person_id = %d LIMIT 1', (int) $pc['pipedrive_person_id'] );
+		}
+		if ( ! $cid && $pc['wp_user_id'] ) {
+			$cid = (int) Db::value( 'SELECT id FROM ' . Db::t( 'customers' ) . ' WHERE wp_user_id = %d LIMIT 1', (int) $pc['wp_user_id'] );
+		}
 		if ( ! $cid ) {
-			$user = get_userdata( (int) $pc['wp_user_id'] );
-			$cid  = Customers::create(
+			$user  = $pc['wp_user_id'] ? get_userdata( (int) $pc['wp_user_id'] ) : false;
+			$first = $user ? (string) $user->first_name : (string) ( $snap['first_name'] ?? '' );
+			$phone = (string) ( $snap['phone'] ?? '' );
+			$cid   = Customers::create(
 				array(
-					'wp_user_id' => (int) $pc['wp_user_id'],
-					'full_name'  => $user ? $user->display_name : ( $snap['name'] ?? 'תלמיד' ),
-					'first_name' => $user ? (string) $user->first_name : '',
-					'first_name_reliable' => $user && '' !== (string) $user->first_name,
-					'email'      => $user ? $user->user_email : ( $snap['email'] ?? '' ),
-					'phone'      => (string) ( $snap['phone'] ?? '' ),
+					'wp_user_id'          => $pc['wp_user_id'] ? (int) $pc['wp_user_id'] : null,
+					'pipedrive_person_id' => $pc['pipedrive_person_id'] ? (int) $pc['pipedrive_person_id'] : null,
+					'full_name'           => $user ? $user->display_name : ( ( $snap['name'] ?? '' ) ?: 'תלמיד' ),
+					'first_name'          => $first,
+					// A first name typed by a rep in the CRM is used only when it is a plain name.
+					'first_name_reliable' => '' !== $first && (bool) preg_match( '/^[\p{L}\'\- ]{2,30}$/u', $first ),
+					'email'               => $user ? $user->user_email : (string) ( $snap['email'] ?? '' ),
+					'phone'               => null !== \Insiders\Collections\Support\Phone::e164( $phone ) ? $phone : '',
 				)
 			);
 		}
@@ -163,7 +186,8 @@ final class Matching {
 					'joined_at'             => $snap['joined_at'] ?? null,
 					'account_open_deadline' => $snap['effective_deadline'] ?? $pc['deadline'],
 					'extensions'            => ! empty( $snap['extension_until'] ) ? array( array( 'until' => $snap['extension_until'] ) ) : array(),
-					'status_checked_at'     => Clock::today(),
+					'status_checked_at'     => ! empty( $snap['status_checked_at'] ) ? $snap['status_checked_at'] : Clock::today(),
+					'pipedrive_deal_id'     => $pc['pipedrive_deal_id'] ? (int) $pc['pipedrive_deal_id'] : null,
 				),
 				'debt_items'   => array(
 					array(

@@ -19,6 +19,7 @@ use Insiders\Collections\Domain\Templates;
 use Insiders\Collections\Domain\Workflow;
 use Insiders\Collections\Engine\Inbox;
 use Insiders\Collections\Engine\Runner;
+use Insiders\Collections\Security\Gate;
 use Insiders\Collections\Support\Audit;
 use Insiders\Collections\Support\Clock;
 use Insiders\Collections\Support\Db;
@@ -38,7 +39,12 @@ final class Api {
 				$path,
 				array(
 					'methods'             => $method,
-					'permission_callback' => static fn() => is_user_logged_in() && current_user_can( $cap ),
+					'permission_callback' => static function () use ( $cap ) {
+						if ( is_user_logged_in() && current_user_can( 'icol_enter' ) && ! Gate::unlocked() ) {
+							return new \WP_Error( 'gate_locked', 'המערכת נעולה. יש לפתוח אותה בסריקה מהטלפון.', array( 'status' => 401 ) );
+						}
+						return is_user_logged_in() && current_user_can( $cap );
+					},
 					'callback'            => static fn( \WP_REST_Request $req ) => $mutation ? Http::mutate( $req, static fn() => $fn( $req ) ) : Http::run( static fn() => $fn( $req ) ),
 				)
 			);
@@ -267,7 +273,8 @@ final class Api {
 		$extra   = array( 'tranzila_hmac_order', 'tranzila_report_amount_unit', 'tranzila_pr_terminal', 'tranzila_pr_extra', 'tranzila_code_map', 'revenue_meta_phone' );
 		$clean   = array();
 		foreach ( $in as $k => $v ) {
-			if ( in_array( $k, array_merge( $allowed, $extra ), true ) && ! in_array( $k, array( 'kill_switch' ), true ) ) {
+			// kill_switch has its own audited route; gate_* settings belong to the owner only (Gate::save_settings).
+			if ( in_array( $k, array_merge( $allowed, $extra ), true ) && ! in_array( $k, array( 'kill_switch', 'gate_idle_minutes', 'gate_session_hours' ), true ) ) {
 				$clean[ $k ] = is_array( $v ) ? wp_json_encode( $v ) : sanitize_textarea_field( (string) $v );
 			}
 		}

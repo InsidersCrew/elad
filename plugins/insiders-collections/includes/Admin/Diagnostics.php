@@ -7,6 +7,7 @@ use Insiders\Collections\Integrations\Tranzila\Client as Tranzila;
 use Insiders\Collections\Integrations\Wati\Client as Wati;
 use Insiders\Collections\Rest\Views;
 use Insiders\Collections\Schema;
+use Insiders\Collections\Security\Gate;
 use Insiders\Collections\Support\Http;
 
 defined( 'ABSPATH' ) || exit;
@@ -27,6 +28,11 @@ final class Diagnostics {
 		}
 		$tool = sanitize_key( (string) $_GET['icol_diag'] );
 		header( 'Content-Type: text/plain; charset=utf-8' );
+		// Tools that show no customer data run before the first phone is paired (install order in README).
+		if ( ! in_array( $tool, array( 'tools', 'genkey', 'syntax', 'schema', 'health', 'gate' ), true ) && ! Gate::unlocked() ) {
+			echo "המערכת נעולה. יש לפתוח את מסך התשלומים בסריקה מהטלפון ואז להריץ את הכלי שוב.\n";
+			exit;
+		}
 		switch ( $tool ) {
 			case 'tools':
 				self::tools();
@@ -40,6 +46,10 @@ final class Diagnostics {
 			case 'revenue_probe':
 				self::dump( Revenue::probe() );
 				echo "\nהשלב הבא: לבחור מפתחות למועד אחרון / חשבון נפתח / הצטרפות בהגדרות, או לחבר את מסנן icol_beginner_program_candidates (docs/revenue-dashboard-contract.md).\n";
+				break;
+			case 'gate':
+				self::dump( Gate::report() );
+				echo "\nהשלב הבא: " . ( Gate::owner_id() ? 'לפתוח את מסך התשלומים ולחבר את הטלפון.' : "להוסיף ל-wp-config.php את define( 'ICOL_GATE_OWNER', '" . wp_get_current_user()->user_login . "' );" ) . "\n";
 				break;
 			case 'revenue_candidates':
 				self::dump( Revenue::candidates() );
@@ -63,6 +73,10 @@ final class Diagnostics {
 				echo "define( 'ICOL_ENCRYPTION_KEY', 'base64:" . base64_encode( random_bytes( 32 ) ) . "' );\n\n";
 				echo "שמרו עותק של המפתח במקום בטוח (מנהל סיסמאות). בלי המפתח לא ניתן לקרוא טוקנים ומפתחות שנשמרו.\n";
 				echo "המפתח לא נשמר באתר. כל רענון של הכלי יוצר מפתח חדש, יש להשתמש רק באחד.\n";
+				if ( ! defined( 'ICOL_GATE_OWNER' ) ) {
+					echo "\nבאותו מקום מוסיפים גם את בעל המערכת. רק הטלפון שלו יאשר טלפונים אחרים:\n\n";
+					echo "define( 'ICOL_GATE_OWNER', '" . wp_get_current_user()->user_login . "' );\n";
+				}
 				echo \Insiders\Collections\Support\Crypto::available() ? "\nשימו לב: כבר מוגדר מפתח באתר. אין להחליף אותו.\n" : '';
 				break;
 			default:
@@ -77,7 +91,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}

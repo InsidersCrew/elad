@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       INSIDERS Collections — מערכת גבייה
  * Description:       ניהול גבייה לתלמידי INSIDERS: חיובים חוזרים שנכשלו בטרנזילה, חיובי אי־פתיחת חשבון והמשך טיפול. כל הפעולות החיצוניות כבויות עד לאימות.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Requires at least: 6.2
  * Requires PHP:      8.1
  * Author:            INSIDERS
@@ -16,8 +16,8 @@ defined( 'ABSPATH' ) || exit;
  * this constant. Plugin::version_guard() compares them on every admin load and
  * raises a notice when they drift — that drift cost a release in SPD.
  */
-define( 'ICOL_VERSION', '0.1.0' );
-define( 'ICOL_DB_VERSION', 1 );
+define( 'ICOL_VERSION', '0.2.0' );
+define( 'ICOL_DB_VERSION', 2 );
 define( 'ICOL_FILE', __FILE__ );
 define( 'ICOL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ICOL_URL', plugin_dir_url( __FILE__ ) );

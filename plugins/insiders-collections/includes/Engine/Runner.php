@@ -209,6 +209,7 @@ final class Runner {
 		}
 		$r['replanned'] = count( $idle );
 		$r['balance_mismatches'] = count( Ledger::verify_cache() );
+		\Insiders\Collections\Security\Gate::cleanup();
 		$overdue = Db::rows( 'SELECT id FROM ' . Db::t( 'card_update_tasks' ) . " WHERE state IN ('open','in_progress') AND due_at < %s", Clock::utc() );
 		foreach ( $overdue as $t ) {
 			Exceptions::open( 'card_overdue:' . $t['id'], 'card_task_overdue', 'medium', 'משימת עדכון כרטיס עברה את מועד היעד', array( 'entity_type' => 'card_task', 'entity_id' => (int) $t['id'] ) );

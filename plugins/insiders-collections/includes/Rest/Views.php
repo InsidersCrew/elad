@@ -314,12 +314,18 @@ final class Views {
 	}
 
 	public static function candidates(): array {
-		return array_map(
+		$rows = array_map(
 			static function ( $c ) {
 				$c['snapshot'] = json_decode( (string) $c['snapshot'], true );
 				return $c;
 			},
 			Db::rows( 'SELECT * FROM ' . Db::t( 'program_candidates' ) . " WHERE status IN ('new') ORDER BY deadline LIMIT 500" )
+		);
+		$ifd = \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::contract();
+		return array(
+			'rows'   => $rows,
+			'source' => has_filter( 'icol_beginner_program_candidates' ) ? 'filter' : ( $ifd['available'] ? 'finance_dashboard' : ( '' !== (string) Settings::get( 'revenue_meta_deadline' ) ? 'meta' : 'none' ) ),
+			'sync'   => $ifd['available'] ? array( 'ok_at' => $ifd['sync_ok_at'] ? Clock::display( $ifd['sync_ok_at'] ) : null, 'age_hours' => $ifd['sync_age_hours'], 'stale' => $ifd['stale'] ) : null,
 		);
 	}
 

@@ -150,6 +150,7 @@ final class Cases {
 				'account_open_deadline' => $date( $a['account_open_deadline'] ?? null ),
 				'extensions_json'       => ! empty( $a['extensions'] ) ? wp_json_encode( $a['extensions'] ) : null,
 				'status_checked_at'     => $date( $a['status_checked_at'] ?? null ),
+				'pipedrive_deal_id'     => ! empty( $a['pipedrive_deal_id'] ) && is_numeric( $a['pipedrive_deal_id'] ) ? (int) $a['pipedrive_deal_id'] : null,
 				'created_by'            => get_current_user_id() ?: null,
 				'created_at'            => Clock::utc(),
 				'updated_at'            => Clock::utc(),

@@ -59,6 +59,9 @@ final class Settings {
 		'revenue_meta_opened'         => '',
 		'revenue_meta_extension'      => '',
 		'revenue_candidate_horizon_days' => 7,
+		'revenue_max_staleness_hours'    => 30,
+		'gate_idle_minutes'              => 30,  // scan again after 30 minutes without activity
+		'gate_session_hours'             => 8,   // and at most once per working day
 	);
 
 	public static function all(): array {

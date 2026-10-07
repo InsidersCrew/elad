@@ -1,6 +1,8 @@
 <?php
 namespace Insiders\Collections\Auth;
 
+use Insiders\Collections\Security\Gate;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -33,11 +35,20 @@ final class Capabilities {
 					foreach ( self::all_caps() as $c ) {
 						$allcaps[ $c ] = true;
 					}
-					return $allcaps;
+				} else {
+					$role = (string) get_user_meta( $user->ID, 'icol_role', true );
+					foreach ( self::ROLES[ $role ]['caps'] ?? array() as $c ) {
+						$allcaps[ $c ] = true;
+					}
 				}
-				$role = (string) get_user_meta( $user->ID, 'icol_role', true );
-				foreach ( self::ROLES[ $role ]['caps'] ?? array() as $c ) {
-					$allcaps[ $c ] = true;
+				if ( ! empty( $allcaps['icol_view'] ) ) {
+					$allcaps['icol_enter'] = true; // opens the lock screen, nothing else
+				}
+				// The scan gate: for the person making this request, no data capability until a phone approved it.
+				if ( ! empty( $allcaps['icol_view'] ) && (int) $user->ID === get_current_user_id() && ! Gate::unlocked() ) {
+					foreach ( self::all_caps() as $c ) {
+						$allcaps[ $c ] = false;
+					}
 				}
 				return $allcaps;
 			},

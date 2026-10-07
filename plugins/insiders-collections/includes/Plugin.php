@@ -50,10 +50,14 @@ final class Plugin {
 			}
 		);
 		add_action( 'icol_tick', static fn() => Runner::tick( 'wp-cron' ) );
+		add_action( 'icol_case_transitioned', array( Integrations\RevenueDashboard\Adapter::class, 'on_transition' ), 10, 3 );
 		add_action( 'rest_api_init', array( Rest\Api::class, 'register' ) );
+		add_action( 'rest_api_init', array( Rest\GateApi::class, 'register' ) );
+		add_action( 'clear_auth_cookie', array( Security\Gate::class, 'on_logout' ) );
+		add_action( 'template_redirect', array( Front\GatePage::class, 'maybe_render' ), 0 );
 		add_filter( 'rest_pre_serve_request', array( self::class, 'plain_ok' ), 10, 4 );
 		add_action( 'init', array( Front\PayPage::class, 'rewrite' ) );
-		add_filter( 'query_vars', static fn( $v ) => array_merge( $v, array( 'icol_pay', 'icol_pay_return' ) ) );
+		add_filter( 'query_vars', static fn( $v ) => array_merge( $v, array( 'icol_pay', 'icol_pay_return', 'icol_gate' ) ) );
 		add_action( 'template_redirect', array( Front\PayPage::class, 'maybe_render' ), 0 );
 		if ( is_admin() ) {
 			Admin\Admin::register();

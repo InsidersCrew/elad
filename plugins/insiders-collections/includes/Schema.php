@@ -65,6 +65,7 @@ final class Schema {
 				account_open_deadline DATE NULL,
 				extensions_json TEXT NULL,
 				status_checked_at DATE NULL,
+				pipedrive_deal_id BIGINT UNSIGNED NULL,
 				billing_policy_version INT NULL,
 				created_by BIGINT UNSIGNED NULL,
 				created_at DATETIME NULL,
@@ -501,7 +502,10 @@ final class Schema {
 				PRIMARY KEY (idem_key)",
 			'program_candidates' => "
 				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-				wp_user_id BIGINT UNSIGNED NOT NULL,
+				wp_user_id BIGINT UNSIGNED NULL,
+				source VARCHAR(20) NULL,
+				pipedrive_person_id BIGINT UNSIGNED NULL,
+				pipedrive_deal_id BIGINT UNSIGNED NULL,
 				candidate_key VARCHAR(190) NOT NULL,
 				deadline DATE NULL,
 				status VARCHAR(20) NOT NULL DEFAULT 'new',
@@ -513,7 +517,64 @@ final class Schema {
 				updated_at DATETIME NULL,
 				PRIMARY KEY (id),
 				UNIQUE KEY cand (candidate_key),
-				KEY user_id (wp_user_id)",
+				KEY user_id (wp_user_id),
+				KEY person (pipedrive_person_id)",
+			// Security gate (QR + passkey). Devices are phones; a session exists only after a phone approved it.
+			'gate_devices' => "
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				user_id BIGINT UNSIGNED NOT NULL,
+				credential_id VARCHAR(255) NOT NULL,
+				public_key TEXT NOT NULL,
+				alg SMALLINT NOT NULL,
+				sign_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+				aaguid CHAR(36) NULL,
+				backup_eligible TINYINT(1) NOT NULL DEFAULT 0,
+				label VARCHAR(100) NOT NULL,
+				status VARCHAR(12) NOT NULL DEFAULT 'pending',
+				created_at DATETIME NULL,
+				confirmed_at DATETIME NULL,
+				approved_at DATETIME NULL,
+				approved_by BIGINT UNSIGNED NULL,
+				last_used_at DATETIME NULL,
+				revoked_at DATETIME NULL,
+				revoked_by BIGINT UNSIGNED NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY cred (credential_id),
+				KEY user_status (user_id, status)",
+			'gate_challenges' => "
+				id CHAR(32) NOT NULL,
+				kind VARCHAR(10) NOT NULL,
+				user_id BIGINT UNSIGNED NOT NULL,
+				wp_session_hash CHAR(64) NOT NULL,
+				challenge VARCHAR(64) NOT NULL,
+				match_code TINYINT UNSIGNED NULL,
+				pair_code_hash CHAR(64) NULL,
+				attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+				status VARCHAR(12) NOT NULL DEFAULT 'pending',
+				device_id BIGINT UNSIGNED NULL,
+				ip VARCHAR(45) NULL,
+				user_agent VARCHAR(255) NULL,
+				created_at DATETIME NULL,
+				expires_at DATETIME NULL,
+				approved_at DATETIME NULL,
+				PRIMARY KEY (id),
+				KEY user_kind (user_id, kind, status)",
+			'gate_sessions' => "
+				id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				token_hash CHAR(64) NOT NULL,
+				user_id BIGINT UNSIGNED NOT NULL,
+				wp_session_hash CHAR(64) NOT NULL,
+				device_id BIGINT UNSIGNED NULL,
+				ip VARCHAR(45) NULL,
+				user_agent VARCHAR(255) NULL,
+				created_at DATETIME NULL,
+				last_seen_at DATETIME NULL,
+				expires_at DATETIME NULL,
+				revoked_at DATETIME NULL,
+				revoke_reason VARCHAR(40) NULL,
+				PRIMARY KEY (id),
+				UNIQUE KEY token (token_hash),
+				KEY user_open (user_id, revoked_at)",
 		);
 	}
 
@@ -527,8 +588,33 @@ final class Schema {
 			$ok    = $wpdb->query( $sql );
 			$report[ $name ] = ( false === $ok ) ? 'error: ' . $wpdb->last_error : 'ok';
 		}
-		update_option( 'icol_db_version', ICOL_DB_VERSION, false );
+		$report['upgrade'] = self::upgrade();
+		if ( ! in_array( false, $report['upgrade'], true ) ) {
+			// Only a complete upgrade moves the version; a failed ALTER is retried on the next load.
+			update_option( 'icol_db_version', ICOL_DB_VERSION, false );
+		}
 		return $report;
+	}
+
+	/**
+	 * CREATE TABLE IF NOT EXISTS never alters an existing table, so columns added
+	 * after v1 are checked one by one in information_schema and added explicitly.
+	 */
+	private static function upgrade(): array {
+		global $wpdb;
+		$out = array(
+			'program_candidates.source'              => self::ensure_column( 'program_candidates', 'source', 'VARCHAR(20) NULL AFTER wp_user_id' ),
+			'program_candidates.pipedrive_person_id' => self::ensure_column( 'program_candidates', 'pipedrive_person_id', 'BIGINT UNSIGNED NULL AFTER source' ),
+			'program_candidates.pipedrive_deal_id'   => self::ensure_column( 'program_candidates', 'pipedrive_deal_id', 'BIGINT UNSIGNED NULL AFTER pipedrive_person_id' ),
+			'agreements.pipedrive_deal_id'           => self::ensure_column( 'agreements', 'pipedrive_deal_id', 'BIGINT UNSIGNED NULL AFTER status_checked_at' ),
+		);
+		// v1 had wp_user_id NOT NULL; candidates from the finance dashboard are keyed by Pipedrive person.
+		$table    = Db::t( 'program_candidates' );
+		$nullable = $wpdb->get_var( $wpdb->prepare( 'SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s', $table, 'wp_user_id' ) );
+		$out['program_candidates.wp_user_id_null'] = 'NO' === $nullable ? false !== $wpdb->query( "ALTER TABLE `{$table}` MODIFY wp_user_id BIGINT UNSIGNED NULL" ) : true;
+		$index = $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s', $table, 'person' ) );
+		$out['program_candidates.person_index'] = (int) $index > 0 ? true : false !== $wpdb->query( "ALTER TABLE `{$table}` ADD KEY person (pipedrive_person_id)" );
+		return $out;
 	}
 
 	/** Verifies every table exists and is InnoDB (transactions + row locks depend on it). */

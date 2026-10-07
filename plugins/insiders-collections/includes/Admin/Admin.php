@@ -2,6 +2,7 @@
 namespace Insiders\Collections\Admin;
 
 use Insiders\Collections\Auth\Capabilities;
+use Insiders\Collections\Security\Gate;
 use Insiders\Collections\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -13,7 +14,7 @@ final class Admin {
 		add_action(
 			'admin_menu',
 			static function () {
-				add_menu_page( 'תשלומים וגבייה', 'תשלומים וגבייה', 'icol_view', 'icol', array( self::class, 'render' ), 'dashicons-money-alt', 3 );
+				add_menu_page( 'תשלומים וגבייה', 'תשלומים וגבייה', 'icol_enter', 'icol', array( self::class, 'render' ), 'dashicons-money-alt', 3 );
 			}
 		);
 		add_action( 'admin_enqueue_scripts', array( self::class, 'assets' ) );
@@ -25,7 +26,24 @@ final class Admin {
 		}
 		wp_enqueue_style( 'icol-fonts', 'https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap', array(), null );
 		wp_enqueue_style( 'icol-admin', ICOL_URL . 'assets/admin.css', array(), ICOL_VERSION );
-		wp_enqueue_script( 'icol-admin', ICOL_URL . 'assets/admin.js', array(), ICOL_VERSION, true );
+		wp_enqueue_script( 'icol-gate', ICOL_URL . 'assets/gate.js', array(), ICOL_VERSION, true );
+		$locked = ! Gate::unlocked();
+		wp_localize_script(
+			'icol-gate',
+			'ICOL_GATE',
+			array(
+				'root'   => esc_url_raw( rest_url( 'icol/v1' ) ),
+				'nonce'  => wp_create_nonce( 'wp_rest' ),
+				'locked' => $locked,
+				// Install order needs genkey/syntax/schema before the first phone exists; these tools show no data.
+				'tools'  => current_user_can( 'manage_options' ) ? html_entity_decode( wp_nonce_url( admin_url( 'admin.php?icol_diag=tools' ), 'icol_diag' ) ) : null,
+			)
+		);
+		if ( $locked ) {
+			return; // the lock screen gets nothing else: no capabilities map, no tools, no data
+		}
+		Gate::note_bypass();
+		wp_enqueue_script( 'icol-admin', ICOL_URL . 'assets/admin.js', array( 'icol-gate' ), ICOL_VERSION, true );
 		$caps = array();
 		foreach ( Capabilities::all_caps() as $c ) {
 			$caps[ $c ] = current_user_can( $c );
@@ -40,6 +58,7 @@ final class Admin {
 				'user'    => array( 'id' => get_current_user_id(), 'name' => wp_get_current_user()->display_name, 'role' => Capabilities::role_of( get_current_user_id() ) ),
 				'caps'    => $caps,
 				'version' => ICOL_VERSION,
+				'gate'    => array( 'enforced' => Gate::enforced(), 'off' => Gate::off(), 'is_owner' => Gate::is_owner() ),
 				'diag'    => current_user_can( 'manage_options' ) ? array(
 					'tools' => html_entity_decode( wp_nonce_url( admin_url( 'admin.php?icol_diag=tools' ), 'icol_diag' ) ),
 				) : null,

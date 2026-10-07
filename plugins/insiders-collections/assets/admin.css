@@ -183,3 +183,30 @@
 @media (max-width:1100px){.icol-case-head,.icol-split{grid-template-columns:1fr}.icol-money{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:860px){.icol-shell{grid-template-columns:1fr}.icol-side{position:static;height:auto}.icol-nav{flex-direction:row;flex-wrap:wrap}.icol-top{top:46px}.icol-repeat-row{grid-template-columns:1fr 1fr}}
 @media (max-width:600px){.icol-money{grid-template-columns:1fr}.icol-page{padding:16px}}
+
+/* Scan gate (lock screen, pairing). Lives inside .icol-app like everything else. */
+.icol-gate{min-height:calc(100vh - 32px);display:flex;align-items:flex-start;justify-content:center;padding:56px 16px;background:radial-gradient(120% 60% at 85% 0%,rgba(70,15,255,.16),transparent 60%),var(--bg)}
+.icol-gate-card{width:100%;max-width:640px;padding:28px}
+.icol-gate-card .icol-logo{padding:0 0 18px}
+.icol-gate-card h1{font-size:24px;margin-bottom:6px}
+.icol-gate-card .hint{color:var(--t2);margin:0 0 18px}
+.icol-gate-h2{font-size:18px;margin:6px 0 6px}
+.icol-gate-row{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.icol-gate-qr{background:#fff;border-radius:16px;padding:12px;line-height:0;flex:0 0 auto}
+.icol-gate-qr svg{width:232px;height:232px;display:block}
+.icol-gate-steps{flex:1 1 220px;min-width:0}
+.icol-gate-steps ol{margin:0;padding-inline-start:20px;display:grid;gap:10px;color:var(--t1);font-size:15px}
+.icol-gate-match{display:inline-block;min-width:54px;padding:2px 10px;border-radius:12px;background:var(--hl);color:#fff;font-size:24px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+.icol-gate-foot{color:var(--t3);font-size:13px;margin-top:14px}
+.icol-gate-wait{padding:28px 0;color:var(--t2)}
+.icol-gate-wait.ok{color:var(--ok);font-weight:600}
+.icol-gate-err{color:#ff8a87;margin:10px 0}
+.icol-gate-note{color:var(--t2);display:grid;gap:10px}
+.icol-gate-note p{margin:0}
+.icol-gate-pre{background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--sky);white-space:pre-wrap;word-break:break-all;margin:0;font-size:13px}
+.icol-gate-narrow{max-width:360px}
+.icol-gate-code{font-size:24px;letter-spacing:6px;text-align:center;font-variant-numeric:tabular-nums;direction:ltr}
+.icol-gate-help{margin-top:22px;color:var(--t3);font-size:13px}
+.icol-gate-help summary{cursor:pointer;color:var(--t2)}
+.icol-gate-help p{margin:8px 0 0}
+@media (max-width:600px){.icol-gate{padding:24px 12px}.icol-gate-card{padding:20px}.icol-gate-qr svg{width:200px;height:200px}}

@@ -268,6 +268,19 @@ $tests['AT13'] = array( 'לקוח מבקש נציג', function () {
 	T::eq( 'human_review', Workflow::get( $case )['workflow_state'], 'case with a person' );
 	T::eq( 'human', Db::value( 'SELECT conversation_owner FROM ' . Db::t( 'customers' ) . ' WHERE id = %d', $c ), 'conversation owner human' );
 	T::eq( 0, T::count( 'scheduled_actions', "state = 'pending' AND type = 'send_reminder'" ), 'automation paused' );
+	T::settle( 2 );
+	T::check( (bool) array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'updateContactAttributes' ) ), 'owner attribute written to WATI (live mode)' );
+} );
+
+$tests['X10'] = array( 'מצב תצוגה בלבד לא כותב ל-WATI את בעלות השיחה', function () {
+	[ $c, $case ] = program_case();
+	Settings::set( array( 'display_only' => 1 ) );
+	T::inbound( 'אפשר לדבר עם נציג?' );
+	T::tick();
+	T::settle( 2 );
+	T::eq( 'human_review', Workflow::get( $case )['workflow_state'], 'case still moves to a person' );
+	T::eq( 0, count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'updateContactAttributes' ) ) ), 'no write to WATI: the registration agent is not silenced during measurement' );
+	T::check( str_contains( (string) Db::value( 'SELECT result FROM ' . Db::t( 'outbox_events' ) . " WHERE event_type = 'wati_owner'" ), 'simulated' ), 'recorded as what would have been written' );
 } );
 
 $tests['AT14'] = array( '״שילמתי״ עם צילום מסך', function () {
@@ -818,6 +831,278 @@ $tests['X08'] = array( 'רצף שלוש תזכורות והעברה לנציג',
 	T::eq( array( '2026-10-11', '2026-10-14', '2026-10-20' ), $dates, 'cadence +3, +4 business days' );
 	T::eq( 'human_review', Workflow::get( $case )['workflow_state'], 'escalated after no reply' );
 	T::eq( 1, T::count( 'tasks', "type = 'no_reply_call'" ), 'rep call task' );
+} );
+
+$tests['X09'] = array( 'דשבורד ההכנסות (insiders-finance-dashboard): קריאה ישירה, סנכרון לא עדכני, תשלום מחוץ למערכת', function () {
+	global $wpdb;
+	$fd = \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::class;
+	if ( ! $fd::available() ) {
+		T::check( false, 'insiders-finance-dashboard tables present (activate the plugin in the test site): ' . implode( ', ', $fd::contract()['missing'] ) );
+		return;
+	}
+	foreach ( array( 'commitments', 'leads', 'snapshots' ) as $t ) {
+		$wpdb->query( 'TRUNCATE TABLE ' . $fd::table( $t ) );
+	}
+	Settings::set_secret( 'pipedrive_token', 'pd-test' );
+	Settings::set( array( 'pipedrive_api_base' => 'https://insiders.pipedrive.test', 'cap_pipedrive_tasks' => 1 ) );
+	update_option( 'ifd_penalty_product_id', 77 );
+	update_option( 'ifd_penalty_price', array( 'gross' => 1180, 'tax' => 18, 'currency' => 'ILS', 'label' => 'קנס אי פתיחה', 'product_id' => 77, 'fetched_at' => '2026-11-01 00:00:00' ) );
+	T::at( '2026-11-05', '10:00' );
+	$ins = static function ( int $person, int $deal, string $signed, ?string $resolved = null, ?string $kind = null, ?string $src = 'stage_time' ) use ( $wpdb, $fd ) {
+		$wpdb->insert( $fd::table( 'commitments' ), array( 'person_id' => $person, 'deal_id' => $deal, 'signed_at' => $signed, 'resolved_at' => $resolved, 'resolution_kind' => $kind, 'signed_source' => $src, 'owner_name' => 'נועה', 'created_at' => '2026-08-01 00:00:00' ) );
+		$wpdb->insert( $fd::table( 'leads' ), array( 'person_id' => $person, 'person_name' => 'תלמיד ' . $person, 'entered_at' => $signed ) );
+	};
+	$ins( 501, 9001, '2026-07-10' );                                   // before IFD's baseline: not this process
+	$ins( 502, 9002, '2026-08-01' );                                   // deadline 30.10, expired
+	$ins( 503, 9003, '2026-08-02', '2026-09-01', 'attributed' );       // opened an account
+	$ins( 504, 9004, '2026-08-03', null, null, 'resolution_first' );   // not a cohort student
+	$ins( 505, 9005, '2026-09-01' );                                   // deadline 30.11, still pending
+	$snap = static fn( int $hours_ago, int $ok = 1 ) => $wpdb->replace( $fd::table( 'snapshots' ), array( 'source_key' => 'pipedrive_deals', 'ok' => $ok, 'ok_at' => gmdate( 'Y-m-d H:i:s', Clock::now() - $hours_ago * HOUR_IN_SECONDS ), 'attempt_at' => gmdate( 'Y-m-d H:i:s', Clock::now() - 60 ), 'payload' => '{}' ) );
+	T::$pd_persons[502] = array( 'id' => 502, 'name' => 'דנה כהן', 'first_name' => 'דנה', 'emails' => array( array( 'value' => 'Dana@Example.test', 'primary' => true ) ), 'phones' => array( array( 'value' => '050-7654321', 'primary' => true ) ) );
+
+	// A dashboard that has not read Pipedrive for 40 hours cannot say who did NOT open.
+	$snap( 40 );
+	$fd::flush();
+	$r = \Insiders\Collections\Integrations\RevenueDashboard\Adapter::sync();
+	T::eq( true, $r['stale'], 'stale dashboard detected' );
+	T::eq( 0, T::count( 'program_candidates' ), 'no candidates from a stale dashboard' );
+	T::eq( 1, T::count( 'exceptions', "type = 'integration_failure'" ), 'stale sync raised once' );
+
+	$snap( 2 );
+	$fd::flush();
+	$r = \Insiders\Collections\Integrations\RevenueDashboard\Adapter::sync();
+	T::eq( 'finance_dashboard', $r['source'], 'reads the finance dashboard directly' );
+	T::eq( 1, $r['new_candidates'], 'only the expired, unresolved cohort student' );
+	T::eq( 1, $r['enriched'], 'contact details pulled from Pipedrive' );
+	$pc = Db::row( 'SELECT * FROM ' . Db::t( 'program_candidates' ) );
+	$sn = json_decode( $pc['snapshot'], true );
+	T::eq( array( 502, 9002, '2026-10-30' ), array( (int) $pc['pipedrive_person_id'], (int) $pc['pipedrive_deal_id'], $pc['deadline'] ), 'person, deal and deadline (signed + 90)' );
+	T::eq( array( '050-7654321', 'dana@example.test', 118000 ), array( $sn['phone'], $sn['email'], $sn['suggested_amount_minor'] ), 'phone, email and the penalty price as a suggestion' );
+	\Insiders\Collections\Integrations\RevenueDashboard\Adapter::sync();
+	T::eq( 1, T::count( 'program_candidates' ), 'idempotent across runs' );
+
+	T::as( 'collector' );
+	$resp = Matching::candidate_to_draft( (int) $pc['id'], array( 'amount' => '1180', 'due_at' => '2026-11-05', 'approval_basis' => 'לא נפתח חשבון עד 30.10', 'document_ref' => 'drive://agr' ) );
+	$case = (int) $resp['case_id'];
+	$cust = Db::row( 'SELECT * FROM ' . Db::t( 'customers' ) . ' WHERE id = (SELECT customer_id FROM ' . Db::t( 'cases' ) . ' WHERE id = %d)', $case );
+	T::eq( array( 502, '+972507654321', 'דנה', 1 ), array( (int) $cust['pipedrive_person_id'], $cust['phone_e164'], $cust['first_name'], (int) $cust['first_name_reliable'] ), 'customer keyed by Pipedrive person' );
+	T::eq( 9002, (int) Db::value( 'SELECT pipedrive_deal_id FROM ' . Db::t( 'agreements' ) ), 'enrollment deal kept on the agreement' );
+	Customers::verify_contact( (int) $cust['id'], 'אומת' );
+	Customers::set_permission( (int) $cust['id'], 'whatsapp', true, 'הסכם' );
+	Cases::approve_items( $case, 'אושר' );
+	$p = Messaging::preview( $case );
+	Cases::activate( $case, (int) Workflow::get( $case )['version'], $p['balance_version'] );
+	T::as_admin();
+
+	// The rep recorded the penalty as won in Pipedrive, but no money reached us.
+	$wpdb->update( $fd::table( 'commitments' ), array( 'resolved_at' => '2026-11-05', 'resolution_kind' => 'fixed' ), array( 'person_id' => 502 ) );
+	$fd::flush();
+	$r = \Insiders\Collections\Integrations\RevenueDashboard\Adapter::sync();
+	T::eq( 1, $r['paid_elsewhere'], 'payment recorded outside the system is noticed' );
+	T::eq( 'human_review', Workflow::get( $case )['workflow_state'], 'reminders stop until a person verifies' );
+	T::eq( 0, T::count( 'scheduled_actions', "state = 'pending' AND type = 'send_reminder'" ), 'nothing planned' );
+	T::eq( 1, T::count( 'exceptions', "type = 'paid_per_crm'" ), 'exception for the officer' );
+
+	// The other direction: collected here -> the rep records it on the deal so the dashboard counts it.
+	[ $c2, $case2 ] = program_case( array( 'payload' => array( 'agreement' => array( 'reference' => 'AGR-2', 'document_ref' => 'drive://agr-2.pdf', 'joined_at' => '2026-07-01', 'account_open_deadline' => '2026-09-30', 'pipedrive_deal_id' => 9100 ) ) ) );
+	T::as( 'collector' );
+	$item = (int) Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d', $case2 );
+	Payments::manual_verification( array( 'customer_id' => $c2, 'amount' => '980', 'method' => 'bank_transfer', 'evidence_ref' => 'B-77', 'allocations' => array( array( 'debt_item_id' => $item, 'amount' => '980' ) ) ) );
+	T::as_admin();
+	T::eq( 'closed', Workflow::get( $case2 )['workflow_state'], 'paid case closed' );
+	$task = Db::row( 'SELECT * FROM ' . Db::t( 'tasks' ) . " WHERE type = 'crm_record'" );
+	T::check( $task && str_contains( (string) $task['reason'], '#9100' ) && str_contains( (string) $task['reason'], '980' ), 'task names the deal and the amount' );
+	T::settle( 3 );
+	$push = array_values( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], '/api/v2/activities' ) && 'POST' === $h['method'] && str_contains( (string) $h['body'], '9100' ) ) );
+	T::check( (bool) $push, 'Pipedrive activity linked to the enrollment deal' );
+
+	// A student who opened an account after the list was made: the candidate leaves the list, and a draft is refused.
+	$ins( 506, 9006, '2026-08-04' );
+	$fd::flush();
+	\Insiders\Collections\Integrations\RevenueDashboard\Adapter::sync();
+	$pc6 = (int) Db::value( 'SELECT id FROM ' . Db::t( 'program_candidates' ) . ' WHERE pipedrive_person_id = 506' );
+	T::check( $pc6 > 0, 'new candidate 506' );
+	$wpdb->update( $fd::table( 'commitments' ), array( 'resolved_at' => '2026-11-05', 'resolution_kind' => 'attributed' ), array( 'person_id' => 506 ) );
+	T::as( 'collector' );
+	try { Matching::candidate_to_draft( $pc6, array( 'amount' => '1180', 'approval_basis' => 'x' ) ); T::check( false, 'draft refused' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'candidate_resolved', $e->error_code, 'no draft for a student who opened in the meantime' ); }
+	T::as_admin();
+	\Insiders\Collections\Integrations\RevenueDashboard\Adapter::sync();
+	T::eq( 'resolved', Db::value( 'SELECT status FROM ' . Db::t( 'program_candidates' ) . ' WHERE id = %d', $pc6 ), 'candidate leaves the list by itself' );
+	delete_option( 'ifd_penalty_product_id' );
+	delete_option( 'ifd_penalty_price' );
+	foreach ( array( 'commitments', 'leads', 'snapshots' ) as $t ) {
+		$wpdb->query( 'TRUNCATE TABLE ' . $fd::table( $t ) );
+	}
+	$fd::flush();
+} );
+
+/** Runs a test body with the scan gate enforced (CLI normally skips it) and restores the defaults after. */
+function with_gate( callable $fn ): void {
+	\Insiders\Collections\Security\Gate::$enforce_in_cli = true;
+	\Insiders\Collections\Security\Gate::$owner_override = T::user( 'admin' );
+	try {
+		$fn( \Insiders\Collections\Security\Gate::$owner_override );
+	} finally {
+		\Insiders\Collections\Security\Gate::$enforce_in_cli = false;
+		\Insiders\Collections\Security\Gate::$owner_override = null;
+		unset( $_COOKIE[ LOGGED_IN_COOKIE ], $_COOKIE[ \Insiders\Collections\Security\Gate::cookie_name() ] );
+		\Insiders\Collections\Security\Gate::flush();
+		T::as_admin();
+	}
+}
+
+/** Pair + confirm a phone for the current user; returns [SoftKey, device id, status]. */
+function gate_pair( string $password ): array {
+	$G   = \Insiders\Collections\Security\Gate::class;
+	$key = new SoftKey();
+	$c   = $G::start_pair( $password );
+	$o   = $G::phone_options( $c['id'] );
+	$r   = $G::phone_register( $c['id'], 'אייפון בדיקה', $key->create( $o ) );
+	$res = $G::confirm_pair( $c['id'], $r['code'] );
+	return array( $key, $res['device_id'], $res['status'] );
+}
+
+/** Full unlock: QR challenge -> phone picks the number + signs -> computer polls. */
+function gate_unlock( SoftKey $key, array $get_opts = array() ): array {
+	$G = \Insiders\Collections\Security\Gate::class;
+	$c = $G::start_unlock();
+	$o = $G::phone_options( $c['id'] );
+	$G::phone_approve( $c['id'], (int) $c['match'], $key->get( $o, ...$get_opts ) );
+	return $G::poll( $c['id'] );
+}
+
+$tests['G01'] = array( 'שער סריקה: נעילה, חיבור טלפון ראשון ופתיחה בסריקה', function () {
+	with_gate( function ( int $owner ) {
+		$G = \Insiders\Collections\Security\Gate::class;
+		gate_login( $owner );
+		T::eq( false, current_user_can( 'icol_view' ), 'logged in to WordPress, still no data capability' );
+		T::eq( true, current_user_can( 'icol_enter' ), 'the lock screen itself is reachable' );
+		$r = T::api( 'GET', '/dashboard' );
+		T::eq( array( 401, 'gate_locked' ), array( $r->get_status(), $r->get_data()['code'] ?? '' ), 'API refuses with gate_locked' );
+		T::eq( 401, T::api( 'GET', '/cases' )->get_status(), 'every data route' );
+		T::eq( 200, T::api( 'GET', '/gate/state' )->get_status(), 'lock-screen state route open' );
+
+		try { $G::start_pair( 'wrong' ); T::check( false, 'wrong password rejected' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'reauth_failed', $e->error_code, 'pairing needs the WordPress password' ); }
+		$key = new SoftKey();
+		$c   = $G::start_pair( 'pass-admin' );
+		T::check( str_contains( $c['qr'], '<svg' ) && str_contains( $c['url'], 'icol_gate=' . $c['id'] ), 'QR drawn locally as SVG' );
+		$o = $G::phone_options( $c['id'] );
+		T::eq( array( 'pair', 'required', 'platform' ), array( $o['kind'], $o['publicKey']['authenticatorSelection']['userVerification'], $o['publicKey']['authenticatorSelection']['authenticatorAttachment'] ), 'phone asked for a biometric platform passkey' );
+		$reg = $G::phone_register( $c['id'], 'אייפון של אלעד', $key->create( $o ) );
+		T::check( (bool) preg_match( '/^\d{6}$/', $reg['code'] ), 'phone shows a 6-digit code' );
+		T::eq( 0, count( $G::devices( $owner ) ), 'not active before the code is typed on the computer' );
+		try { $G::confirm_pair( $c['id'], '000000' === $reg['code'] ? '111111' : '000000' ); T::check( false, 'wrong code' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_wrong_code', $e->error_code, 'wrong code rejected' ); }
+		$res = $G::confirm_pair( $c['id'], $reg['code'] );
+		T::eq( 'active', $res['status'], "owner's first phone is active at once" );
+		T::eq( false, $G::state()['can_pair'], 'a second phone cannot be paired from the lock screen' );
+
+		$u = $G::start_unlock();
+		$o = $G::phone_options( $u['id'] );
+		T::check( in_array( $u['match'], $o['numbers'], true ) && 3 === count( array_unique( $o['numbers'] ) ), 'phone offers three numbers, one of them on the screen' );
+		$wrong = current( array_diff( $o['numbers'], array( $u['match'] ) ) );
+		try { $G::phone_approve( $u['id'], $wrong, $key->get( $o ) ); T::check( false, 'wrong number' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_wrong_number', $e->error_code, 'number matching enforced' ); }
+		T::eq( 'pending', $G::poll( $u['id'] )['status'], 'not approved yet' );
+		$G::phone_approve( $u['id'], (int) $u['match'], $key->get( $o ) );
+		T::eq( 'approved', $G::poll( $u['id'] )['status'], 'computer sees the approval' );
+		T::eq( 'consumed', $G::poll( $u['id'] )['status'], 'approval opens one session only' );
+		T::eq( true, current_user_can( 'icol_view' ), 'data capabilities after the scan' );
+		T::eq( 200, T::api( 'GET', '/dashboard' )->get_status(), 'API open' );
+		try { $G::phone_approve( $u['id'], (int) $u['match'], $key->get( $o ) ); T::check( false, 'replay' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_challenge_used', $e->error_code, 'a scanned code cannot be replayed' ); }
+
+		// The session belongs to this WordPress session: another browser with the same cookie value is locked.
+		$cookie = $_COOKIE[ $G::cookie_name() ];
+		gate_login( $owner );
+		$_COOKIE[ $G::cookie_name() ] = $cookie;
+		$G::flush();
+		T::eq( false, $G::unlocked(), 'gate cookie copied to another login does not open it' );
+	} );
+} );
+
+$tests['G02'] = array( 'שער סריקה: חוסר פעילות, ניתוק, יציאה וזיופים', function () {
+	with_gate( function ( int $owner ) {
+		$G = \Insiders\Collections\Security\Gate::class;
+		gate_login( $owner );
+		[ $key ] = gate_pair( 'pass-admin' );
+		T::eq( 'approved', gate_unlock( $key )['status'], 'unlocked' );
+		T::at( Clock::today(), Clock::local()->modify( '+31 minutes' )->format( 'H:i' ) );
+		$G::flush();
+		T::eq( false, $G::unlocked(), 'locks after 30 idle minutes' );
+
+		T::eq( 'approved', gate_unlock( $key )['status'], 'scan again' );
+		$G::on_logout();
+		$G::flush();
+		T::eq( false, $G::unlocked(), 'WordPress logout ends the gate session' );
+
+		// Forgeries.
+		foreach ( array( 'tamper' => array( 0x05, null, true ), 'no_uv' => array( 0x01, null, false ) ) as $what => $args ) {
+			$c = $G::start_unlock();
+			$o = $G::phone_options( $c['id'] );
+			try { $G::phone_approve( $c['id'], (int) $c['match'], $key->get( $o, ...$args ) ); T::check( false, $what ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_assertion', $e->error_code, $what . ' rejected' ); }
+		}
+		$evil = new SoftKey( 'https://evil.example' );
+		$evil->cred_id = $key->cred_id;
+		$evil->priv    = $key->priv;
+		$c = $G::start_unlock();
+		$o = $G::phone_options( $c['id'] );
+		try { $G::phone_approve( $c['id'], (int) $c['match'], $evil->get( $o ) ); T::check( false, 'origin' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_assertion', $e->error_code, 'another origin (phishing page) rejected' ); }
+		$stranger = new SoftKey();
+		$c = $G::start_unlock();
+		$o = $G::phone_options( $c['id'] );
+		try { $G::phone_approve( $c['id'], (int) $c['match'], $stranger->get( $o ) ); T::check( false, 'unknown key' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_unknown_device', $e->error_code, 'a phone that was never paired is rejected' ); }
+		T::eq( 'approved', gate_unlock( $key, array( 0x05, 7 ) )['status'], 'counter 7' );
+		$c = $G::start_unlock();
+		$o = $G::phone_options( $c['id'] );
+		try { $G::phone_approve( $c['id'], (int) $c['match'], $key->get( $o, 0x05, 3 ) ); T::check( false, 'counter' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_assertion', $e->error_code, 'counter going back (cloned key) rejected' ); }
+		T::eq( 1, T::count( 'gate_sessions', 'revoked_at IS NULL AND user_id = %d', $owner ), 'failed attempts opened no session' );
+	} );
+} );
+
+$tests['G03'] = array( 'שער סריקה: טלפון של איש צוות ממתין לאישור בעל המערכת', function () {
+	with_gate( function ( int $owner ) {
+		$G = \Insiders\Collections\Security\Gate::class;
+		$collector = T::user( 'collector' );
+		gate_login( $collector );
+		[ $ckey, $cdev, $status ] = gate_pair( 'pass-collector' );
+		T::eq( 'pending', $status, "staff phone waits for the owner's approval" );
+		try { $G::start_unlock(); T::check( false, 'pending cannot unlock' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_no_device', $e->error_code, 'a pending phone opens nothing' ); }
+		T::eq( false, $G::state()['can_pair'], 'and no second request from the lock screen' );
+
+		gate_login( $owner );
+		[ $okey ] = gate_pair( 'pass-admin' );
+		gate_unlock( $okey );
+		$r = T::api( 'GET', '/gate/devices' );
+		T::check( (bool) array_filter( $r->get_data(), static fn( $d ) => $d['id'] === $cdev && $d['can_approve'] ), 'owner sees the request' );
+		T::eq( 200, T::api( 'POST', '/gate/devices/' . $cdev . '/approve' )->get_status(), 'owner approves' );
+
+		gate_login( $collector );
+		T::eq( 'approved', gate_unlock( $ckey )['status'], 'staff phone opens the system after approval' );
+		T::eq( true, current_user_can( 'icol_view' ) && ! current_user_can( 'icol_admin' ), 'with the staff role only' );
+		T::eq( 403, T::api( 'POST', '/gate/devices/' . $cdev . '/approve' )->get_status(), 'staff cannot approve phones' );
+
+		gate_login( $owner );
+		gate_unlock( $okey );
+		T::eq( 200, T::api( 'POST', '/gate/devices/' . $cdev . '/revoke' )->get_status(), 'owner revokes the staff phone' );
+		T::eq( 0, T::count( 'gate_sessions', 'revoked_at IS NULL AND device_id = %d', $cdev ), "its open sessions end with it" );
+		T::check( (bool) T::count( 'audit_log', "action = 'gate.device_revoked'" ), 'audited' );
+		T::api( 'POST', '/settings', array( 'settings' => array( 'gate_idle_minutes' => 9999 ) ) );
+		T::eq( 30, (int) Settings::get( 'gate_idle_minutes' ), 'gate timeouts cannot be changed through the general settings' );
+	} );
+} );
+
+$tests['G04'] = array( 'שער סריקה: מפתחות RSA ו-Ed25519, CBOR', function () {
+	$W = \Insiders\Collections\Security\WebAuthn::class;
+	$rsa = openssl_pkey_new( array( 'private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048 ) );
+	$d   = openssl_pkey_get_details( $rsa )['rsa'];
+	$k   = $W::cose_to_key( array( 1 => 3, 3 => -257, -1 => $d['n'], -2 => $d['e'] ) );
+	openssl_sign( 'data', $sig, $rsa, OPENSSL_ALGO_SHA256 );
+	T::eq( 1, openssl_verify( 'data', $sig, openssl_pkey_get_public( $k['pem'] ), OPENSSL_ALGO_SHA256 ), 'RSA COSE key converts to a working PEM' );
+	$ed = sodium_crypto_sign_keypair();
+	$k2 = $W::cose_to_key( array( 1 => 1, 3 => -8, -1 => 6, -2 => sodium_crypto_sign_publickey( $ed ) ) );
+	T::eq( 'ed25519:', substr( $k2['pem'], 0, 8 ), 'Ed25519 key accepted' );
+	$off = 0;
+	$in = array( 'a' => -5, 'b' => array( 1 => 1, 2 => -300 ), 3 => 'שלום', 'k' => new CborBytes( "\x00\xff" ) );
+	T::eq( array( 'a' => -5, 'b' => array( 1 => 1, 2 => -300 ), 3 => 'שלום', 'k' => "\x00\xff" ), \Insiders\Collections\Security\Cbor::decode( SoftKey::cbor( $in ), $off ), 'CBOR round trip' );
+	try { \Insiders\Collections\Security\Cbor::decode( "\x9f\x01\xff" ); T::check( false, 'indefinite' ); } catch ( \UnexpectedValueException $e ) { T::check( true, 'indefinite lengths refused' ); }
 } );
 
 foreach ( $tests as $id => [ $title, $fn ] ) {

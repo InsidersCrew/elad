@@ -57,6 +57,13 @@ final class Client {
 		if ( $customer && ! empty( $customer['pipedrive_person_id'] ) ) {
 			$body['participants'] = array( array( 'person_id' => (int) $customer['pipedrive_person_id'], 'primary' => true ) );
 		}
+		$deal = $task['case_id'] ? (int) Db::value( 'SELECT a.pipedrive_deal_id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'agreements' ) . ' a ON a.id = c.agreement_id WHERE c.id = %d', (int) $task['case_id'] ) : 0;
+		if ( $deal ) {
+			$body['deal_id'] = $deal; // the rep opens the enrollment deal straight from the activity
+		}
+		if ( '' !== (string) $task['reason'] ) {
+			$body['note'] = mb_substr( (string) $task['reason'], 0, 1000 ) . "\n\n" . $body['note'];
+		}
 		$r = Http::request( 'POST', rtrim( (string) Settings::get( 'pipedrive_api_base' ), '/' ) . '/api/v2/activities?api_token=' . rawurlencode( Settings::secret( 'pipedrive_token' ) ), array( 'headers' => array( 'Content-Type' => 'application/json' ), 'body' => wp_json_encode( $body ) ), true );
 		$id = $r['json']['data']['id'] ?? null;
 		Db::exec(
@@ -72,6 +79,43 @@ final class Client {
 			return array( 'outcome' => Http::RETRYABLE, 'error' => 'timeout — will look for the marker before retrying' );
 		}
 		return array( 'outcome' => $r['outcome'], 'error' => $r['error'], 'result' => array( 'id' => $id ) );
+	}
+
+	/**
+	 * Contact details of one person. v2 returns emails[]/phones[] of {value, primary};
+	 * v1 returned email[]/phone[] of the same shape, so both are read. The primary
+	 * entry wins, then the first one.
+	 */
+	public static function person( int $person_id ): array {
+		if ( ! self::configured() ) {
+			return array( 'ok' => false, 'error' => 'Pipedrive לא מחובר' );
+		}
+		$r = Http::request( 'GET', rtrim( (string) Settings::get( 'pipedrive_api_base' ), '/' ) . '/api/v2/persons/' . $person_id . '?api_token=' . rawurlencode( Settings::secret( 'pipedrive_token' ) ) );
+		$d = $r['json']['data'] ?? null;
+		if ( Http::OK !== $r['outcome'] || ! is_array( $d ) ) {
+			return array( 'ok' => false, 'error' => $r['error'] ?: 'no data' );
+		}
+		$pick = static function ( $list ) {
+			$list = is_array( $list ) ? $list : array();
+			foreach ( $list as $e ) {
+				if ( is_array( $e ) && ! empty( $e['primary'] ) && ! empty( $e['value'] ) ) {
+					return (string) $e['value'];
+				}
+			}
+			foreach ( $list as $e ) {
+				if ( is_array( $e ) && ! empty( $e['value'] ) ) {
+					return (string) $e['value'];
+				}
+			}
+			return '';
+		};
+		return array(
+			'ok'         => true,
+			'name'       => (string) ( $d['name'] ?? '' ),
+			'first_name' => (string) ( $d['first_name'] ?? '' ),
+			'email'      => strtolower( $pick( $d['emails'] ?? ( $d['email'] ?? array() ) ) ),
+			'phone'      => $pick( $d['phones'] ?? ( $d['phone'] ?? array() ) ),
+		);
 	}
 
 	private static function find_by_marker( string $marker, ?array $customer ): ?string {

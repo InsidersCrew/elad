@@ -31,6 +31,7 @@ final class Exceptions {
 		'sent_after_settlement'   => 'פנייה אחרי הסדרה',
 		'account_opened_after_charge' => 'נפתח חשבון אחרי הפעלת חיוב',
 		'reconcile_stale'         => 'התאמה כספית לא עדכנית',
+		'paid_per_crm'            => 'שולם לפי פייפדרייב, לא התקבל כאן',
 	);
 
 	public static function open( string $key, string $type, string $severity, string $summary, array $opts = array() ): int {

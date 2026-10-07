@@ -30,6 +30,7 @@ final class Tasks {
 		'account_opened_claim' => array( 'label' => 'בירור טענת פתיחת חשבון', 'due_days' => 1 ),
 		'promise_request'    => array( 'label' => 'החלטה על בקשת מועד תשלום', 'due_days' => 1 ),
 		'alert'              => array( 'label' => 'התראה', 'due_days' => 0 ),
+		'crm_record'         => array( 'label' => 'רישום התשלום בדיל בפייפדרייב', 'due_days' => 1 ),
 	);
 
 	public static function open( string $task_key, string $type, array $opts = array() ): int {
@@ -87,7 +88,7 @@ final class Tasks {
 	}
 
 	public static function alert( string $key, string $title, string $body ): int {
-		return self::open( 'alert:' . $key, 'alert', array( 'reason' => $title . ' — ' . $body, 'priority' => 'high', 'due_days' => 0 ) );
+		return self::open( 'alert:' . $key, 'alert', array( 'reason' => $title . ': ' . $body, 'priority' => 'high', 'due_days' => 0 ) );
 	}
 
 	public static function complete( int $id, string $note ): void {
