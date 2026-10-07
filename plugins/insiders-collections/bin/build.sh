@@ -15,7 +15,7 @@ for j in assets/*.js; do node -c "$j"; done
 STAGE=$(mktemp -d)
 mkdir -p "$STAGE/insiders-collections" dist
 cp -R insiders-collections.php includes templates assets vendor composer.json README.md "$STAGE/insiders-collections/"
-mkdir -p "$STAGE/insiders-collections/docs" && cp -R docs/revenue-dashboard-contract.md "$STAGE/insiders-collections/docs/"
+mkdir -p "$STAGE/insiders-collections/docs" && cp -R docs/revenue-dashboard-contract.md docs/staging-checklist.md "$STAGE/insiders-collections/docs/"
 (cd "$STAGE" && zip -qr "insiders-collections-$VERSION.zip" insiders-collections)
 mv "$STAGE/insiders-collections-$VERSION.zip" dist/
 rm -rf "$STAGE"
