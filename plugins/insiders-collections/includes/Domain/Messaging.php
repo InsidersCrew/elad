@@ -55,7 +55,7 @@ final class Messaging {
 				$grace = $policy['grace_business_days'][ $class ] ?? null;
 				if ( null === $grace ) {
 					Workflow::transition( $case_id, 'human_review', 'סוג הכשל (' . $class . ') מחייב בדיקת נציג לפני פנייה', null, array(), 'plan' );
-					Tasks::open( 'failure_review:' . $case_id, 'reply_review', array( 'case_id' => $case_id, 'reason' => 'כשל חיוב מסוג ' . $class . ' — אין פנייה אוטומטית' ) );
+					Tasks::open( 'failure_review:' . $case_id, 'reply_review', array( 'case_id' => $case_id, 'reason' => 'כשל חיוב מסוג ' . $class . ', אין פנייה אוטומטית' ) );
 					return null;
 				}
 				$fail_date = Clock::local_date( (int) Clock::ts( $attempt['occurred_at'] ?? null ) ?: $now );
@@ -269,7 +269,7 @@ final class Messaging {
 			Exceptions::open( 'identity:' . $case['customer_id'], 'identity_conflict', 'medium', 'נדרשת התאמת זהות לפני פנייה', array( 'customer_id' => (int) $case['customer_id'], 'entity_type' => 'case', 'entity_id' => (int) $case['id'] ) );
 		}
 		if ( array_intersect( $codes, array( 'delivery_unknown' ) ) ) {
-			Exceptions::open( 'send_unknown:cust:' . $case['customer_id'], 'send_unknown', 'high', 'הודעה קודמת במצב לא ידוע — לא שולחים עד בירור', array( 'customer_id' => (int) $case['customer_id'] ) );
+			Exceptions::open( 'send_unknown:cust:' . $case['customer_id'], 'send_unknown', 'high', 'הודעה קודמת במצב לא ידוע, לא שולחים עד בירור', array( 'customer_id' => (int) $case['customer_id'] ) );
 		}
 		return 'cancel:' . implode( ',', $codes );
 	}

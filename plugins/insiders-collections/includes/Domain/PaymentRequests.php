@@ -29,7 +29,7 @@ final class PaymentRequests {
 		$recurring = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'debt_items' ) . " WHERE case_id = %d AND collection_owner = 'my_billing' AND finance_state IN ('open','partially_paid')", (int) $case['id'] );
 		if ( $recurring > 0 && ! Settings::on( 'cap_separate_payment_recurring' ) ) {
 			// §8 / AT26: My Billing may retry the same item; a separate link could charge twice.
-			return array( 'allowed' => false, 'reason' => 'פריט מחזורי בבעלות My Billing — תשלום נפרד חסום עד תיאום מאומת עם טרנזילה' );
+			return array( 'allowed' => false, 'reason' => 'פריט מחזורי בבעלות My Billing, תשלום נפרד חסום עד תיאום מאומת עם טרנזילה' );
 		}
 		return array( 'allowed' => true, 'reason' => '' );
 	}

@@ -122,12 +122,12 @@ final class Promises {
 		$broken = (int) $case['broken_promises'] + 1;
 		$policy = Policy::effective_or_draft();
 		if ( $broken <= (int) $policy['broken_promise_followups'] ) {
-			Workflow::transition( $case_id, 'active', 'הבטחה לא קוימה — הודעת המשך אחת', null, array( 'broken_promises' => $broken ), 'promise' );
+			Workflow::transition( $case_id, 'active', 'הבטחה לא קוימה, הודעת המשך אחת', null, array( 'broken_promises' => $broken ), 'promise' );
 			$at = Calendar::next_slot( Clock::now(), $policy );
 			Scheduler::schedule( 'send_reminder', $at, 'promise_followup:' . $p['id'], $case_id, (int) $case['customer_id'], array( 'promise_followup' => true, 'step' => (int) $case['sequence_step'] ), (int) $policy['_version'] );
 			return 'broken:followup';
 		}
-		Workflow::transition( $case_id, 'human_review', 'הבטחה הופרה שוב — העברה לנציג', null, array( 'broken_promises' => $broken ), 'promise' );
+		Workflow::transition( $case_id, 'human_review', 'הבטחה הופרה שוב, העברה לנציג', null, array( 'broken_promises' => $broken ), 'promise' );
 		Tasks::open( 'broken_promise:' . $p['id'], 'no_reply_call', array( 'case_id' => $case_id, 'reason' => 'הבטחה הופרה פעם נוספת' ) );
 		return 'broken:human';
 	}

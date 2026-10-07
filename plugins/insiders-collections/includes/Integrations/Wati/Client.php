@@ -115,7 +115,7 @@ final class Client {
 			array( 'id' => $message_id )
 		);
 		if ( 'failed' === $state ) {
-			\Insiders\Collections\Domain\Exceptions::open( 'send_failed:' . $message_id, 'integration_failure', 'medium', 'שליחת הודעה נכשלה — אין שליחה חוזרת עיוורת', array( 'entity_type' => 'message', 'entity_id' => $message_id, 'customer_id' => (int) $m['customer_id'] ) );
+			\Insiders\Collections\Domain\Exceptions::open( 'send_failed:' . $message_id, 'integration_failure', 'medium', 'שליחת הודעה נכשלה, אין שליחה חוזרת עיוורת', array( 'entity_type' => 'message', 'entity_id' => $message_id, 'customer_id' => (int) $m['customer_id'] ) );
 		}
 		return array( 'outcome' => $r['outcome'], 'error' => $r['error'] ?? '', 'retry_after' => $r['retry_after'] ?? null, 'result' => array( 'provider_id' => $provider_id ) );
 	}

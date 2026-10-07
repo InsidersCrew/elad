@@ -216,8 +216,8 @@
 		clear(topbar);
 		var chips = h('div', { class: 'icol-mode' });
 		if (mode) {
-			if (mode.kill_switch) { add(chips, chip('מתג עצירה פעיל — אין משלוחים ללקוחות', 'bad')); }
-			else if (mode.send_mode === 'simulate') { add(chips, chip('מצב תצוגה בלבד — הודעות מתועדות ולא נשלחות', 'info')); }
+			if (mode.kill_switch) { add(chips, chip('מתג עצירה פעיל, אין משלוחים ללקוחות', 'bad')); }
+			else if (mode.send_mode === 'simulate') { add(chips, chip('מצב תצוגה בלבד, הודעות מתועדות ולא נשלחות', 'info')); }
 			else { add(chips, chip('משלוחים פעילים', 'ok')); }
 			if (!mode.policy_approved) { add(chips, chip('מדיניות פנייה טרם אושרה', 'warn')); }
 		}
@@ -337,7 +337,7 @@
 				['id', 'תיק', function (r) { return h('span', { class: 'num', text: '#' + r.id }); }],
 				['customer', 'לקוח', function (r) { return h('span', {}, r.customer, h('span', { class: 'sub', text: r.phone || '' })); }],
 				['source', 'מקור', function (r) { return h('span', {}, r.source_label, r.entry_mode === 'handover' ? h('span', { class: 'sub', text: 'המשך טיפול' }) : null); }],
-				['due', 'יתרה', function (r) { return h('span', { class: 'num', text: r.due_minor ? money(r.due_minor, r.currency) : '—' }); }, 'num'],
+				['due', 'יתרה', function (r) { return h('span', { class: 'num', text: r.due_minor ? money(r.due_minor, r.currency) : ', ' }); }, 'num'],
 				['age', 'גיל', function (r) { return r.age_days === null ? null : h('span', { class: 'num', text: r.age_days + ' ימים' }); }],
 				['state', 'מצב טיפול', function (r) { return h('span', {}, stateCell(r.state), r.state_reason ? h('span', { class: 'sub', text: r.state_reason }) : null); }],
 				['last_out', 'פנייה אחרונה', 'last_out'],
@@ -401,7 +401,7 @@
 			),
 			h('div', { class: 'icol-money' },
 				h('div', { class: 'm due' }, h('div', { class: 'l', text: 'יתרה שהגיע מועדה' }), h('div', { class: 'v', text: money(f.due_balance_minor, f.currency) })),
-				h('div', { class: 'm' }, h('div', { class: 'l', text: 'תשלומים עתידיים' }), h('div', { class: 'v', text: f.not_due_minor ? money(f.not_due_minor, f.currency) : (d.future && d.future.future_installments ? d.future.future_installments + ' תשלומים' : '—') })),
+				h('div', { class: 'm' }, h('div', { class: 'l', text: 'תשלומים עתידיים' }), h('div', { class: 'v', text: f.not_due_minor ? money(f.not_due_minor, f.currency) : (d.future && d.future.future_installments ? d.future.future_installments + ' תשלומים' : ', ') })),
 				h('div', { class: 'm' }, h('div', { class: 'l', text: 'תקבולים ששויכו' }), h('div', { class: 'v', text: money(f.allocated_minor, f.currency) }))
 			)
 		));
@@ -446,7 +446,7 @@
 			(it.attempts || []).forEach(function (a) { rows.push({ t: a.occurred_local, k: 'ניסיון חיוב', d: (a.response_code === '000' ? 'הצליח' : 'נכשל · קוד ' + a.response_code + (a.failure_label ? ' · ' + a.failure_label : '')) + ' · ' + a.terminal + ' #' + a.transaction_index, a: a.amount_minor }); });
 			(it.allocations || []).forEach(function (a) { rows.push({ t: a.created_at, k: Number(a.amount_minor) < 0 ? 'היפוך שיוך' : 'שיוך תקבול', d: (a.reason || '') + ' · ' + a.provider + ' ' + a.transaction_id, a: -a.amount_minor }); });
 			(it.adjustments || []).forEach(function (a) { rows.push({ t: a.created_at, k: 'התאמה: ' + a.type, d: a.reason + (a.evidence_ref ? ' · ' + a.evidence_ref : ''), a: a.amount_minor }); });
-			add(card, table([['t', 'מועד'], ['k', 'תנועה'], ['d', 'פרטים'], ['a', 'השפעה על היתרה', function (r) { return h('span', { class: 'num', text: r.a === null || r.a === undefined ? '—' : money(r.a) }); }, 'num']], rows));
+			add(card, table([['t', 'מועד'], ['k', 'תנועה'], ['d', 'פרטים'], ['a', 'השפעה על היתרה', function (r) { return h('span', { class: 'num', text: r.a === null || r.a === undefined ? ', ' : money(r.a) }); }, 'num']], rows));
 			add(body, card);
 		});
 		if (!d.finance.items.length) { add(body, h('div', { class: 'icol-empty', text: 'אין פריטי חוב' })); }
@@ -463,8 +463,8 @@
 		d.timeline.forEach(function (m) {
 			var cls = { in: 'in', out: 'out', note: 'note', ai: 'ai', imported: 'imported', system: 'system' }[m.type] || 'system';
 			var head = h('div', { class: 'mh' }, h('span', { text: m.local + (m.author ? ' · ' + m.author : '') }), h('span', {},
-				m.type === 'note' ? h('span', { class: 'flag', text: 'פנימי — לא נשלח ללקוח' }) : null,
-				m.type === 'ai' ? h('span', { class: 'flag', text: 'הצעת AI לנציג — לא נשלחה' }) : null,
+				m.type === 'note' ? h('span', { class: 'flag', text: 'פנימי, לא נשלח ללקוח' }) : null,
+				m.type === 'ai' ? h('span', { class: 'flag', text: 'הצעת AI לנציג, לא נשלחה' }) : null,
 				m.type === 'imported' ? 'יובא · ' : null,
 				m.state && m.type === 'out' ? (L.delivery[m.state] || m.state) : null,
 				m.intent ? ' · כוונה: ' + m.intent : null,
@@ -569,7 +569,7 @@
 	}
 	function adjustModal(d) {
 		var item = field('debt_item_id', 'פריט', 'select', { options: d.finance.items.map(function (i) { return [i.id, (i.description || 'פריט') + ' · יתרה ' + money(i.cached_balance_minor)]; }) });
-		var type = field('type', 'סוג', 'select', { options: [['credit', 'זיכוי'], ['write_off', 'מחיקה מאושרת'], ['correction_decrease', 'תיקון — הפחתה'], ['correction_increase', 'תיקון — הגדלה']] });
+		var type = field('type', 'סוג', 'select', { options: [['credit', 'זיכוי'], ['write_off', 'מחיקה מאושרת'], ['correction_decrease', 'תיקון: הפחתה'], ['correction_increase', 'תיקון: הגדלה']] });
 		var fs = [item, type, field('amount', 'סכום', 'text', { required: true, inputmode: 'decimal' }), field('reason', 'סיבה', 'textarea', { required: true }), field('evidence_ref', 'אסמכתה', 'text')];
 		simpleModal('התאמה כספית', 'התאמה היא תנועה נפרדת עם סכום, סיבה, מבצע ואסמכתה. אין עריכה חופשית של יתרה.', fs, function () { return api.post('/cases/' + d.case.id + '/adjustments', { debt_item_id: Number(val(fs[0])), type: val(fs[1]), amount: val(fs[2]), reason: val(fs[3]), evidence_ref: val(fs[4]) }); }, d);
 	}
@@ -669,8 +669,8 @@
 		var hv = {};
 		if (handover) {
 			hv = { mode: field('history_mode', 'שיטת יתרה', 'select', { options: [['net_opening', 'יתרת פתיחה נטו (תשלומי עבר כהיסטוריה בלבד)'], ['full_ledger', 'ספר תנועות מלא']] }), asof: field('opening_balance_as_of', 'יתרה נכון לתאריך', 'date', { required: true }),
-				lastAt: field('last_contact_at', 'פנייה אחרונה — מועד', 'datetime-local'), lastCh: field('last_contact_channel', 'ערוץ', 'select', { options: [['whatsapp', 'וואטסאפ'], ['phone', 'טלפון'], ['email', 'מייל'], ['sms', 'SMS']] }), lastBy: field('last_contact_sender', 'שולח', 'text'), lastSum: field('last_contact_summary', 'תוכן או תקציר', 'textarea'),
-				replyAt: field('last_reply_at', 'תגובה אחרונה — מועד', 'datetime-local'), replyText: field('last_reply_text', 'מה הלקוח אמר', 'textarea'),
+				lastAt: field('last_contact_at', 'פנייה אחרונה, מועד', 'datetime-local'), lastCh: field('last_contact_channel', 'ערוץ', 'select', { options: [['whatsapp', 'וואטסאפ'], ['phone', 'טלפון'], ['email', 'מייל'], ['sms', 'SMS']] }), lastBy: field('last_contact_sender', 'שולח', 'text'), lastSum: field('last_contact_summary', 'תוכן או תקציר', 'textarea'),
+				replyAt: field('last_reply_at', 'תגובה אחרונה, מועד', 'datetime-local'), replyText: field('last_reply_text', 'מה הלקוח אמר', 'textarea'),
 				arrType: field('existing_arrangement.type', 'סיכום קיים', 'select', { options: [['', 'אין'], ['promise', 'הבטחת תשלום'], ['installments', 'פריסה'], ['clarification', 'בקשה לבירור'], ['dispute', 'מחלוקת']] }), arrDate: field('existing_arrangement.date', 'מועד', 'date'), arrAmount: field('existing_arrangement.amount', 'סכום', 'text'), arrBy: field('existing_arrangement.approved_by_label', 'מי אישר', 'text'), arrNote: field('existing_arrangement.note', 'פרטים', 'text'),
 				nextType: field('next_action.type', 'פעולה הבאה', 'select', { options: [['', 'לפי המערכת'], ['reminder', 'תזכורת'], ['rep_call', 'שיחת נציג'], ['wait', 'המתנה'], ['clarify', 'בירור'], ['check_payment', 'בדיקת תשלום']] }), nextAt: field('next_action.at', 'מועד הפעולה', 'datetime-local'),
 				paste: field('history_paste', 'הדבקת התכתבות קודמת', 'textarea', { wide: true, rows: 6, help: 'נשמרת עם זהות המזין. אין להציג ללקוח היכרות או הסכמה שאינן מתועדות.' }),
@@ -772,7 +772,7 @@
 		}).catch(fail);
 	}
 	function confirmCard(t) {
-		var type = field('confirmation_type', 'סוג', 'select', { options: [['confirmed_manual', 'עודכן ידנית בהוראה'], ['not_required', 'לא נדרש — אין חיובים עתידיים']] });
+		var type = field('confirmation_type', 'סוג', 'select', { options: [['confirmed_manual', 'עודכן ידנית בהוראה'], ['not_required', 'לא נדרש, אין חיובים עתידיים']] });
 		var sto = field('sto_id', 'מזהה ההוראה שעודכנה (הקלדה)', 'text', { required: true, help: 'ההוראה בתיק: ' + t.sto_id });
 		var ev = field('evidence_ref', 'אסמכתה', 'text', { required: true, help: 'לדוגמה: צילום מסך מהמסוף, מספר פעולה' });
 		var note = field('note', 'הערה', 'textarea');
@@ -799,7 +799,7 @@
 	function viewCandidates() {
 		api.get('/candidates').then(function (rows) {
 			clear(page);
-			add(page, pageHead('מועמדים לחיוב — מדשבורד ההכנסות', 'תלמידים שהמועד לפתיחת חשבון עבר והחשבון לא נפתח. המערכת לא קובעת חיוב בעצמה: יצירת טיוטה דורשת סכום, בסיס ואישור.'));
+			add(page, pageHead('מועמדים לחיוב, מדשבורד ההכנסות', 'תלמידים שהמועד לפתיחת חשבון עבר והחשבון לא נפתח. המערכת לא קובעת חיוב בעצמה: יצירת טיוטה דורשת סכום, בסיס ואישור.'));
 			add(page, table([
 				['name', 'תלמיד', function (c) { return h('span', {}, c.snapshot.name || ('#' + c.wp_user_id), h('span', { class: 'sub', text: [c.snapshot.phone, c.snapshot.email].filter(Boolean).join(' · ') })); }],
 				['program', 'תוכנית', function (c) { return c.snapshot.program; }],
@@ -808,12 +808,12 @@
 				['days', 'ימים מאז', function (c) { return c.snapshot.days_left !== null ? h('span', { class: 'num', text: String(-c.snapshot.days_left) }) : null; }],
 				['act', '', function (c) { return can('icol_create_draft') ? h('span', { class: 'icol-actions' }, h('button', { class: 'icol-btn sm blue', text: 'יצירת טיוטת חוב', onclick: function () { candidateDraft(c); } }), h('button', { class: 'icol-btn sm', text: 'לא רלוונטי', onclick: function () { simpleModal('סימון כלא רלוונטי', '', [field('note', 'סיבה', 'textarea', { required: true })], function (fs) { return api.post('/candidates/' + c.id + '/dismiss', { note: val(fs[0]) }); }); } })) : null; }]
 			], rows));
-			if (!rows.length) { add(page, h('p', { class: 'muted', text: 'אין מועמדים חדשים. אם החיבור לדשבורד ההכנסות עוד לא הוגדר — ראו הגדרות ← חיבורים, או כלי האבחון revenue_probe.' })); }
+			if (!rows.length) { add(page, h('p', { class: 'muted', text: 'אין מועמדים חדשים. אם החיבור לדשבורד ההכנסות עוד לא הוגדר, ראו הגדרות ← חיבורים, או כלי האבחון revenue_probe.' })); }
 		}).catch(fail);
 	}
 	function candidateDraft(c) {
 		var fs = [field('amount', 'סכום לחיוב לפי ההסכם', 'text', { required: true, inputmode: 'decimal', help: 'לא נקבע מחיר אחיד: הסכום מוזן להסכם המסוים.' }), field('due_at', 'מועד פירעון', 'date', { value: new Date().toISOString().slice(0, 10) }), field('approval_basis', 'בסיס החיוב', 'textarea', { required: true }), field('document_ref', 'קישור להסכם', 'text'), field('clarification_first', 'להתחיל בבירור לפני דרישת תשלום', 'checkbox', { value: true })];
-		modal({ title: 'טיוטת חוב — ' + (c.snapshot.name || ''), lead: 'הטיוטה נשמרת בלי שליחה. אחראי גבייה מאשר ומפעיל מתוך התיק.', body: h('div', { class: 'icol-form' }, fs.map(function (f2) { return f2.el; })),
+		modal({ title: 'טיוטת חוב, ' + (c.snapshot.name || ''), lead: 'הטיוטה נשמרת בלי שליחה. אחראי גבייה מאשר ומפעיל מתוך התיק.', body: h('div', { class: 'icol-form' }, fs.map(function (f2) { return f2.el; })),
 			actions: [{ label: 'יצירת טיוטה', kind: 'primary', onClick: function () { return api.post('/candidates/' + c.id + '/draft', { amount: val(fs[0]), due_at: val(fs[1]), approval_basis: val(fs[2]), document_ref: val(fs[3]), clarification_first: val(fs[4]) }).then(function (r) { location.hash = '#/cases/' + r.case_id; }); } }] });
 	}
 
@@ -857,13 +857,13 @@
 			var jobs = Object.keys(hl.jobs || {}).map(function (k) { var j = hl.jobs[k]; return { job: k, attempt: j.attempt, success: j.success, error: j.error ? j.error + ' · ' + j.last_error : '' }; });
 			var q = function (arr) { return (arr || []).map(function (r) { return r.state + ': ' + r.n; }).join(' · ') || '—'; };
 			add(body, h('div', { class: 'icol-split' },
-				h('div', { class: 'icol-card' }, h('h3', { text: 'עבודות מתוזמנות — ניסיון מול הצלחה' }), table([['job', 'עבודה'], ['attempt', 'ניסיון אחרון'], ['success', 'הצלחה אחרונה'], ['error', 'שגיאה אחרונה']], jobs),
-					hl.reconcile_stale ? h('div', { class: 'icol-banner warn', style: 'margin-top:10px', text: 'ההתאמה מול טרנזילה לא עדכנית — תזכורות לחיובים חוזרים מושהות עד חידוש.' }) : null,
+				h('div', { class: 'icol-card' }, h('h3', { text: 'עבודות מתוזמנות, ניסיון מול הצלחה' }), table([['job', 'עבודה'], ['attempt', 'ניסיון אחרון'], ['success', 'הצלחה אחרונה'], ['error', 'שגיאה אחרונה']], jobs),
+					hl.reconcile_stale ? h('div', { class: 'icol-banner warn', style: 'margin-top:10px', text: 'ההתאמה מול טרנזילה לא עדכנית, תזכורות לחיובים חוזרים מושהות עד חידוש.' }) : null,
 					h('div', { class: 'icol-actions', style: 'margin-top:10px' }, can('icol_admin') ? h('button', { class: 'icol-btn sm', text: 'הרצת מחזור עבודה עכשיו', onclick: function () { api.post('/tools/tick').then(function (r) { toast('בוצע: ' + JSON.stringify(r).slice(0, 160), 'ok'); route(); }).catch(fail); } }) : null, C.diag ? h('a', { class: 'icol-btn sm', href: C.diag.tools, target: '_blank', rel: 'noopener', text: 'כלי אבחון' }) : null)),
 				h('div', { class: 'icol-card' }, h('h3', { text: 'חיבורים ותורים' }), kv([
 					['טרנזילה', hl.integrations.tranzila ? chip('מוגדר', 'ok') : chip('לא מוגדר', 'warn')], ['WATI', hl.integrations.wati ? chip('מוגדר', 'ok') : chip('לא מוגדר', 'warn')], ['פייפדרייב', hl.integrations.pipedrive ? chip('מוגדר', 'ok') : chip('לא מוגדר')], ['AI', hl.integrations.ai ? chip('זמין', 'ok') : chip('לא זמין')], ['הצפנה', hl.integrations.encryption ? chip('מפתח קיים', 'ok') : chip('חסר ICOL_ENCRYPTION_KEY', 'bad')],
 					['אירוע טרנזילה אחרון', hl.last_event.tranzila], ['אירוע WATI אחרון', hl.last_event.wati], ['תיבת אירועים', q(hl.queues.inbox)], ['פעולות יוצאות', q(hl.queues.outbox)], ['פעולות מתוזמנות', q(hl.queues.actions)],
-					['WP-Cron כבוי', hl.wp_cron_disabled ? 'כן (cron שרת)' : 'לא — מומלץ cron שרת'], ['גרסה', hl.version]]),
+					['WP-Cron כבוי', hl.wp_cron_disabled ? 'כן (cron שרת)' : 'לא, מומלץ cron שרת'], ['גרסה', hl.version]]),
 					Object.keys(hl.suspended || {}).length ? h('div', { class: 'icol-banner stop', style: 'margin-top:10px' }, h('div', {}, 'חיבורים מושעים: ' + Object.keys(hl.suspended).join(', ')), Object.keys(hl.suspended).map(function (n) { return h('button', { class: 'icol-btn sm', text: 'חידוש ' + n, onclick: function () { api.post('/integrations/' + n + '/unsuspend').then(route).catch(fail); } }); })) : null)
 			));
 			var urls = h('div', { class: 'icol-card', style: 'margin-top:12px' }, h('h3', { text: 'כתובות להגדרה אצל הספקים' }),
@@ -915,17 +915,17 @@
 		var cur = s.policies[0];
 		var approved = s.policies.filter(function (p) { return p.approved_at; })[0];
 		var cfg = (cur && cur.config) || {};
-		add(body, h('div', { class: 'icol-banner ' + (approved ? 'sim' : 'warn') }, h('div', {}, approved ? 'גרסה מאושרת: ' + approved.version + ' · בתוקף מ־' + (approved.effective_at || '') : 'אין גרסת מדיניות מאושרת — לא יישלחו הודעות.')));
+		add(body, h('div', { class: 'icol-banner ' + (approved ? 'sim' : 'warn') }, h('div', {}, approved ? 'גרסה מאושרת: ' + approved.version + ' · בתוקף מ־' + (approved.effective_at || '') : 'אין גרסת מדיניות מאושרת, לא יישלחו הודעות.')));
 		add(body, table([['version', 'גרסה'], ['note', 'הערה'], ['state', 'מצב', function (p) { return p.approved_at ? chip('מאושרת', 'ok') : chip('טיוטה', 'warn'); }], ['created_at', 'נוצרה'], ['act', '', function (p) { return !p.approved_at ? h('button', { class: 'icol-btn sm primary', text: 'אישור והפעלה', onclick: function () { modal({ title: 'אישור גרסת מדיניות ' + p.version, lead: 'מהרגע הזה תזכורות חדשות יתוכננו לפי הגרסה הזו. שינוי מקבל גרסה ותאריך תחולה.', actions: [{ label: 'אישור', kind: 'primary', onClick: function () { return api.post('/policy/' + p.version + '/approve').then(function () { toast('המדיניות אושרה', 'ok'); route(); }); } }] }); } }) : null; }]], s.policies));
 		var days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 		var dayBoxes = days.map(function (d2, i) { return field('d' + i, d2, 'checkbox', { value: (cfg.send_days || []).indexOf(i) >= 0 }); });
 		var f2 = { ws: field('window_start', 'שעת התחלה', 'text', { value: cfg.window_start }), we: field('window_end', 'שעת סיום', 'text', { value: cfg.window_end }), erev: field('erev_cutoff', 'סיום בערב חג', 'text', { value: cfg.erev_cutoff }),
 			c1: field('c1', 'תזכורת 2 אחרי (ימי עבודה)', 'number', { value: (cfg.cadence_business_days || [])[0] }), c2: field('c2', 'תזכורת 3 אחרי (ימי עבודה)', 'number', { value: (cfg.cadence_business_days || [])[1] }), max: field('max_reminders', 'מספר תזכורות לפני נציג', 'number', { value: cfg.max_reminders }),
 			qw: field('quota_window_business_days', 'חלון מכסה (ימי עבודה)', 'number', { value: cfg.quota_window_business_days }), qm: field('quota_max', 'פניות מקסימום בחלון', 'number', { value: cfg.quota_max }), gap: field('min_gap_hours', 'מרווח מינימלי (שעות)', 'number', { value: cfg.min_gap_hours }), bp: field('broken_promise_followups', 'הודעות המשך אחרי הפרת הבטחה', 'number', { value: cfg.broken_promise_followups }), jit: field('first_contact_jitter_minutes', 'פיזור פנייה ראשונה (דקות)', 'number', { value: cfg.first_contact_jitter_minutes }) };
-		var grace = Object.keys(s.failure_classes).map(function (k) { var v = (cfg.grace_business_days || {})[k]; return { key: k, f: field('g_' + k, s.failure_classes[k] + ' — ימי המתנה לניסיון של My Billing', 'text', { value: v === null || v === undefined ? 'נציג' : v, help: 'מספר, או "נציג" = אין פנייה אוטומטית' }) }; });
+		var grace = Object.keys(s.failure_classes).map(function (k) { var v = (cfg.grace_business_days || {})[k]; return { key: k, f: field('g_' + k, s.failure_classes[k] + ', ימי המתנה לניסיון של My Billing', 'text', { value: v === null || v === undefined ? 'נציג' : v, help: 'מספר, או "נציג" = אין פנייה אוטומטית' }) }; });
 		var toLines = function (o) { return Object.keys(o || {}).map(function (k) { return k + ' ' + o[k]; }).join('\n'); };
 		var blocked = field('blocked_dates', 'ימי חסימה (שורה לכל יום: YYYY-MM-DD שם)', 'textarea', { value: toLines(cfg.blocked_dates), rows: 8, wide: true });
-		var half = field('half_days', 'חצאי ימים — ערבי חג (עד שעת הסיום בערב חג)', 'textarea', { value: toLines(cfg.half_days), rows: 5, wide: true });
+		var half = field('half_days', 'חצאי ימים, ערבי חג (עד שעת הסיום בערב חג)', 'textarea', { value: toLines(cfg.half_days), rows: 5, wide: true });
 		var note = field('note', 'הערה לגרסה', 'text', { wide: true });
 		var fromLines = function (t) { var o = {}; t.split('\n').forEach(function (l) { var m = l.trim().match(/^(\d{4}-\d{2}-\d{2})\s*(.*)$/); if (m) { o[m[1]] = m[2] || 'חסום'; } }); return o; };
 		add(body, h('div', { class: 'icol-card', style: 'margin-top:12px' }, h('h3', { text: 'עריכת מדיניות (נשמרת כגרסה חדשה לאישור)' }),

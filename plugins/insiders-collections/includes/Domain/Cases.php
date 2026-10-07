@@ -327,7 +327,7 @@ final class Cases {
 			$b[] = array( 'code' => 'phone_unverified', 'field' => 'phone', 'message' => 'מספר הטלפון לא אומת' );
 		}
 		if ( Customers::shares_phone( $customer ) && 'verified' !== $customer['contact_status'] ) {
-			$b[] = array( 'code' => 'shared_phone', 'field' => 'phone', 'message' => 'המספר משותף לכמה לקוחות — נדרשת התאמת זהות' );
+			$b[] = array( 'code' => 'shared_phone', 'field' => 'phone', 'message' => 'המספר משותף לכמה לקוחות, נדרשת התאמת זהות' );
 		}
 		if ( true !== Customers::permission( (int) $customer['id'], 'whatsapp' ) ) {
 			$b[] = array( 'code' => 'contact_permission', 'field' => 'contact_permission_ref', 'message' => 'חסר מקור הרשאת קשר בוואטסאפ' );
@@ -396,14 +396,14 @@ final class Cases {
 		$extra   = array( 'activated_by' => get_current_user_id(), 'activated_at' => Clock::utc(), 'sequence_step' => 0, 'sequence_started_at' => Clock::utc() );
 
 		if ( (int) $case['dispute_open'] ) {
-			$case = Workflow::transition( $case_id, 'human_review', 'הופעל עם מחלוקת קיימת — מתחיל בבירור', $version, $extra, 'activate' );
+			$case = Workflow::transition( $case_id, 'human_review', 'הופעל עם מחלוקת קיימת, מתחיל בבירור', $version, $extra, 'activate' );
 			Tasks::open( 'dispute:' . $case_id, 'dispute', array( 'case_id' => $case_id, 'customer_id' => (int) $case['customer_id'], 'reason' => 'תיק במחלוקת הוזן להמשך טיפול' ) );
 		} elseif ( $promise ) {
 			$case = Workflow::transition( $case_id, 'promise_hold', 'המשך טיפול עם הבטחה קיימת עד ' . $promise['promised_at'], $version, $extra, 'activate' );
 			Promises::schedule_check( $case_id, (int) $promise['id'] );
 		} elseif ( 'handover' === $case['entry_mode'] && 0 === $history ) {
-			$case = Workflow::transition( $case_id, 'human_review', 'המשך טיפול ללא היסטוריה ברורה — לבדיקת נציג', $version, $extra, 'activate' );
-			Tasks::open( 'handover_review:' . $case_id, 'reply_review', array( 'case_id' => $case_id, 'reason' => 'אין היסטוריה מתועדת — נדרש נציג לפני פנייה' ) );
+			$case = Workflow::transition( $case_id, 'human_review', 'המשך טיפול ללא היסטוריה ברורה, לבדיקת נציג', $version, $extra, 'activate' );
+			Tasks::open( 'handover_review:' . $case_id, 'reply_review', array( 'case_id' => $case_id, 'reason' => 'אין היסטוריה מתועדת, נדרש נציג לפני פנייה' ) );
 		} else {
 			$case = Workflow::transition( $case_id, 'active', 'הפעלת תיק', $version, $extra, 'activate' );
 			Messaging::plan_next( $case_id );
@@ -426,7 +426,7 @@ final class Cases {
 			throw new DomainError( 'not_found', 'התיק לא נמצא', 404 );
 		}
 		if ( (int) $case['dispute_open'] ) {
-			throw new DomainError( 'dispute_open', 'יש מחלוקת פתוחה — יש לסגור אותה לפני חידוש', 422 );
+			throw new DomainError( 'dispute_open', 'יש מחלוקת פתוחה, יש לסגור אותה לפני חידוש', 422 );
 		}
 		Workflow::transition( $case_id, 'active', 'חידוש טיפול: ' . $reason, $version, array( 'sequence_step' => 0, 'sequence_started_at' => Clock::utc() ), 'manual' );
 		Messaging::plan_next( $case_id );

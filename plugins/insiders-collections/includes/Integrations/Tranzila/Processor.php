@@ -63,7 +63,7 @@ final class Processor {
 			return 'ignored'; // AT21: J-type card checks are not receipts.
 		}
 		if ( 'credit' === $fact['kind'] ) {
-			Exceptions::open( 'credit:' . $terminal . ':' . $index, 'refund_or_chargeback', 'high', 'התקבלה עסקת זיכוי/החזר בסך ' . Money::format( (int) $fact['amount_minor'] ) . ' ₪ — יש לקשר לתקבול המקורי', array( 'inbox_event_id' => (int) $ev['id'] ) );
+			Exceptions::open( 'credit:' . $terminal . ':' . $index, 'refund_or_chargeback', 'high', 'התקבלה עסקת זיכוי/החזר בסך ' . Money::format( (int) $fact['amount_minor'] ) . ' ₪, יש לקשר לתקבול המקורי', array( 'inbox_event_id' => (int) $ev['id'] ) );
 			return 'needs_match';
 		}
 		if ( 'pr' === $kind ) {
@@ -325,7 +325,7 @@ final class Processor {
 		}
 		if ( $open_items ) {
 			// AT44: a success with open items but no proven cycle is not allocated to "the oldest".
-			Exceptions::open( 'unmatched_success:' . $f['terminal'] . ':' . $f['index'], 'payment_without_debt', 'high', 'חיוב חוזר הצליח (' . Money::format( (int) $f['amount_minor'] ) . ' ₪) ויש פריטים פתוחים בהוראה — נדרש שיוך ידני', array( 'entity_type' => 'payment', 'entity_id' => $pid, 'customer_id' => (int) $order['customer_id'] ) );
+			Exceptions::open( 'unmatched_success:' . $f['terminal'] . ':' . $f['index'], 'payment_without_debt', 'high', 'חיוב חוזר הצליח (' . Money::format( (int) $f['amount_minor'] ) . ' ₪) ויש פריטים פתוחים בהוראה, נדרש שיוך ידני', array( 'entity_type' => 'payment', 'entity_id' => $pid, 'customer_id' => (int) $order['customer_id'] ) );
 			return 'needs_match';
 		}
 		Payments::after_payment( $pid, false ); // routine installment, nothing owed

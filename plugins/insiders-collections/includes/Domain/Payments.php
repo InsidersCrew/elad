@@ -162,7 +162,7 @@ final class Payments {
 				Cases::maybe_close( $case_id );
 				Tasks::close_by_key( 'no_reply:' . $case_id, 'שולם' );
 			} elseif ( in_array( $case['workflow_state'], array( 'active', 'waiting_reply', 'payment_verification' ), true ) ) {
-				Workflow::transition( $case_id, 'active', 'נקלט תשלום חלקי — היתרה ' . Money::format( $summary['due_balance_minor'] ), null, array(), 'payment' );
+				Workflow::transition( $case_id, 'active', 'נקלט תשלום חלקי, היתרה ' . Money::format( $summary['due_balance_minor'] ), null, array(), 'payment' );
 				Messaging::plan_next( $case_id );
 			}
 			$amount_here = (int) Db::value( 'SELECT COALESCE(SUM(a.amount_minor),0) FROM ' . Db::t( 'allocations' ) . ' a JOIN ' . Db::t( 'debt_items' ) . ' d ON d.id = a.debt_item_id WHERE a.payment_id = %d AND d.case_id = %d', $payment_id, $case_id );
@@ -197,7 +197,7 @@ final class Payments {
 			$case = Workflow::get( (int) $a['case_id'] );
 			Scheduler::cancel_for_case( (int) $a['case_id'], 'reversal' );
 			if ( Workflow::can( $case['workflow_state'], 'human_review' ) ) {
-				Workflow::transition( (int) $a['case_id'], 'human_review', ( 'refund' === $kind ? 'החזר' : 'הכחשת עסקה' ) . ' — נדרשת בדיקת אחראי לפני פנייה', null, array(), 'reversal' );
+				Workflow::transition( (int) $a['case_id'], 'human_review', ( 'refund' === $kind ? 'החזר' : 'הכחשת עסקה' ) . ', נדרשת בדיקת אחראי לפני פנייה', null, array(), 'reversal' );
 			}
 		}
 		Exceptions::open( 'reversal:' . $payment_id, 'refund_or_chargeback', 'high', ( 'refund' === $kind ? 'החזר' : 'הכחשה' ) . ' על תקבול ' . Money::format( (int) $p['amount_minor'] ) . ' ₪', array( 'entity_type' => 'payment', 'entity_id' => $payment_id, 'customer_id' => $p['customer_id'] ? (int) $p['customer_id'] : null ) );

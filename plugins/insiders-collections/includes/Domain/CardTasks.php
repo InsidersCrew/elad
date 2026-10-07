@@ -47,7 +47,7 @@ final class CardTasks {
 					$state,
 					Clock::utc( $due ),
 					$soon ? 'high' : 'normal',
-					$p['has_reusable_token'] ? null : 'התשלום בוצע באמצעי שאינו מספק טוקן לשימוש חוזר — נדרש כרטיס מהלקוח',
+					$p['has_reusable_token'] ? null : 'התשלום בוצע באמצעי שאינו מספק טוקן לשימוש חוזר, נדרש כרטיס מהלקוח',
 					Clock::utc(),
 					Clock::utc()
 				)
@@ -177,10 +177,10 @@ final class CardTasks {
 		$o    = Db::row( 'SELECT * FROM ' . Db::t( 'recurring_orders' ) . ' WHERE id = %d', (int) $t['recurring_order_id'] );
 		$cred = Db::row( 'SELECT * FROM ' . Db::t( 'card_credentials' ) . ' WHERE source_payment_id = %d ORDER BY id DESC LIMIT 1', (int) $t['source_payment_id'] );
 		if ( ! $cred ) {
-			return array( 'verified' => false, 'reason' => 'אין טוקן שמור מהתשלום — לא ניתן להשוות' );
+			return array( 'verified' => false, 'reason' => 'אין טוקן שמור מהתשלום, לא ניתן להשוות' );
 		}
 		if ( $cred['terminal'] !== $o['terminal'] ) {
-			return array( 'verified' => false, 'reason' => 'הטוקן נוצר במסוף ' . $cred['terminal'] . ' וההוראה במסוף ' . $o['terminal'] . ' — טוקן קשור למסוף' );
+			return array( 'verified' => false, 'reason' => 'הטוקן נוצר במסוף ' . $cred['terminal'] . ' וההוראה במסוף ' . $o['terminal'] . ', טוקן קשור למסוף' );
 		}
 		$sto = TranzilaClient::get_sto( $o['terminal'], $o['sto_id'] );
 		if ( ! $sto['ok'] ) {

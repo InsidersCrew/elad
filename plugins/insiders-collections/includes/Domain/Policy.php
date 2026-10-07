@@ -95,7 +95,7 @@ final class Policy {
 			array(
 				'version'    => 1,
 				'config'     => wp_json_encode( self::defaults() ),
-				'note'       => 'ברירות מחדל מוצעות מהאפיון — דורש אישור מנהל לפני הפעלה',
+				'note'       => 'ברירות מחדל מוצעות מהאפיון, דורש אישור מנהל לפני הפעלה',
 				'created_at' => Clock::utc(),
 			)
 		);

@@ -148,7 +148,7 @@ final class Adapter {
 				foreach ( $cases as $case ) {
 					Scheduler::cancel_for_case( (int) $case['id'], 'account_opened_per_dashboard' );
 					if ( 'draft' !== $case['workflow_state'] && Workflow::can( $case['workflow_state'], 'human_review' ) ) {
-						Workflow::transition( (int) $case['id'], 'human_review', 'דשבורד ההכנסות מסמן שהחשבון נפתח — נדרשת החלטה', null, array( 'claims_account_opened' => 1 ), 'revenue_dashboard' );
+						Workflow::transition( (int) $case['id'], 'human_review', 'דשבורד ההכנסות מסמן שהחשבון נפתח, נדרשת החלטה', null, array( 'claims_account_opened' => 1 ), 'revenue_dashboard' );
 					}
 					Exceptions::open( 'opened_after:' . $case['id'], 'account_opened_after_charge', 'medium', 'לפי דשבורד ההכנסות התלמיד פתח חשבון אחרי הקמת החוב', array( 'entity_type' => 'case', 'entity_id' => (int) $case['id'], 'customer_id' => (int) $case['customer_id'] ) );
 					++$opened_after;

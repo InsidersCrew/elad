@@ -17,7 +17,7 @@ add_filter( 'icol_beginner_program_candidates', function ( $rows, $args ) {
 			'phone'             => $s->phone,
 			'program'           => 'תוכנית ליווי למתחילים',
 			'joined_at'         => $s->joined,                  // Y-m-d
-			'deadline'          => $s->deadline,                // Y-m-d — המועד האחרון לפתיחת חשבון
+			'deadline'          => $s->deadline,                // Y-m-d, המועד האחרון לפתיחת חשבון
 			'extension_until'   => $s->extension ?: '',         // Y-m-d אם ניתנה הארכה
 			'account_opened'    => (bool) $s->opened,           // true / false; null אם לא ידוע
 			'status_checked_at' => $s->checked ?: '',           // מתי נבדק הסטטוס מול הברוקר
@@ -53,10 +53,10 @@ add_filter( 'icol_beginner_program_candidates', function ( $rows, $args ) {
 
 ```php
 $summary = icol_get_collection_summary( '2026-10-01', '2026-10-31' );
-// $summary['charged'][source_type][currency]      — סכומים שאושרו לחיוב בתקופה (אגורות)
-// $summary['collected'][source_type][currency]    — שיוכי תשלום נטו (אחרי היפוכים)
-// $summary['written_off'][source_type][currency]  — זיכויים ומחיקות (לא נספרים כגבייה)
-// $summary['outstanding_due_now'][...]            — יתרה פתוחה שהגיע מועדה
+// $summary['charged'][source_type][currency]     , סכומים שאושרו לחיוב בתקופה (אגורות)
+// $summary['collected'][source_type][currency]   , שיוכי תשלום נטו (אחרי היפוכים)
+// $summary['written_off'][source_type][currency] , זיכויים ומחיקות (לא נספרים כגבייה)
+// $summary['outstanding_due_now'][...]           , יתרה פתוחה שהגיע מועדה
 ```
 
 `source_type` מקבל אחד משלושה ערכים: `non_open_charge`, `recurring_failure` או `other`.

@@ -76,7 +76,7 @@ final class Intents {
 			case 'wrong_number':
 				Customers::mark_wrong_number( $customer_id, 'message:' . $message_id );
 				foreach ( $sendable_or_waiting as $c ) {
-					$to_review( $c, 'דווח מספר שגוי — נדרשת בדיקת זהות' );
+					$to_review( $c, 'דווח מספר שגוי, נדרשת בדיקת זהות' );
 				}
 				Exceptions::open( 'identity:' . $customer_id, 'identity_conflict', 'medium', 'הנמען דיווח שהמספר שגוי', array( 'customer_id' => $customer_id ) );
 				break;
@@ -114,7 +114,7 @@ final class Intents {
 						continue;
 					}
 					Db::update( 'cases', array( 'claims_account_opened' => 1 ), array( 'id' => (int) $c['id'] ) );
-					$to_review( $c, 'הלקוח טוען שפתח חשבון — עצירה עד בדיקת אחראי' );
+					$to_review( $c, 'הלקוח טוען שפתח חשבון, עצירה עד בדיקת אחראי' );
 					Tasks::open( 'account_opened_claim:' . $c['id'], 'account_opened_claim', array( 'case_id' => (int) $c['id'], 'customer_id' => $customer_id, 'reason' => 'לבדוק סטטוס פתיחת חשבון ולהחליט: המשך, התאמה או סגירה' ) );
 				}
 				if ( $first ) {
@@ -125,8 +125,8 @@ final class Intents {
 			case 'wants_to_open':
 				// Opening the account is the outcome the business prefers; route it, don't collect over it.
 				foreach ( $sendable_or_waiting as $c ) {
-					$to_review( $c, 'הלקוח רוצה לפתוח חשבון — לניתוב לצוות ההרשמה' );
-					Tasks::open( 'wants_to_open:' . $c['id'], 'reply_review', array( 'case_id' => (int) $c['id'], 'customer_id' => $customer_id, 'reason' => 'לקוח מבקש לפתוח חשבון — להחליט על ניתוב לסוכן ההרשמה', 'priority' => 'high' ) );
+					$to_review( $c, 'הלקוח רוצה לפתוח חשבון, לניתוב לצוות ההרשמה' );
+					Tasks::open( 'wants_to_open:' . $c['id'], 'reply_review', array( 'case_id' => (int) $c['id'], 'customer_id' => $customer_id, 'reason' => 'לקוח מבקש לפתוח חשבון, להחליט על ניתוב לסוכן ההרשמה', 'priority' => 'high' ) );
 				}
 				if ( $first ) {
 					Messaging::service_reply( (int) $first['id'], 'handoff' );

@@ -9,7 +9,7 @@ use Insiders\Collections\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Pre-send checks (§9 תנאי בדיקה לפני כל שליחה), re-run at the moment of sending —
+ * Pre-send checks (§9 תנאי בדיקה לפני כל שליחה), re-run at the moment of sending , 
  * a message queued an hour ago is re-judged against the world as it is now.
  *
  * Blocker scopes:
@@ -80,7 +80,7 @@ final class SendGuard {
 			$add( 'dispute', 'case', 'קיימת מחלוקת פתוחה' );
 		}
 		if ( (int) $case['claims_account_opened'] ) {
-			$add( 'account_opened_claim', 'case', 'הלקוח טוען שפתח חשבון — ממתין לבדיקה' );
+			$add( 'account_opened_claim', 'case', 'הלקוח טוען שפתח חשבון, ממתין לבדיקה' );
 		}
 		$open_promise = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'promises' ) . " WHERE case_id = %d AND state IN ('requested','approved') AND promised_at >= %s", $case_id, Clock::today() );
 		if ( $is_reminder && $open_promise && empty( $ctx['promise_followup'] ) ) {
@@ -103,7 +103,7 @@ final class SendGuard {
 			$add( 'events_pending', 'transient', 'יש אירועי תשלום שטרם עובדו' );
 		}
 		if ( $is_reminder && 'recurring_failure' === $case['source_type'] && Runner::reconcile_stale() ) {
-			$add( 'reconcile_stale', 'setup', 'ההתאמה מול טרנזילה לא עדכנית — עלולים לפנות למי שכבר שילם' );
+			$add( 'reconcile_stale', 'setup', 'ההתאמה מול טרנזילה לא עדכנית, עלולים לפנות למי שכבר שילם' );
 		}
 
 		// Identity and permission.

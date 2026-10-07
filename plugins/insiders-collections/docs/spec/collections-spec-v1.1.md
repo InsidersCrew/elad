@@ -722,7 +722,7 @@ WATI עשויה לשלוח אותו אירוע שוב אם לא התקבל אי�
 12\. [Pipedrive יצירה ועדכון של פעילויות](https://developers.pipedrive.com/docs/api/v1/Activities)
 13\. [WATI מעקב אחר תבניות וסטטוס מסירה](https://support.wati.io/en/articles/11463225-how-to-track-template-message-delivery-and-message-status-using-wati-webhooks)
 14\. [Tranzila שליפת הוראות קבע קיימות](https://docs.tranzila.com/docs/payments-and-billing/sto-api-for-my-billing/getstos)
-15\. (חדש ב־1.1) [WhatsApp Business Messaging Policy — Prohibited Organizations and Restrictions on Use](https://business.whatsapp.com/policy)  
+15\. (חדש ב־1.1) [WhatsApp Business Messaging Policy: Prohibited Organizations and Restrictions on Use](https://business.whatsapp.com/policy)  
 16\. (חדש ב־1.1) [Tranzila STO API V2 והודעות My Billing](https://docs.tranzila.com/docs/payments-and-billing/sto-api-v2)  
 17\. (חדש ב־1.1) חשבונית טרנזילה 01/2026 (מסופים insiders ו־insiderstok), בדרייב של INSIDERS  
 SwiftCollect שימשה כהשראה לאופי השירות ולרעיון המעקב החברי. המימוש המוגדר כאן מותאם לנתוני INSIDERS, לטרנזילה ולמערכות התקשורת הקיימות.

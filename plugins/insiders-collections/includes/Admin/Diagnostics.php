@@ -62,7 +62,7 @@ final class Diagnostics {
 				echo "הוסיפו את השורה הבאה ל-wp-config.php, מעל השורה \"That's all, stop editing\":\n\n";
 				echo "define( 'ICOL_ENCRYPTION_KEY', 'base64:" . base64_encode( random_bytes( 32 ) ) . "' );\n\n";
 				echo "שמרו עותק של המפתח במקום בטוח (מנהל סיסמאות). בלי המפתח לא ניתן לקרוא טוקנים ומפתחות שנשמרו.\n";
-				echo "המפתח לא נשמר באתר. כל רענון של הכלי יוצר מפתח חדש — יש להשתמש רק באחד.\n";
+				echo "המפתח לא נשמר באתר. כל רענון של הכלי יוצר מפתח חדש, יש להשתמש רק באחד.\n";
 				echo \Insiders\Collections\Support\Crypto::available() ? "\nשימו לב: כבר מוגדר מפתח באתר. אין להחליף אותו.\n" : '';
 				break;
 			default:
@@ -76,7 +76,7 @@ final class Diagnostics {
 	}
 
 	private static function tools(): void {
-		echo "INSIDERS Collections — כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
+		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
 		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
@@ -112,7 +112,7 @@ final class Diagnostics {
 			$r       = Http::request( 'POST', rtrim( (string) \Insiders\Collections\Support\Settings::get( 'tranzila_api_base' ), '/' ) . '/v1/stos/get', array( 'headers' => $headers, 'body' => wp_json_encode( array( 'terminal_name' => (string) \Insiders\Collections\Support\Settings::get( 'tranzila_my_billing_terminal' ), 'sto_status' => 'active' ) ) ) );
 			echo $order . ': HTTP ' . $r['status'] . ' ' . $r['outcome'] . ' ' . mb_substr( $r['body'], 0, 200 ) . "\n";
 		}
-		echo "\nהסדר שהחזיר 200 הוא הנכון — לשמור אותו בהגדרה tranzila_hmac_order.\n";
+		echo "\nהסדר שהחזיר 200 הוא הנכון, לשמור אותו בהגדרה tranzila_hmac_order.\n";
 	}
 
 	private static function dump( $data, int $depth = 0 ): void {
@@ -121,7 +121,7 @@ final class Diagnostics {
 			return;
 		}
 		if ( ! $data ) {
-			echo str_repeat( '  ', $depth ) . "(ריק — רץ ולא נמצא דבר)\n";
+			echo str_repeat( '  ', $depth ) . "(ריק, רץ ולא נמצא דבר)\n";
 		}
 		foreach ( $data as $k => $v ) {
 			if ( is_array( $v ) ) {

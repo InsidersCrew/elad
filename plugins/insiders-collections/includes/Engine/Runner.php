@@ -192,7 +192,7 @@ final class Runner {
 		if ( ! $case || 'waiting_reply' !== $case['workflow_state'] ) {
 			return 'cancel:state_changed';
 		}
-		Workflow::transition( (int) $case['id'], 'human_review', 'שלוש פניות ללא תשובה — העברה לנציג', null, array(), 'escalation' );
+		Workflow::transition( (int) $case['id'], 'human_review', 'שלוש פניות ללא תשובה, העברה לנציג', null, array(), 'escalation' );
 		Tasks::open( 'no_reply:' . $case['id'], 'no_reply_call', array( 'case_id' => (int) $case['id'], 'customer_id' => (int) $case['customer_id'], 'reason' => 'רצף תזכורות הסתיים ללא תשובה' ) );
 		return 'escalated';
 	}
@@ -238,7 +238,7 @@ final class Runner {
 
 	private static function health(): void {
 		if ( TranzilaClient::configured() && self::reconcile_stale() ) {
-			Exceptions::open( 'reconcile_stale:' . Clock::today(), 'reconcile_stale', 'high', 'ההתאמה מול טרנזילה לא הצליחה ב־' . (int) Settings::get( 'reconcile_stale_minutes' ) . ' הדקות האחרונות — תזכורות לחיובים חוזרים מושהות' );
+			Exceptions::open( 'reconcile_stale:' . Clock::today(), 'reconcile_stale', 'high', 'ההתאמה מול טרנזילה לא הצליחה ב־' . (int) Settings::get( 'reconcile_stale_minutes' ) . ' הדקות האחרונות, תזכורות לחיובים חוזרים מושהות' );
 		}
 	}
 
