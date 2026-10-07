@@ -45,11 +45,11 @@ final class Diagnostics {
 				break;
 			case 'revenue_probe':
 				self::dump( Revenue::probe() );
-				echo "\nהשלב הבא: לבחור מפתחות למועד אחרון / חשבון נפתח / הצטרפות בהגדרות, או לחבר את מסנן icol_beginner_program_candidates (docs/revenue-dashboard-contract.md).\n";
+				echo "\nהשלב הבא: " . ( \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::available() ? 'החיבור לדשבורד ההכנסות פעיל. לבדוק ש-stale הוא false ושיש מחיר בשדה penalty_gross.' : 'תוסף דשבורד ההכנסות לא נמצא. לוודא שהוא פעיל, או לחבר את מסנן icol_beginner_program_candidates (docs/revenue-dashboard-contract.md).' ) . "\n";
 				break;
 			case 'gate':
 				self::dump( Gate::report() );
-				echo "\nהשלב הבא: " . ( Gate::owner_id() ? 'לפתוח את מסך התשלומים ולחבר את הטלפון.' : "להוסיף ל-wp-config.php את define( 'ICOL_GATE_OWNER', '" . wp_get_current_user()->user_login . "' );" ) . "\n";
+				echo "\nהשלב הבא: " . ( Gate::owner_id() ? 'לפתוח את מסך התשלומים ולחבר את הטלפון.' : 'לפתוח את מסך התשלומים, ללחוץ ״להגדיר אותי כבעלים של המערכת״ ולחבר את הטלפון.' ) . "\n";
 				break;
 			case 'revenue_candidates':
 				self::dump( Revenue::candidates() );
@@ -69,15 +69,16 @@ final class Diagnostics {
 			case 'genkey':
 				// A fresh key every time; nothing is stored. Paste it into wp-config.php once and keep a backup:
 				// losing it makes stored tokens and API keys unreadable.
-				echo "הוסיפו את השורה הבאה ל-wp-config.php, מעל השורה \"That's all, stop editing\":\n\n";
+				if ( 'file' === \Insiders\Collections\Support\Crypto::source() || 'wp-config' === \Insiders\Collections\Support\Crypto::source() ) {
+					echo 'מפתח ההצפנה כבר קיים (' . ( 'file' === \Insiders\Collections\Support\Crypto::source() ? 'נוצר אוטומטית בקובץ wp-content/' . \Insiders\Collections\Support\Crypto::KEY_FILE : 'מוגדר ב-wp-config.php' ) . "). אין צורך לעשות דבר.\n";
+					echo "אין להחליף אותו: מפתח חדש יהפוך את מה שנשמר עד עכשיו ללא קריא.\n";
+					break;
+				}
+				echo "האתר לא אפשר ליצור את קובץ המפתח אוטומטית. הוסיפו את השורה הבאה ל-wp-config.php, מעל השורה \"That's all, stop editing\":\n\n";
 				echo "define( 'ICOL_ENCRYPTION_KEY', 'base64:" . base64_encode( random_bytes( 32 ) ) . "' );\n\n";
 				echo "שמרו עותק של המפתח במקום בטוח (מנהל סיסמאות). בלי המפתח לא ניתן לקרוא טוקנים ומפתחות שנשמרו.\n";
 				echo "המפתח לא נשמר באתר. כל רענון של הכלי יוצר מפתח חדש, יש להשתמש רק באחד.\n";
-				if ( ! defined( 'ICOL_GATE_OWNER' ) ) {
-					echo "\nבאותו מקום מוסיפים גם את בעל המערכת. רק הטלפון שלו יאשר טלפונים אחרים:\n\n";
-					echo "define( 'ICOL_GATE_OWNER', '" . wp_get_current_user()->user_login . "' );\n";
-				}
-				echo \Insiders\Collections\Support\Crypto::available() ? "\nשימו לב: כבר מוגדר מפתח באתר. אין להחליף אותו.\n" : '';
+
 				break;
 			default:
 				echo "unknown tool\n";

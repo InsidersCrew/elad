@@ -1105,6 +1105,59 @@ $tests['G04'] = array( 'שער סריקה: מפתחות RSA ו-Ed25519, CBOR', f
 	try { \Insiders\Collections\Security\Cbor::decode( "\x9f\x01\xff" ); T::check( false, 'indefinite' ); } catch ( \UnexpectedValueException $e ) { T::check( true, 'indefinite lengths refused' ); }
 } );
 
+$tests['G05'] = array( 'הגדרה ראשונה בלי wp-config: בעלים מהמסך ומפתח הצפנה בקובץ', function () {
+	$G = \Insiders\Collections\Security\Gate::class;
+	if ( defined( 'ICOL_GATE_OWNER' ) ) {
+		T::check( false, 'test site must not define ICOL_GATE_OWNER (this test covers the screen route)' );
+		return;
+	}
+	\Insiders\Collections\Security\Gate::$enforce_in_cli = true;
+	try {
+		$collector = T::user( 'collector' );
+		gate_login( $collector );
+		T::eq( false, $G::state()['can_claim'], 'a staff member cannot claim ownership' );
+		try { $G::claim_owner( 'pass-collector' ); T::check( false, 'staff claim' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'forbidden', $e->error_code, 'refused for non-administrators' ); }
+		$admin = get_user_by( 'login', 'icol_wpadmin' );
+		if ( ! $admin ) {
+			$admin = get_userdata( wp_insert_user( array( 'user_login' => 'icol_wpadmin', 'user_pass' => 'admin-pass-g05', 'user_email' => 'wpadmin@example.test', 'display_name' => 'מנהל אתר', 'role' => 'administrator' ) ) );
+		}
+		wp_set_password( 'admin-pass-g05', $admin->ID );
+		$admin = get_userdata( $admin->ID );
+		gate_login( $admin->ID );
+		T::eq( true, $G::state()['can_claim'], 'an administrator sees the first-time setup' );
+		try { $G::claim_owner( 'wrong' ); T::check( false, 'wrong password' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'reauth_failed', $e->error_code, 'password required' ); }
+		$st = $G::claim_owner( 'admin-pass-g05' );
+		T::eq( array( true, $admin->ID ), array( $st['is_owner'], $G::owner_id() ), 'administrator is now the owner' );
+		try { $G::claim_owner( 'admin-pass-g05' ); T::check( false, 'second claim' ); } catch ( \Insiders\Collections\Domain\DomainError $e ) { T::eq( 'gate_owner_exists', $e->error_code, 'ownership is set once and never taken over from the screen' ); }
+		[ $key, , $status ] = gate_pair( 'admin-pass-g05' );
+		T::eq( 'active', $status, "the owner's phone is active at once" );
+		T::check( (bool) T::count( 'audit_log', "action = 'gate.owner_claimed'" ), 'audited' );
+	} finally {
+		\Insiders\Collections\Security\Gate::$enforce_in_cli = false;
+		unset( $_COOKIE[ LOGGED_IN_COOKIE ] );
+		delete_option( 'icol_gate_owner' );
+		T::as_admin();
+	}
+
+	// Encryption key without wp-config: created once, readable, never overwritten.
+	$C = \Insiders\Collections\Support\Crypto::class;
+	if ( defined( 'ICOL_ENCRYPTION_KEY' ) ) {
+		T::eq( 'wp-config', $C::source(), 'a constant, when present, is the key' );
+		T::eq( false, $C::ensure_key_file(), 'and no file is created next to it' );
+		return;
+	}
+	T::eq( 'file', $C::source(), 'without wp-config the plugin created its own key file' );
+	$path   = $C::key_path();
+	$before = (string) file_get_contents( $path );
+	T::check( $C::ensure_key_file() && $before === (string) file_get_contents( $path ), 'a second call never replaces the key' );
+	$blob = $C::encrypt( 'secret-token' );
+	$C::flush();
+	T::eq( 'secret-token', $C::decrypt( $blob ), 'what was encrypted reads back after a fresh load' );
+	T::eq( '', trim( (string) shell_exec( 'php ' . escapeshellarg( $path ) . ' 2>&1' ) ), 'opening the file outside WordPress prints nothing' );
+	preg_match( "/base64:([A-Za-z0-9+\\/=]+)/", $before, $km );
+	T::check( ! empty( $km[1] ) && ! str_contains( (string) wp_json_encode( \Insiders\Collections\Rest\Views::health() ), $km[1] ), 'the key itself is not shown on the health screen' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

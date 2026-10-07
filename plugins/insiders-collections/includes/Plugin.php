@@ -13,6 +13,7 @@ final class Plugin {
 
 	public static function activate(): void {
 		Schema::install();
+		Support\Crypto::ensure_key_file();
 		Policy::seed();
 		foreach ( Settings::PATH_SECRETS as $s ) {
 			if ( ! Settings::has_secret( $s ) ) {
@@ -42,6 +43,10 @@ final class Plugin {
 			Policy::seed();
 		}
 		Capabilities::register();
+		if ( ( is_admin() || ( defined( 'WP_CLI' ) && WP_CLI ) ) && ! Support\Crypto::available() ) {
+			// Plugin updates by upload do not run the activation hook; the first admin page load does it.
+			Support\Crypto::ensure_key_file();
+		}
 		add_filter(
 			'cron_schedules',
 			static function ( $s ) {
@@ -89,7 +94,7 @@ final class Plugin {
 			echo '<div class="notice notice-error"><p>INSIDERS Collections: גרסת הכותרת (' . esc_html( $data['Version'] ?? '' ) . ') שונה מ-ICOL_VERSION (' . esc_html( ICOL_VERSION ) . ').</p></div>';
 		}
 		if ( ! \Insiders\Collections\Support\Crypto::available() ) {
-			echo '<div class="notice notice-warning"><p>INSIDERS Collections: חסר ICOL_ENCRYPTION_KEY ב-wp-config.php. בלי מפתח לא נשמרים טוקנים ומפתחות API, ותוכן אירועים נשמר מושחר בלבד.</p></div>';
+			echo '<div class="notice notice-warning"><p>INSIDERS Collections: לא נוצר מפתח הצפנה. התיקייה wp-content לא ניתנת לכתיבה, ולכן צריך להוסיף את המפתח ל-wp-config.php בעזרת כלי האבחון genkey. עד אז לא נשמרים טוקנים ומפתחות API.</p></div>';
 		}
 	}
 }

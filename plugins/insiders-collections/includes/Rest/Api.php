@@ -283,7 +283,7 @@ final class Api {
 		foreach ( (array) $q->get_param( 'secrets' ) as $name => $value ) {
 			if ( in_array( $name, array( 'tranzila_app_key', 'tranzila_secret', 'wati_token', 'pipedrive_token', 'anthropic_api_key' ), true ) && '' !== (string) $value ) {
 				if ( ! Settings::set_secret( $name, (string) $value ) ) {
-					throw new DomainError( 'no_encryption', 'לא ניתן לשמור סוד בלי ICOL_ENCRYPTION_KEY ב-wp-config.php', 422 );
+					throw new DomainError( 'no_encryption', 'אין מפתח הצפנה, ולכן אי אפשר לשמור את המפתח. ראו את מסך הבריאות.', 422 );
 				}
 				Audit::log( 'secret.set', 'settings', 0, null, array( 'name' => $name ), '' );
 			}

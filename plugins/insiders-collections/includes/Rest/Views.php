@@ -370,6 +370,7 @@ final class Views {
 				'pipedrive' => Settings::has_secret( 'pipedrive_token' ),
 				'ai'        => Settings::has_secret( 'anthropic_api_key' ) && Classifier::sdk_available(),
 				'encryption' => Crypto::available(),
+				'encryption_key' => Crypto::source(),
 			),
 			'schema'       => Schema::verify(),
 			'version'      => ICOL_VERSION,

@@ -19,11 +19,16 @@ defined( 'ABSPATH' ) || exit;
  * icol_* capability except icol_enter (which only opens the lock screen). Any code
  * path that checks a capability is therefore covered, including ones added later.
  *
- * Root of trust: ICOL_GATE_OWNER in wp-config.php names the owner. The owner's first
- * phone is paired with the WordPress password + a code typed on the computer; every
- * other phone (other staff, or the owner's spare) needs the owner's approval from an
- * unlocked session. Lost phone: define ICOL_GATE_OFF in wp-config.php, revoke, re-pair,
- * remove the line. Server file access is already total access, so this adds no new door.
+ * Root of trust: the owner. Set once, either by ICOL_GATE_OWNER in wp-config.php or
+ * by a WordPress administrator claiming it on the lock screen with their password while
+ * no owner exists (add_option is the one atomic "first one wins" WordPress offers).
+ * The wp-config route is not stronger against administrators: an administrator can
+ * install code and read the database anyway. What the gate stops is a stolen password
+ * of anyone, and every staff member who is not an administrator.
+ * The owner's first phone is paired with the WordPress password + a code typed on the
+ * computer; every other phone needs the owner's approval from an unlocked session.
+ * Lost phone without a spare: ICOL_GATE_OFF in wp-config.php (or the host's support),
+ * revoke, re-pair, remove the line.
  *
  * Not covered, by design: webhooks, the cron endpoint, the customer pay page (machines
  * and customers), WP-CLI (server access), and icol_get_collection_summary() (totals only,
@@ -63,12 +68,46 @@ final class Gate {
 		if ( null !== self::$owner_override ) {
 			return self::$owner_override;
 		}
-		if ( ! defined( 'ICOL_GATE_OWNER' ) || '' === (string) ICOL_GATE_OWNER ) {
-			return 0;
+		if ( defined( 'ICOL_GATE_OWNER' ) && '' !== (string) ICOL_GATE_OWNER ) {
+			$v = (string) ICOL_GATE_OWNER;
+			$u = ctype_digit( $v ) ? get_userdata( (int) $v ) : ( is_email( $v ) ? get_user_by( 'email', $v ) : get_user_by( 'login', $v ) );
+			return $u ? (int) $u->ID : 0;
 		}
-		$v = (string) ICOL_GATE_OWNER;
-		$u = ctype_digit( $v ) ? get_userdata( (int) $v ) : ( is_email( $v ) ? get_user_by( 'email', $v ) : get_user_by( 'login', $v ) );
-		return $u ? (int) $u->ID : 0;
+		$id = (int) get_option( 'icol_gate_owner', 0 );
+		return $id && get_userdata( $id ) ? $id : 0;
+	}
+
+	/**
+	 * First-time setup from the lock screen: an administrator becomes the owner after
+	 * typing their WordPress password. Only while nobody owns the system; never changes
+	 * an existing owner. The site's admin email hears about it.
+	 */
+	public static function claim_owner( string $password ): array {
+		$user = wp_get_current_user();
+		if ( self::owner_id() ) {
+			throw new DomainError( 'gate_owner_exists', 'כבר נקבע בעל מערכת', 409 );
+		}
+		if ( defined( 'ICOL_GATE_OWNER' ) && '' !== (string) ICOL_GATE_OWNER ) {
+			// The file decides when it says something; a name there that matches no user is fixed there.
+			throw new DomainError( 'gate_owner_config', 'ב-wp-config.php מוגדר בעל מערכת שלא קיים באתר (ICOL_GATE_OWNER). יש לתקן או למחוק את השורה.', 409 );
+		}
+		if ( ! user_can( $user, 'manage_options' ) ) {
+			throw new DomainError( 'forbidden', 'רק מנהל של האתר יכול לקבוע את בעל המערכת', 403 );
+		}
+		if ( ! wp_check_password( $password, $user->user_pass, $user->ID ) ) {
+			Audit::log( 'gate.claim_password_failed', 'user', $user->ID, null, null, '' );
+			throw new DomainError( 'reauth_failed', 'הסיסמה שגויה', 401, array( 'password' => 'שגויה' ) );
+		}
+		if ( ! add_option( 'icol_gate_owner', (int) $user->ID, '', false ) ) {
+			throw new DomainError( 'gate_owner_exists', 'כבר נקבע בעל מערכת', 409 );
+		}
+		self::flush();
+		Audit::log( 'gate.owner_claimed', 'user', $user->ID, null, array( 'login' => $user->user_login ), '' );
+		$body = $user->display_name . ' (' . $user->user_login . ") נקבע כבעל מערכת התשלומים.\nרק הטלפון של בעל המערכת מאשר טלפונים של אחרים.\nאם זה לא אמור היה לקרות, יש לפנות למפתח מיד.";
+		foreach ( array_unique( array_filter( array( (string) get_option( 'admin_email' ), $user->user_email ) ) ) as $to ) {
+			wp_mail( $to, '[INSIDERS תשלומים] נקבע בעל מערכת', $body );
+		}
+		return self::state();
 	}
 
 	public static function is_owner( ?int $user_id = null ): bool {
@@ -158,6 +197,7 @@ final class Gate {
 			'unlocked'         => self::unlocked(),
 			'secure'           => WebAuthn::secure_context(),
 			'owner_configured' => $owner > 0,
+			'can_claim'        => 0 === $owner && current_user_can( 'manage_options' ),
 			'is_owner'         => $is_own,
 			'owner_name'       => $owner ? (string) get_userdata( $owner )->display_name : '',
 			'active_devices'   => $active,
@@ -651,7 +691,7 @@ final class Gate {
 		return array(
 			'enforced'        => self::enforced(),
 			'off'             => self::off(),
-			'owner'           => self::owner_id() ? get_userdata( self::owner_id() )->user_login : 'לא הוגדר (ICOL_GATE_OWNER)',
+			'owner'           => self::owner_id() ? get_userdata( self::owner_id() )->user_login . ( defined( 'ICOL_GATE_OWNER' ) ? ' (wp-config)' : ' (נקבע מהמסך)' ) : 'עוד לא נקבע. נקבע במסך התשלומים, בכפתור ״להגדיר אותי כבעלים של המערכת״',
 			'rp_id'           => WebAuthn::rp_id(),
 			'origins'         => WebAuthn::origins(),
 			'secure_context'  => WebAuthn::secure_context(),

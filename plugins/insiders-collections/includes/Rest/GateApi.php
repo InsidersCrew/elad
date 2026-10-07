@@ -43,6 +43,7 @@ final class GateApi {
 		$route( 'GET', '/gate/state', $desk, static fn() => Gate::state() );
 		$route( 'POST', '/gate/unlock', $desk, static fn() => Gate::start_unlock() );
 		$route( 'GET', "/gate/unlock/$cid", $desk, static fn( $q ) => Gate::poll( (string) $q['cid'] ) );
+		$route( 'POST', '/gate/owner', $desk, static fn( $q ) => Gate::claim_owner( (string) $q->get_param( 'password' ) ) );
 		$route( 'POST', '/gate/pair', $desk, static fn( $q ) => Gate::start_pair( (string) $q->get_param( 'password' ) ) );
 		$route( 'POST', "/gate/pair/$cid/confirm", $desk, static fn( $q ) => Gate::confirm_pair( (string) $q['cid'], (string) $q->get_param( 'code' ) ) );
 		$route( 'GET', "/gate/pair/$cid", $desk, static fn( $q ) => Gate::poll( (string) $q['cid'] ) );

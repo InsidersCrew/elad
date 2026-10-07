@@ -174,9 +174,10 @@
 		}
 
 		function begin() {
-			if (opts.needsPassword) { stepPassword(); return; }
+			if (opts.needsPassword && !opts.password) { stepPassword(); return; }
 			clear(container);
-			req('POST', '/gate/pair', {}).then(stepQr).catch(function (e) { clear(container); add(container, err(e.message)); });
+			req('POST', '/gate/pair', { password: opts.password || '' }).then(stepQr).catch(function (e) { clear(container); add(container, err(e.message)); });
+			opts.password = null; // used once, not kept in memory for a restart
 		}
 		begin();
 		return { stop: stop };
@@ -200,15 +201,31 @@
 			return;
 		}
 		if (!s.owner_configured) {
-			if (s.can_admin_wp) {
-				add(body, h('div', { class: 'icol-gate-note' },
-					h('p', { text: 'לפני השימוש הראשון צריך לקבוע מי בעל המערכת. רק הטלפון של בעל המערכת יכול לאשר טלפונים נוספים.' }),
-					h('p', { text: 'מוסיפים ל-wp-config.php, מעל השורה "That\'s all, stop editing", את השורה:' }),
-					h('pre', { class: 'icol-gate-pre', dir: 'ltr', text: "define( 'ICOL_GATE_OWNER', '" + s.login + "' );" }),
-					h('p', { class: 'hint', text: 'שם המשתמש שמופיע כאן הוא שלך. אחרי השמירה מרעננים את העמוד.' })
+			if (s.can_claim) {
+				var pw = h('input', { type: 'password', autocomplete: 'current-password', id: 'icol-gate-claim-pw' });
+				var box = h('div', {});
+				var go = function () {
+					clear(box);
+					var pass = pw.value;
+					req('POST', '/gate/owner', { password: pass }).then(function () {
+						clear(body);
+						add(body, h('h2', { class: 'icol-gate-h2', text: 'חיבור הטלפון' }));
+						var slot = h('div', {});
+						add(body, slot);
+						pairPanel(slot, { needsPassword: true, password: pass }, function (r) { if (r.status === 'active') { location.reload(); } });
+					}).catch(function (e) { add(box, h('div', { class: 'icol-gate-err', text: e.message })); });
+				};
+				add(body, h('div', { class: 'icol-form icol-gate-narrow' },
+					h('h2', { class: 'icol-gate-h2', text: 'הגדרה ראשונה' }),
+					h('p', { class: 'hint', text: 'בעל המערכת הוא מי שמאשר טלפונים של אנשי צוות. בשלב הבא מחברים את הטלפון שלך: סורקים קוד במצלמה ומאשרים בזיהוי פנים או בטביעת אצבע.' }),
+					h('div', { class: 'icol-field' }, h('label', { for: 'icol-gate-claim-pw', text: 'סיסמת וורדפרס' }), pw),
+					box,
+					h('div', {}, h('button', { class: 'icol-btn primary', text: 'להגדיר אותי כבעלים של המערכת', onclick: go }))
 				));
+				pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { go(); } });
+				pw.focus();
 			} else {
-				add(body, h('div', { class: 'icol-gate-note', text: 'המערכת עוד לא הוגדרה. יש לפנות למנהל.' }));
+				add(body, h('div', { class: 'icol-gate-note', text: 'המערכת עוד לא הוגדרה. בעל האתר צריך להיכנס למסך הזה ולקבוע את בעל המערכת.' }));
 			}
 			return;
 		}
