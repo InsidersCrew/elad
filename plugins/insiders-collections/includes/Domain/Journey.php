@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
  *
  * A student who signed and has not opened an account enters a "commitment" phase
  * case: no debt exists yet, only a deadline. Messages are anchored to that
- * deadline (T-45, 30, 14, 7, 3 and the day itself), not to a cadence. Three tracks:
+ * deadline (T-45, 30, 7 and the day itself; 14 and 3 were dropped by INSIDERS on 2026-10-10 as too many), not to a cadence. Three tracks:
  *  - reach:    the procedure's flow, with three quick-reply buttons;
  *  - declined: the student said they will not open (button, or the dedicated lost
  *              reason on the Pipedrive deal). No more account nudges; the payment
@@ -39,9 +39,7 @@ final class Journey {
 	public const REACH = array(
 		'j_intro' => 45,
 		'j_t30'   => 30,
-		'j_t14'   => 14,
 		'j_t7'    => 7,
-		'j_t3'    => 3,
 		'j_t0'    => 0,
 	);
 
@@ -54,9 +52,7 @@ final class Journey {
 	public const STEP_LABELS = array(
 		'j_intro' => 'פתיחה (45 יום לפני)',
 		'j_t30'   => '30 יום לפני',
-		'j_t14'   => 'שבועיים לפני',
 		'j_t7'    => 'שבוע לפני',
-		'j_t3'    => '3 ימים לפני',
 		'j_t0'    => 'יום המועד',
 		'd_link'  => 'פרטי תשלום למי שסירב',
 		'd_t0'    => 'יום המועד, מי שסירב',

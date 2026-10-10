@@ -1247,22 +1247,16 @@ $tests['P01'] = array( 'ליווי לפני המועד: כניסה מהדשבו�
 	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'j_intro'" );
 	T::check( str_contains( $m['body'], '30/10/2026' ) && str_contains( $m['body'], 'היי נועם' ) && in_array( $m['delivery_state'], array( 'queued', 'accepted', 'sent' ), true ), 'deadline and first name in the text, handed to WATI' );
 	$p = pending_journey( (int) $case['id'] );
-	T::eq( array( 'j_t14', '2026-10-15 09:00' ), array( $p['step'], $p['local'] ), 'T-30 already passed; T-14 falls on Friday and moves back to Thursday' );
+	T::eq( array( 'j_t7', '2026-10-22 09:00' ), array( $p['step'], $p['local'] ), 'T-30 already passed, 14 and 3 days are not steps; T-7 falls on Friday and moves back to Thursday' );
 
-	pday( '2026-10-15', '09:05' );
-	T::tick();
-	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'j_t14'" );
-	T::check( $m && str_contains( $m['body'], '880 ₪ (980 ₪ פחות 100 ₪ דמי הרישום ששולמו)' ), 'the amount: price by signing date minus the registration fee' );
-	T::eq( 'j_t7', pending_journey( (int) $case['id'] )['step'], 'next: a week before' );
 	pday( '2026-10-22', '09:05' );
 	T::tick();
-	T::eq( '2026-10-27 09:00', pending_journey( (int) $case['id'] )['local'], 'T-3 on Tuesday' );
-	pday( '2026-10-27', '09:05' );
-	T::tick();
-	T::eq( array( 'j_t0', '2026-10-29 09:06' ), array( pending_journey( (int) $case['id'] )['step'], pending_journey( (int) $case['id'] )['local'] ), 'deadline day on Friday: Thursday, 48 hours after T-3, never after the deadline' );
+	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'j_t7'" );
+	T::check( $m && str_contains( $m['body'], '880 ₪ (980 ₪ פחות 100 ₪ דמי הרישום ששולמו)' ), 'the amount: price by signing date minus the registration fee' );
+	T::eq( array( 'j_t0', '2026-10-29 09:00' ), array( pending_journey( (int) $case['id'] )['step'], pending_journey( (int) $case['id'] )['local'] ), 'deadline day on Friday: Thursday, never after the deadline' );
 	pday( '2026-10-29', '09:10' );
 	T::tick();
-	T::eq( array( 'j_intro', 'j_t14', 'j_t7', 'j_t3', 'j_t0' ), sent_templates( (int) $cust['id'] ), 'the whole sequence, one message per step, none on the same day' );
+	T::eq( array( 'j_intro', 'j_t7', 'j_t0' ), sent_templates( (int) $cust['id'] ), 'the whole sequence: four steps at most, three for a late joiner, none on the same day' );
 	T::eq( null, pending_journey( (int) $case['id'] ), 'nothing more before the deadline' );
 	T::eq( 'await_approval', Workflow::get( (int) $case['id'] )['next_action_type'], 'the case waits for the approval' );
 
