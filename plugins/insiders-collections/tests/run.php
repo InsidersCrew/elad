@@ -1554,6 +1554,8 @@ $tests['P09'] = array( 'תבניות: כללי מטא (לא מתחילות ול�
 	T::eq( 'stuck', $I::classify( 'ניסיתי אבל החשבון לא נפתח, זה תקוע', 'text' )['intent'], '"the account did not open" is an opening in trouble' );
 	T::check( 'declines_open' !== $I::classify( 'החשבון לא נפתח לי', 'text' )['intent'], '"did not open" is not a refusal' );
 	T::eq( array( 'declines_open', 'button' ), array_values( array_intersect_key( $I::classify( 'לא אפתח חשבון', 'button' ), array_flip( array( 'intent', 'source' ) ) ) ), 'the button is a decision' );
+	T::eq( array( 'wants_to_open', 'declines_open', 'question', null ), array( $I::classify( 'אני רוצה לפתוח חשבון עכשיו', 'button' )['intent'], $I::classify( 'לא, לא אפתח', 'button' )['intent'], $I::classify( 'יש לי שאלה קטנה', 'button' )['intent'], Journey::button_intent( 'תודה' ) ), 'a reworded button is matched by its key words' );
+	T::eq( array( 2, 3 ), array( count( Templates::defaults()['j_intro']['buttons'] ), count( Templates::defaults()['j_t30']['buttons'] ) ), 'the opening message has two buttons, the later ones three' );
 	$c = T::customer( array( 'first_name' => 'ד.', 'first_name_reliable' => false ) );
 	[ , $case ] = program_case( array( 'customer_id' => $c ) );
 	$vars = Messaging::variables( Workflow::get( $case ), null );

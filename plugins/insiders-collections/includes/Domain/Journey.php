@@ -31,7 +31,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class Journey {
 
-	public const BTN_OPEN     = 'רוצה לפתוח חשבון';
+	public const BTN_OPEN     = 'אני רוצה לפתוח חשבון';
 	public const BTN_QUESTION = 'יש לי שאלה';
 	public const BTN_DECLINE  = 'לא אפתח חשבון';
 
@@ -706,11 +706,27 @@ final class Journey {
 
 	/** Quick-reply buttons arrive as their exact title; matched before any free-text rule. */
 	public static function button_intent( string $text ): ?string {
-		return array(
+		$text  = trim( $text );
+		$exact = array(
 			self::BTN_OPEN     => 'wants_to_open',
 			self::BTN_QUESTION => 'question',
 			self::BTN_DECLINE  => 'declines_open',
-		)[ trim( $text ) ] ?? null;
+		)[ $text ] ?? null;
+		if ( $exact ) {
+			return $exact;
+		}
+		// Only button presses reach here (Intents::classify), so the wording may drift from the
+		// constants when the templates are edited in WATI; the key words decide.
+		if ( preg_match( '/לא\s+(אפתח|נפתח|רוצה|מתכוו|מעוניי)/u', $text ) ) {
+			return 'declines_open';
+		}
+		if ( preg_match( '/לפתוח|פתיחת|פתיחה/u', $text ) ) {
+			return 'wants_to_open';
+		}
+		if ( preg_match( '/שאלה|עזרה|לא ברור|להתייעץ/u', $text ) ) {
+			return 'question';
+		}
+		return null;
 	}
 
 	/**
