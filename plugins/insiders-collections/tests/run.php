@@ -1566,6 +1566,85 @@ $tests['P09'] = array( 'תבניות: כללי מטא (לא מתחילות ול�
 	T::eq( 'לך', $vars['name'], 'an unreliable first name becomes "היי לך", never an empty variable' );
 } );
 
+$tests['P10'] = array( 'דאבל צ׳ק: מתג כבוי, דשבורד לא עדכני, אותו תלמיד מטרנזילה, ייבוא כשפייפדרייב נופל, סימון כפול, זיכוי של תיק אחד בלבד', function () {
+	global $wpdb;
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	// A student who already exists from a failed charge, without a Pipedrive id, is the same customer.
+	$existing = T::customer( array( 'full_name' => 'נועם 671', 'phone' => student_phone( 671 ), 'email' => 'old@example.test', 'pipedrive_person_id' => null ) );
+	ifd_student( 671, 9671, '2026-08-01' );
+	ifd_student( 672, 9672, '2026-08-02' );
+	Journey::sync();
+	$case = student_case( 671 );
+	T::eq( array( $existing, 1 ), array( (int) $case['customer_id'], T::count( 'customers', 'phone_e164 = %s', '+972500000671' ) ), 'linked to the existing customer by phone, no second record' );
+	T::eq( 671, (int) Customers::get( $existing )['pipedrive_person_id'], 'and the Pipedrive person is attached to it' );
+
+	// The switch off: nothing is sent or planned, but a student who opened still leaves.
+	Settings::set( array( 'journey_enabled' => 0 ) );
+	$c2 = student_case( 672 );
+	$pending_before = pending_journey( (int) $c2['id'] );
+	T::tick();
+	T::eq( array( array(), array() ), array( sent_templates( (int) $case['customer_id'] ), sent_templates( (int) $c2['customer_id'] ) ), 'the switch off: no message goes out' );
+	T::eq( 'cancelled', Db::value( 'SELECT state FROM ' . Db::t( 'scheduled_actions' ) . ' WHERE id = %d', (int) $pending_before['id'] ), 'a step planned before the switch was turned off is cancelled, not sent' );
+	$wpdb->update( FinanceDashboard::table( 'commitments' ), array( 'resolved_at' => '2026-10-11', 'resolution_kind' => 'attributed' ), array( 'deal_id' => 9672 ) );
+	ifd_fresh();
+	Journey::sync();
+	T::eq( 'closed', Workflow::get( (int) $c2['id'] )['workflow_state'], 'an account opened while the switch is off still closes the case' );
+	T::eq( null, pending_journey( (int) $case['id'] ), 'nothing planned while off' );
+	Settings::set( array( 'journey_enabled' => 1 ) );
+	Journey::sync();
+	T::eq( 'j_intro', pending_journey( (int) $case['id'] )['step'] ?? null, 'switched on again: the next step is planned' );
+
+	// A stale dashboard holds the sends and the hourly run replans once it is fresh again.
+	$wpdb->update( FinanceDashboard::table( 'snapshots' ), array( 'ok_at' => gmdate( 'Y-m-d H:i:s', Clock::now() - 40 * HOUR_IN_SECONDS ) ), array( 'source_key' => 'pipedrive_deals' ) );
+	FinanceDashboard::flush();
+	T::tick();
+	T::eq( array(), sent_templates( (int) $case['customer_id'] ), 'stale dashboard: the message is held' );
+	T::eq( 'cancel:ifd_stale', Db::value( 'SELECT result FROM ' . Db::t( 'scheduled_actions' ) . " WHERE case_id = %d AND type = 'send_journey' ORDER BY id DESC LIMIT 1", (int) $case['id'] ), 'with the reason recorded' );
+	ifd_fresh();
+	Journey::sync(); // the hourly run, which replans what the stale dashboard held
+	T::tick();
+	T::eq( array( 'j_intro' ), sent_templates( (int) $case['customer_id'] ), 'fresh again: sent on the next run' );
+
+	// Typed words are not a button.
+	T::inbound( Journey::BTN_DECLINE, '972500000671' );
+	T::tick();
+	$case = Workflow::get( (int) $case['id'] );
+	T::eq( array( 'reach', 'human_review' ), array( $case['track'], $case['workflow_state'] ), 'the button title typed by hand goes to a person' );
+	$res = T::api( 'POST', '/cases/' . $case['id'] . '/decline', array( 'note' => 'אישר בטלפון' ) );
+	T::eq( array( 200, 'declined' ), array( $res->get_status(), Workflow::get( (int) $case['id'] )['track'] ), 'the rep marks it' );
+	$res = T::api( 'POST', '/cases/' . $case['id'] . '/decline', array( 'note' => 'שוב' ) );
+	T::eq( 409, $res->get_status(), 'marking twice is reported, not silently accepted' );
+
+	// Pipedrive down during an import is an error, not "deal not found".
+	T::$fail_next['/api/v2/deals'] = '500';
+	T::as( 'collector' );
+	try {
+		ProgramCharges::import( "9801\t10/06/2026", false );
+		T::check( false, 'import with Pipedrive down' );
+	} catch ( \Insiders\Collections\Domain\DomainError $e ) {
+		T::eq( 'pipedrive_failed', $e->error_code, 'import with Pipedrive down is refused with the real cause' );
+	}
+	T::as_admin();
+
+	// A credit reverses only what this case received.
+	$wpdb->insert( FinanceDashboard::table( 'product_map' ), array( 'product_id' => 500, 'category_id' => 1, 'resolves_commitment' => 1, 'attributable' => 1, 'is_penalty' => 0 ) );
+	$c = T::customer( array( 'phone' => '050-7770681', 'email' => 'c681@example.test', 'pipedrive_person_id' => 681 ) );
+	[ , $prog ] = program_case( array( 'customer_id' => $c, 'payload' => array( 'agreement' => array( 'reference' => 'AGR-681', 'document_ref' => 'drive://a', 'joined_at' => '2026-07-01', 'account_open_deadline' => '2026-09-30', 'pipedrive_deal_id' => 9681 ) ) ) );
+	T::as( 'collector' );
+	$other = Cases::create_draft( array( 'customer_id' => $c, 'source_type' => 'other', 'entry_mode' => 'new', 'currency' => 'ILS', 'approval_basis' => 'x', 'debt_items' => array( array( 'amount' => '300', 'due_at' => '2026-10-01', 'description' => 'סדנה' ) ) ) );
+	Cases::approve_items( (int) $other['case_id'], 'אושר' );
+	$prog_item  = (int) Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d', $prog );
+	$other_item = (int) Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d', (int) $other['case_id'] );
+	Payments::manual_verification( array( 'customer_id' => $c, 'amount' => '1280', 'method' => 'bank_transfer', 'evidence_ref' => 'B-681', 'allocations' => array( array( 'debt_item_id' => $prog_item, 'amount' => '980' ), array( 'debt_item_id' => $other_item, 'amount' => '300' ) ) ) );
+	ProgramCharges::record_credit( $prog, 'TZ-681', '' );
+	T::as_admin();
+	T::eq( array( 'cancelled', 'settled', 'verified' ), array( Db::value( 'SELECT finance_state FROM ' . Db::t( 'debt_items' ) . ' WHERE id = %d', $prog_item ), Db::value( 'SELECT finance_state FROM ' . Db::t( 'debt_items' ) . ' WHERE id = %d', $other_item ), Db::value( 'SELECT status FROM ' . Db::t( 'payments' ) . ' WHERE customer_id = %d', $c ) ), 'the program charge is credited, the other case and the payment itself are untouched' );
+	T::check( str_contains( (string) Db::value( 'SELECT reason FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', 'crm_credit:' . $prog ), '980' ), 'the CRM task names the credited amount, not the whole payment' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

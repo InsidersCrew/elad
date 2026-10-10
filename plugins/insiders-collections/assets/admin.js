@@ -941,7 +941,7 @@
 	}
 	function programImport(body) {
 		clear(body);
-		var ST = { new: ['ייכנס לליווי', 'ok'], exists: ['כבר יש תיק', ''], opened: ['פתח חשבון לפי הדשבורד', 'info'], invalid: ['לא תקין', 'bad'] };
+		var ST = { new: ['ייכנס לליווי', 'ok'], queued: ['כבר ממתין לכניסה', ''], exists: ['כבר יש תיק', ''], opened: ['פתח חשבון לפי הדשבורד', 'info'], invalid: ['לא תקין', 'bad'] };
 		var ta = field('text', 'שורות מאקסל', 'textarea', { rows: 10, wide: true, placeholder: 'מספר דיל\tתאריך הסכם\tטלפון\tשם\n12345\t15/06/2026\t050-1234567\tמאיה לוי' });
 		var out = h('div', { style: 'margin-top:12px' });
 		var run = function (commit) {

@@ -56,7 +56,9 @@ final class ProgramCharges {
 			if ( ! $quote ) {
 				$block[] = 'אין מחירון תקף בהגדרות';
 			}
-			if ( $r['pipedrive_deal_id'] && $ifd && $ifd['stale'] ) {
+			if ( null === $ifd ) {
+				$block[] = 'דשבורד ההכנסות לא זמין, אי אפשר לבדוק שהתלמיד לא פתח חשבון';
+			} elseif ( $ifd['stale'] ) {
 				$block[] = 'דשבורד ההכנסות לא עדכני, אי אפשר לדעת שהתלמיד לא פתח חשבון';
 			}
 			if ( 'late' === $r['track'] ) {
@@ -143,19 +145,30 @@ final class ProgramCharges {
 				$skip[] = array( 'case_id' => $id, 'reason' => 'לפי דשבורד ההכנסות התלמיד כבר פתח חשבון או שילם' );
 				continue;
 			}
-			Db::transaction(
-				function () use ( $id, $q, $basis ) {
-					$desc = $q['before_deadline'] ? 'תוכנית הליווי למתחילים · הודיע שלא ייפתח חשבון' : 'תוכנית הליווי למתחילים · לא נפתח חשבון עד ' . $q['deadline_he'];
-					$item = Cases::insert_item( $id, array( 'amount_minor' => (int) $q['amount_minor'], 'due_at' => Clock::today(), 'description' => $desc, 'evidence_ref' => $q['deal_id'] ? 'pipedrive:deal:' . $q['deal_id'] : '' ), 'ILS', false, $basis, 'program:' . $id );
-					Db::update( 'debt_items', array( 'approved_by' => get_current_user_id(), 'approved_at' => Clock::utc() ), array( 'id' => $item ) );
-					Ledger::recompute( $item );
-					Audit::log( 'program_charge.approve', 'case', $id, null, array( 'item' => $item, 'amount' => (int) $q['amount_minor'], 'track' => $q['track'] ), $basis );
+			if ( $cust['pipedrive_person_id'] && $q['signed_at'] && $q['signed_at'] < FinanceDashboard::baseline() && FinanceDashboard::opened_since( array( (int) $cust['pipedrive_person_id'] ), (string) $q['signed_at'] ) ) {
+				$skip[] = array( 'case_id' => $id, 'reason' => 'לפי ספר התנועות של הדשבורד התלמיד פתח חשבון אחרי ההסכם' );
+				continue;
+			}
+			try {
+				Db::transaction(
+					function () use ( $id, $q, $basis ) {
+						// The description reaches the student ("התשלום עבור ..."); the reason stays in the basis.
+						$why  = $q['before_deadline'] ? 'התלמיד הודיע שלא יפתח חשבון' : 'לא נפתח חשבון עד ' . $q['deadline_he'];
+						$item = Cases::insert_item( $id, array( 'amount_minor' => (int) $q['amount_minor'], 'due_at' => Clock::today(), 'description' => 'תוכנית הליווי למתחילים', 'evidence_ref' => $q['deal_id'] ? 'pipedrive:deal:' . $q['deal_id'] : '' ), 'ILS', false, $why . '. ' . $basis, 'program:' . $id );
+						Db::update( 'debt_items', array( 'approved_by' => get_current_user_id(), 'approved_at' => Clock::utc() ), array( 'id' => $item ) );
+						Ledger::recompute( $item );
+						Audit::log( 'program_charge.approve', 'case', $id, null, array( 'item' => $item, 'amount' => (int) $q['amount_minor'], 'track' => $q['track'] ), $why . '. ' . $basis );
+					}
+				);
+				if ( $q['before_deadline'] ) {
+					Journey::plan_next( $id ); // declined before the deadline: the payment details, then the deadline day
+				} else {
+					Journey::to_charge( $id );
 				}
-			);
-			if ( $q['before_deadline'] ) {
-				Journey::plan_next( $id ); // declined before the deadline: the payment details, then the deadline day
-			} else {
-				Journey::to_charge( $id );
+			} catch ( \Throwable $e ) {
+				// One student's failure never hides the others: the list reports it and goes on.
+				$skip[] = array( 'case_id' => $id, 'reason' => 'שגיאה: ' . $e->getMessage() );
+				continue;
 			}
 			$done[] = $id;
 		}
@@ -224,18 +237,25 @@ final class ProgramCharges {
 		if ( ! $case || 'non_open_charge' !== $case['source_type'] ) {
 			throw new DomainError( 'not_found', 'התיק לא נמצא או שאינו של התוכנית למתחילים', 404 );
 		}
-		$payments = Db::rows( 'SELECT DISTINCT a.payment_id FROM ' . Db::t( 'allocations' ) . ' a JOIN ' . Db::t( 'debt_items' ) . ' d ON d.id = a.debt_item_id WHERE d.case_id = %d AND a.amount_minor > 0 AND a.reversal_of IS NULL AND NOT EXISTS (SELECT 1 FROM ' . Db::t( 'allocations' ) . ' r WHERE r.reversal_of = a.id)', $case_id );
-		if ( ! $payments ) {
+		// Only this case's allocations: a payment that also settled another case of the student keeps that part.
+		$allocs = Db::rows( 'SELECT a.id, a.payment_id, a.amount_minor FROM ' . Db::t( 'allocations' ) . ' a JOIN ' . Db::t( 'debt_items' ) . ' d ON d.id = a.debt_item_id WHERE d.case_id = %d AND a.amount_minor > 0 AND a.reversal_of IS NULL AND NOT EXISTS (SELECT 1 FROM ' . Db::t( 'allocations' ) . ' r WHERE r.reversal_of = a.id)', $case_id );
+		if ( ! $allocs ) {
 			throw new DomainError( 'nothing_to_credit', 'אין בתיק תשלום שאפשר לזכות', 422 );
 		}
 		$reason = 'זיכוי לפי תנאי התוכנית: נפתח חשבון בתוך חלון הזיכוי' . ( '' !== trim( $note ) ? ' · ' . $note : '' );
 		$total  = 0;
 		Db::transaction(
-			function () use ( $case_id, $payments, $reason, $evidence_ref, &$total ) {
-				foreach ( $payments as $p ) {
-					$total += (int) Db::value( 'SELECT amount_minor FROM ' . Db::t( 'payments' ) . ' WHERE id = %d', (int) $p['payment_id'] );
-					Payments::reverse( (int) $p['payment_id'], 'refund', $reason . ' (' . $evidence_ref . ')' );
-					Exceptions::resolve_by_key( 'reversal:' . $p['payment_id'], 'זיכוי מתוכנן לפי תנאי התוכנית' );
+			function () use ( $case_id, $allocs, $reason, $evidence_ref, &$total ) {
+				foreach ( $allocs as $a ) {
+					$total += (int) $a['amount_minor'];
+					Ledger::reverse_allocation( (int) $a['id'], 'זיכוי: ' . $reason . ' (' . $evidence_ref . ')', false );
+				}
+				foreach ( array_unique( array_column( $allocs, 'payment_id' ) ) as $pid ) {
+					// The payment is refunded as a whole only when nothing of it remains allocated anywhere.
+					$left = (int) Db::value( 'SELECT COALESCE(SUM(amount_minor),0) FROM ' . Db::t( 'allocations' ) . ' WHERE payment_id = %d', (int) $pid );
+					if ( $left <= 0 ) {
+						Db::update( 'payments', array( 'status' => 'refunded' ), array( 'id' => (int) $pid ) );
+					}
 				}
 				foreach ( Db::rows( 'SELECT id FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d', $case_id ) as $it ) {
 					Ledger::clear_review( (int) $it['id'], 'זיכוי לפי תנאי התוכנית' );
@@ -354,7 +374,10 @@ final class ProgramCharges {
 			if ( ! Pipedrive::configured() ) {
 				throw new DomainError( 'pipedrive_required', 'כדי לייבא צריך חיבור לפייפדרייב (טוקן במסך החיבורים)', 422 );
 			}
-			$res   = Pipedrive::deals( $ids );
+			$res = Pipedrive::deals( $ids );
+			if ( ! $res['ok'] ) {
+				throw new DomainError( 'pipedrive_failed', 'פייפדרייב לא החזיר את הדילים: ' . ( $res['error'] ?: 'שגיאה לא ידועה' ) . '. לבדוק את הטוקן במסך החיבורים ולנסות שוב.', 502 );
+			}
 			$deals = $res['deals'];
 		}
 		$label = Pipedrive::label_id( (string) Settings::get( 'no_registration_label' ) );
@@ -373,6 +396,9 @@ final class ProgramCharges {
 			$r['status'] = $r['errors'] ? 'invalid' : 'new';
 			if ( 'new' === $r['status'] && Db::value( 'SELECT c.id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE a.pipedrive_deal_id = %d AND c.workflow_state <> 'closed'", $r['deal_id'] ) ) {
 				$r['status'] = 'exists';
+			}
+			if ( 'new' === $r['status'] && $r['person_id'] && Db::value( 'SELECT id FROM ' . Db::t( 'program_candidates' ) . ' WHERE candidate_key = %s', 'pd' . $r['person_id'] . ':' . $r['deal_id'] ) ) {
+				$r['status'] = 'queued'; // imported or found before, waiting for (or past) enrolment
 			}
 			if ( 'new' === $r['status'] && $r['person_id'] && $r['signed'] && FinanceDashboard::opened_since( array( (int) $r['person_id'] ), $r['signed'] ) ) {
 				$r['status'] = 'opened';

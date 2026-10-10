@@ -390,7 +390,7 @@ final class Messaging {
 			// Another owner (onboarding agent / human) holds the conversation: record only.
 			return array( 'message_id' => $message_id, 'intent' => 'not_owner', 'cases' => count( $cases ) );
 		}
-		$intent = Intents::classify( (string) ( $msg['text'] ?? '' ), (string) ( $msg['type'] ?? 'text' ) );
+		$intent = Intents::classify( (string) ( $msg['text'] ?? '' ), (string) ( $msg['type'] ?? 'text' ), ! empty( $msg['button'] ) );
 		Db::update( 'messages', array( 'intent' => $intent['intent'], 'intent_source' => $intent['source'] ), array( 'id' => $message_id ) );
 		if ( $cases ) {
 			Db::update( 'messages', array( 'case_id' => (int) $cases[0]['id'] ), array( 'id' => $message_id ) );

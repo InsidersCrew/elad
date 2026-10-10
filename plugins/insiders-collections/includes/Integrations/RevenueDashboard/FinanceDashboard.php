@@ -229,7 +229,7 @@ final class FinanceDashboard {
 		);
 		$out = array();
 		foreach ( (array) $rows as $r ) {
-			$out[ (int) $r['person_id'] ] = (string) $r['first_at'];
+			$out[ (int) $r['person_id'] ] = substr( (string) $r['first_at'], 0, 10 );
 		}
 		return $out;
 	}

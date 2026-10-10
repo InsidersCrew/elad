@@ -48,7 +48,7 @@ final class Runner {
 			$r['inbox']   = self::job( 'inbox', static fn() => Inbox::process( 50 ) );
 			$r['actions'] = self::job( 'actions', static fn() => self::run_actions( 50 ) );
 			$r['outbox']  = self::job( 'outbox', static fn() => Outbox::process( 50 ) );
-			if ( \Insiders\Collections\Domain\Journey::enabled() && self::due( 'journey', HOUR_IN_SECONDS ) ) {
+			if ( \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::available() && self::due( 'journey', HOUR_IN_SECONDS ) ) {
 				$r['journey'] = self::job( 'journey', static fn() => \Insiders\Collections\Domain\Journey::sync() );
 			}
 			if ( TranzilaClient::configured() && self::due( 'reconcile', 15 * MINUTE_IN_SECONDS ) ) {

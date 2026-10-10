@@ -115,6 +115,7 @@ final class Processor {
 				'provider_id' => (string) ( $p['whatsappMessageId'] ?? $p['id'] ?? '' ) ?: null,
 				'text'        => (string) ( $p['text'] ?? ( $p['buttonReply']['text'] ?? '' ) ),
 				'type'        => (string) ( $p['type'] ?? 'text' ),
+				'button'      => ! empty( $p['buttonReply'] ) || ! empty( $p['interactiveButtonReply'] ), // a quick-reply press, whatever 'type' says
 				'occurred_at' => $ts,
 			)
 		);

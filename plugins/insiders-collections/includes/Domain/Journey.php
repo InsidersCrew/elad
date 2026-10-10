@@ -79,31 +79,47 @@ final class Journey {
 	 * A stale finance dashboard enrolls nobody and closes nobody.
 	 */
 	public static function sync(): array {
-		if ( ! self::enabled() ) {
-			return array( 'enabled' => false );
-		}
 		if ( ! FinanceDashboard::available() ) {
-			return array( 'enabled' => true, 'error' => 'finance_dashboard_missing' );
+			return array( 'enabled' => self::enabled(), 'error' => 'finance_dashboard_missing' );
 		}
 		$ct = FinanceDashboard::contract();
 		if ( $ct['stale'] ) {
-			Exceptions::open( 'ifd_stale:' . Clock::today(), 'integration_failure', 'medium', 'דשבורד ההכנסות לא סנכרן את פייפדרייב ' . ( null === $ct['sync_age_hours'] ? '(אין סנכרון מוצלח)' : $ct['sync_age_hours'] . ' שעות' ) . '. תלמידים חדשים לא נקלטים לליווי עד שהסנכרון יתעדכן.', array() );
-			return array( 'enabled' => true, 'stale' => true );
+			if ( self::enabled() ) {
+				Exceptions::open( 'ifd_stale:' . Clock::today(), 'integration_failure', 'medium', 'דשבורד ההכנסות לא סנכרן את פייפדרייב ' . ( null === $ct['sync_age_hours'] ? '(אין סנכרון מוצלח)' : $ct['sync_age_hours'] . ' שעות' ) . '. תלמידים חדשים לא נקלטים לליווי, והודעות הליווי מושהות, עד שהסנכרון יתעדכן.', array() );
+			}
+			return array( 'enabled' => self::enabled(), 'stale' => true );
 		}
-		$out             = array( 'enabled' => true, 'stale' => false );
-		$out['enrolled'] = self::enroll_due();
-		$out['imported'] = ProgramCharges::enroll_imported( max( 1, (int) Settings::get( 'journey_batch' ) ) );
-		$out['deals']    = self::refresh_deals();
-		$out['resolved'] = self::resolve();
+		// The switch gates what reaches students (enrolment and sends). Closing a case whose
+		// student opened an account, and moving approved cases on, is protective and always runs.
+		$out = array( 'enabled' => self::enabled(), 'stale' => false );
+		if ( self::enabled() ) {
+			$out['enrolled'] = self::enroll_due();
+		}
+		$out['imported']  = ProgramCharges::enroll_imported( max( 1, (int) Settings::get( 'journey_batch' ) ) );
+		$out['deals']     = self::refresh_deals();
+		$out['resolved']  = self::resolve();
 		$out['to_charge'] = self::phase_switch();
+		$out['planned']   = self::enabled() ? self::plan_idle() : 0;
+		return $out;
+	}
+
+	/**
+	 * Cases with nothing planned get their next step. A step that was cancelled for a
+	 * reason that will not change within the hour (a missing value, identity, an opt-out)
+	 * waits 20 hours before another try, instead of a cancel/replan churn every run.
+	 */
+	private static function plan_idle(): int {
 		$idle = Db::rows(
-			'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'commitment' AND c.workflow_state IN ('active','waiting_reply') AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'scheduled_actions' ) . " s WHERE s.case_id = c.id AND s.state IN ('pending','claimed'))"
+			'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'commitment' AND c.workflow_state IN ('active','waiting_reply')
+			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'scheduled_actions' ) . " s WHERE s.case_id = c.id AND s.state IN ('pending','claimed'))
+			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'scheduled_actions' ) . " s WHERE s.case_id = c.id AND s.type = 'send_journey' AND s.state = 'cancelled' AND s.updated_at > %s
+			   AND s.result LIKE 'cancel:%%' AND s.result NOT IN ('cancel:stale_step','cancel:phase_changed','cancel:ifd_stale','cancel:disabled','cancel:state','cancel:case_missing'))",
+			Clock::utc( Clock::now() - 20 * HOUR_IN_SECONDS )
 		);
 		foreach ( $idle as $c ) {
 			self::plan_next( (int) $c['id'] );
 		}
-		$out['planned'] = count( $idle );
-		return $out;
+		return count( $idle );
 	}
 
 	/** Unresolved commitments whose deadline is within the start window (or already passed). */
@@ -114,16 +130,22 @@ final class Journey {
 		$until = gmdate( 'Y-m-d', strtotime( Clock::today() . ' UTC' ) + (int) Settings::get( 'journey_start_days' ) * DAY_IN_SECONDS );
 		$rows  = array_values( array_filter( array_map( array( Adapter::class, 'normalize' ), FinanceDashboard::unresolved_until( $until ) ) ) );
 		$taken = array();
-		foreach ( Db::rows( 'SELECT candidate_key, status FROM ' . Db::t( 'program_candidates' ) ) as $pc ) {
-			$taken[ $pc['candidate_key'] ] = $pc['status'];
+		foreach ( Db::rows( 'SELECT candidate_key, status, snapshot FROM ' . Db::t( 'program_candidates' ) ) as $pc ) {
+			$taken[ $pc['candidate_key'] ] = $pc;
 		}
 		$limit = max( 1, (int) Settings::get( 'journey_batch' ) );
 		$n     = 0;
 		$fail  = 0;
+		$skip  = 0;
 		foreach ( $rows as $r ) {
 			$key = Adapter::candidate_key( $r );
-			if ( isset( $taken[ $key ] ) && ! in_array( $taken[ $key ], array( 'new', 'enrolling' ), true ) ) {
+			$pc  = $taken[ $key ] ?? null;
+			if ( $pc && ! in_array( $pc['status'], array( 'new', 'enrolling' ), true ) ) {
 				continue; // already in the journey, drafted by hand, dismissed or resolved
+			}
+			if ( empty( $r['effective_deadline'] ) || ( $pc && self::in_backoff( $pc ) ) ) {
+				++$skip; // no usable deadline, or contact details failed three times today: not this run
+				continue;
 			}
 			if ( $n + $fail >= $limit ) {
 				break;
@@ -132,7 +154,13 @@ final class Journey {
 			$id    = self::enroll( $r, $track, 'finance_dashboard' );
 			null === $id ? ++$fail : ++$n;
 		}
-		return array( 'candidates' => count( $rows ), 'enrolled' => $n, 'failed' => $fail );
+		return array( 'candidates' => count( $rows ), 'enrolled' => $n, 'failed' => $fail, 'skipped' => $skip );
+	}
+
+	/** Three failed contact reads today: the person is tried once a day from now on. */
+	private static function in_backoff( array $pc ): bool {
+		$snap = (array) json_decode( (string) ( $pc['snapshot'] ?? '' ), true );
+		return (int) ( $snap['enrich_attempts'] ?? 0 ) >= 3 && ( Clock::ts( $snap['enrich_last_at'] ?? null ) ?? 0 ) > Clock::now() - DAY_IN_SECONDS;
 	}
 
 	/**
@@ -146,6 +174,11 @@ final class Journey {
 		$key    = Adapter::candidate_key( $r );
 		$pc     = Db::row( 'SELECT * FROM ' . Db::t( 'program_candidates' ) . ' WHERE candidate_key = %s', $key );
 		if ( $pc && ! in_array( $pc['status'], array( 'new', 'enrolling' ), true ) ) {
+			return null;
+		}
+		if ( empty( $r['effective_deadline'] ) ) {
+			self::candidate_row( $pc, $r, $key, 'invalid', $r, null, $source );
+			Exceptions::open( 'journey_deadline:' . $key, 'integration_failure', 'medium', 'תלמיד בתוכנית ללא מועד תקין (איש קשר ' . $person . ', דיל ' . $deal . '), לא נכנס לליווי', array() );
 			return null;
 		}
 		$existing = $deal ? (int) Db::value( 'SELECT c.id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE a.pipedrive_deal_id = %d AND c.workflow_state <> 'closed'", $deal ) : 0;
@@ -162,8 +195,8 @@ final class Journey {
 			}
 		}
 		if ( $person && empty( $snap['enriched_at'] ) && empty( $snap['phone'] ) ) {
-			if ( (int) ( $snap['enrich_attempts'] ?? 0 ) >= 3 && ( Clock::ts( $snap['enrich_last_at'] ?? null ) ?? 0 ) > Clock::now() - DAY_IN_SECONDS ) {
-				return null; // three failures: once a day from now on
+			if ( $pc && self::in_backoff( $pc ) ) {
+				return null;
 			}
 			$p = Pipedrive::person( $person );
 			if ( ! $p['ok'] ) {
@@ -178,10 +211,26 @@ final class Journey {
 			}
 			$snap = array_merge( $snap, array( 'name' => $p['name'] ?: ( $snap['name'] ?? '' ), 'first_name' => $p['first_name'], 'phone' => $p['phone'], 'email' => $p['email'], 'enriched_at' => Clock::utc() ) );
 			unset( $snap['enrich_error'] );
+			if ( (int) ( $snap['enrich_attempts'] ?? 0 ) >= 3 ) {
+				Exceptions::resolve_by_key( 'journey_contact:' . $key, 'פרטי הקשר נמשכו מפייפדרייב' );
+			}
 		}
 		return Db::transaction(
 			function () use ( $pc, $r, $key, $snap, $track, $source, $person, $deal ) {
 				$cid = $person ? (int) Db::value( 'SELECT id FROM ' . Db::t( 'customers' ) . ' WHERE pipedrive_person_id = %d ORDER BY id LIMIT 1', $person ) : 0;
+				$e164 = Phone::e164( (string) ( $snap['phone'] ?? '' ) );
+				if ( ! $cid && $e164 ) {
+					// The same student may already exist from a failed charge (Tranzila) without a Pipedrive id:
+					// one customer on that number, no person attached, is that student, not a second record.
+					$same = Db::rows( 'SELECT id, pipedrive_person_id FROM ' . Db::t( 'customers' ) . ' WHERE phone_e164 = %s', $e164 );
+					if ( 1 === count( $same ) && empty( $same[0]['pipedrive_person_id'] ) ) {
+						$cid = (int) $same[0]['id'];
+						if ( $person ) {
+							Db::update( 'customers', array( 'pipedrive_person_id' => $person, 'updated_at' => Clock::utc() ), array( 'id' => $cid ) );
+							Audit::log( 'customer.link_person', 'customer', $cid, null, array( 'pipedrive_person_id' => $person ), 'זוהה לפי מספר הטלפון בכניסה לליווי' );
+						}
+					}
+				}
 				if ( ! $cid ) {
 					$first = trim( (string) ( $snap['first_name'] ?? '' ) );
 					if ( '' === $first && '' !== trim( (string) ( $snap['name'] ?? '' ) ) ) {
@@ -309,7 +358,8 @@ final class Journey {
 			if ( ! $d ) {
 				continue;
 			}
-			$no_fee = null !== $label && in_array( $label, $d['label_ids'], true );
+			// The label id comes from a separate Pipedrive call; when that failed, what was stored stays.
+			$no_fee = null === $label ? (bool) (int) $r['no_registration_fee'] : in_array( $label, $d['label_ids'], true );
 			$q      = Pricing::quote( $r['signed_at'] ?: null, $no_fee );
 			Db::update(
 				'agreements',
@@ -518,6 +568,10 @@ final class Journey {
 		if ( ! $case || 'commitment' !== $case['phase'] || ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			return null;
 		}
+		if ( ! self::enabled() ) {
+			Db::update( 'cases', array( 'next_action_type' => 'journey_off', 'next_action_at' => null ), array( 'id' => $case_id ) );
+			return null; // nothing is planned while the journey is switched off; sync() plans once it is on
+		}
 		$next = self::next_step( $case );
 		if ( ! $next ) {
 			Db::update( 'cases', array( 'next_action_type' => 'await_approval', 'next_action_at' => null ), array( 'id' => $case_id ) );
@@ -564,6 +618,13 @@ final class Journey {
 		}
 		if ( ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			return 'cancel:state';
+		}
+		if ( ! self::enabled() ) {
+			return 'cancel:disabled';
+		}
+		if ( FinanceDashboard::available() && FinanceDashboard::contract()['stale'] ) {
+			// "לפי המערכת החשבון עוד לא נפתח" needs a dashboard that read Pipedrive recently.
+			return 'cancel:ifd_stale'; // planned again by the hourly run once the dashboard is fresh
 		}
 		$payload = (array) json_decode( (string) $action['payload'], true );
 		$step    = (string) ( $payload['step'] ?? '' );
@@ -623,6 +684,12 @@ final class Journey {
 		$guard   = SendGuard::check( $case_id, array( 'template' => $comp['template'], 'at' => $at, 'is_reminder' => true ) );
 		foreach ( $comp['missing'] as $m ) {
 			$guard['blockers'][] = array( 'code' => 'missing_variable', 'scope' => 'case', 'message' => 'חסר ערך למשתנה ' . $m );
+		}
+		if ( ! self::enabled() ) {
+			$guard['blockers'][] = array( 'code' => 'journey_off', 'scope' => 'setup', 'message' => 'הליווי האוטומטי כבוי בהגדרות' );
+		}
+		if ( FinanceDashboard::available() && FinanceDashboard::contract()['stale'] ) {
+			$guard['blockers'][] = array( 'code' => 'ifd_stale', 'scope' => 'transient', 'message' => 'דשבורד ההכנסות לא סנכרן את פייפדרייב לאחרונה, הודעות הליווי מושהות' );
 		}
 		return array(
 			'rendered_text'    => $comp['rendered_text'],
@@ -733,10 +800,10 @@ final class Journey {
 	 * declined track; from Pipedrive (a rep already talked to them) a case a person is
 	 * handling stays with that person.
 	 */
-	public static function decline( int $case_id, string $source, string $reason ): void {
+	public static function decline( int $case_id, string $source, string $reason ): bool {
 		$case = Workflow::get( $case_id );
 		if ( ! $case || 'commitment' !== $case['phase'] || 'closed' === $case['workflow_state'] || 'declined' === $case['track'] ) {
-			return;
+			return false;
 		}
 		$extra = array( 'track' => 'declined', 'declined_at' => Clock::utc(), 'declined_source' => $source );
 		Scheduler::cancel_for_case( $case_id, 'declined' );
@@ -747,6 +814,7 @@ final class Journey {
 			Workflow::touch( $case_id, $extra, 'case.declined', $reason );
 		}
 		self::plan_next( $case_id );
+		return true;
 	}
 
 	public static function date_he( string $ymd ): string {

@@ -145,7 +145,10 @@ final class Api {
 			if ( '' === $note ) {
 				throw new DomainError( 'validation_failed', 'יש לתעד מה התלמיד אמר', 400, array( 'note' => 'חובה' ) );
 			}
-			Journey::decline( $case_id, 'rep', 'נציג סימן שהתלמיד לא יפתח חשבון: ' . $note );
+			if ( ! Journey::decline( $case_id, 'rep', 'נציג סימן שהתלמיד לא יפתח חשבון: ' . $note ) ) {
+				$c = Workflow::get( $case_id );
+				throw new DomainError( 'not_applicable', 'declined' === ( $c['track'] ?? '' ) ? 'התלמיד כבר במסלול של מי שלא יפתח חשבון' : 'הסימון אפשרי רק לתלמיד בליווי לפני המועד', 409 );
+			}
 			return Cases::response( $case_id );
 		}, true );
 		$r( 'POST', "/cases/$id/credit", 'icol_verify_payment', static fn( $q ) => ProgramCharges::record_credit( self::case_id( $q ), Http::str( $q, 'evidence_ref' ), Http::str( $q, 'note' ) ), true );

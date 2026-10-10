@@ -27,7 +27,7 @@ final class Intents {
 		'dispute'        => '/(לא חייב|לא חייבת|לא מגיע לכם|לבטל|ביטול|מחלוקת|לא הסכמתי|לא חתמתי|עורך דין|עו"ד|תלונה|הונאה|רמאות|גניבה)/iu',
 		'human'          => '/(נציג|נציגה|בן אדם|אדם אמיתי|לדבר עם|תתקשרו|תחזרו אליי|שיחה טלפונית|טלפון אליי|מישהו מהצוות)/iu',
 		'claims_paid'    => '/(שילמתי|כבר שילמתי|העברתי|שולם|הסדרתי|ביצעתי תשלום|עשיתי העברה|אסמכתא|אסמכתה|קבלה)/iu',
-		'stuck'          => '/(תקוע|תקועה|נתקע|נתקעה|התחלתי (את )?(ה)?פתיחה|בתהליך (של )?פתיחה|החשבון בבדיקה|ממתין לאישור|ממתינה לאישור|מחכה לאישור)/iu',
+		'stuck'          => '/((תקוע|תקועה|נתקע|נתקעה).{0,40}(פתיח|חשבון)|(פתיח|חשבון).{0,40}(תקוע|תקועה|נתקע|נתקעה)|התחלתי (את )?ה?פתיחה|בתהליך (של )?פתיחה|החשבון בבדיקה|(החשבון|הפתיחה) (ממתין|ממתינה|מחכה) לאישור)/iu',
 		'opened_account' => '/(פתחתי חשבון|כבר פתחתי|יש לי חשבון|החשבון נפתח|פתחתי את החשבון)/iu',
 		// Before wants_to_open: "לא רוצה לפתוח" contains "רוצה לפתוח".
 		'declines_open'  => '/((?<!\p{L})לא\s+(אפתח|רוצה לפתוח|מתכוו(ן|נת) לפתוח|מעוניי(ן|נת) לפתוח|אפתח חשבון)|אין לי כוונה לפתוח)/iu',
@@ -39,15 +39,16 @@ final class Intents {
 		'link_request'   => '/(קישור|לינק|link|איך משלמים|איפה משלמים|איך אפשר לשלם|לשלם עכשיו)/iu',
 	);
 
-	public static function classify( string $text, string $type ): array {
+	public static function classify( string $text, string $type, bool $is_button = false ): array {
 		if ( in_array( $type, array( 'audio', 'voice', 'ptt' ), true ) ) {
 			return array( 'intent' => 'voice', 'source' => 'rules', 'confidence' => 'rule' );
 		}
 		if ( in_array( $type, array( 'image', 'document', 'video', 'sticker' ), true ) && '' === trim( $text ) ) {
 			return array( 'intent' => 'media', 'source' => 'rules', 'confidence' => 'rule' );
 		}
-		// A quick-reply button arrives as its exact title: a decision, not text to interpret.
-		$button = Journey::button_intent( $text );
+		// A quick-reply button press arrives as its exact title: a decision, not text to interpret.
+		// The same words typed by hand go through the rules like any text.
+		$button = ( $is_button || in_array( $type, array( 'button', 'interactive', 'quick_reply' ), true ) ) ? Journey::button_intent( $text ) : null;
 		if ( $button ) {
 			return array( 'intent' => $button, 'source' => 'button', 'confidence' => 'rule' );
 		}

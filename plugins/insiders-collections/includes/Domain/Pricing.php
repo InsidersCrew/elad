@@ -20,16 +20,25 @@ defined( 'ABSPATH' ) || exit;
 final class Pricing {
 
 	/** Parsed table, oldest first. A broken line is skipped and reported by validate(). */
+	private static ?string $cached_for = null;
+	private static array $cached = array();
+
 	public static function table(): array {
+		$text = (string) Settings::get( 'program_price_table' );
+		if ( $text === self::$cached_for ) {
+			return self::$cached;
+		}
 		$rows = array();
-		foreach ( preg_split( '/\R/', (string) Settings::get( 'program_price_table' ) ) as $line ) {
+		foreach ( preg_split( '/\R/', $text ) as $line ) {
 			$r = self::parse_line( $line );
 			if ( $r ) {
 				$rows[ $r['from'] ] = $r;
 			}
 		}
 		ksort( $rows );
-		return array_values( $rows );
+		self::$cached_for = $text;
+		self::$cached     = array_values( $rows );
+		return self::$cached;
 	}
 
 	private static function parse_line( string $line ): ?array {
