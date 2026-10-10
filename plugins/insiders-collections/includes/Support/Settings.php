@@ -62,6 +62,17 @@ final class Settings {
 		'revenue_meta_extension'      => '',
 		'revenue_candidate_horizon_days' => 7,
 		'revenue_max_staleness_hours'    => 30,
+		// Beginner program: the pre-deadline journey and the non-open charge (procedure of 2026-10).
+		'journey_enabled'                => 0,   // off until the templates are approved by Meta
+		'journey_contact_basis'          => '',  // the clause in the enrollment agreement that allows WhatsApp contact
+		'journey_start_days'             => 45,  // first message N days before the deadline
+		'journey_min_gap_days'           => 3,   // a late joiner never gets two steps closer than this (the deadline day excepted)
+		'journey_batch'                  => 40,  // students enrolled per run (each one is a Pipedrive call)
+		'late_grace_days'                => 7,   // past-deadline students: days after the first message before the charge can be approved
+		'credit_window_days'             => 90,  // an account opened this many days after paying earns a credit
+		'program_price_table'            => '2026-01-01 980 100', // per line: effective-from date, full price, registration fee (an earlier agreement gets the first line)
+		'no_registration_label'          => 'ללא דמי רישום',
+		'declined_lost_reasons'          => 'לא מעוניין לפתוח חשבון',
 		'gate_idle_minutes'              => 30,  // scan again after 30 minutes without activity
 		'gate_session_hours'             => 8,   // and at most once per working day
 	);

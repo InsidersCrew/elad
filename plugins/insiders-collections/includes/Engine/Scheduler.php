@@ -51,7 +51,7 @@ final class Scheduler {
 
 	public static function cancel_for_case( int $case_id, string $reason ): int {
 		return Db::exec(
-			'UPDATE ' . Db::t( 'scheduled_actions' ) . " SET state = 'cancelled', result = %s, updated_at = %s WHERE case_id = %d AND state = 'pending' AND type IN ('send_reminder','escalate_no_reply','check_promise')",
+			'UPDATE ' . Db::t( 'scheduled_actions' ) . " SET state = 'cancelled', result = %s, updated_at = %s WHERE case_id = %d AND state = 'pending' AND type IN ('send_reminder','send_journey','escalate_no_reply','check_promise')",
 			mb_substr( 'cancelled:' . $reason, 0, 500 ),
 			Clock::utc(),
 			$case_id

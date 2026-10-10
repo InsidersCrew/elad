@@ -83,8 +83,8 @@
 	};
 
 	/* ---------- toast / modal ---------- */
+	// Inside the app element, not <body>: every color and form style is scoped under .icol-app.
 	var toasts = h('div', { class: 'icol-toasts', 'aria-live': 'polite' });
-	document.body.appendChild(toasts);
 	function toast(msg, kind) {
 		var t = h('div', { class: 'icol-toast ' + (kind || '') , role: kind === 'err' ? 'alert' : 'status' }, msg);
 		toasts.appendChild(t);
@@ -119,7 +119,7 @@
 		add(foot, h('button', { class: 'icol-btn ghost', type: 'button', text: opts.cancelLabel || 'ביטול', onclick: close }));
 		add(box, foot);
 		add(overlay, box);
-		document.body.appendChild(overlay);
+		root.appendChild(overlay);
 		var first = box.querySelector('input,select,textarea,button');
 		if (first) { first.focus(); }
 		return close;
@@ -162,6 +162,7 @@
 		pairs.forEach(function (p) { if (p[1] !== null && p[1] !== undefined && p[1] !== '') { add(dl, [h('dt', { text: p[0] }), h('dd', {}, p[1])]); } });
 		return dl;
 	}
+	function phone(p) { return p ? h('span', { dir: 'ltr', class: 'icol-ltr', text: p }) : null; }
 	function chip(text, kind) { return h('span', { class: 'icol-chip ' + (kind || ''), text: text }); }
 	function stateCell(state) { return h('span', {}, h('span', { class: 'icol-state-dot ' + state }), L.state[state] || state); }
 	function table(cols, rows, onRow) {
@@ -196,6 +197,7 @@
 		['#/tasks', 'המשימות שלי', 'my_tasks'],
 		['#/exceptions', 'תור חריגים', 'exceptions_open'],
 		['#/cards', 'כרטיסים לעדכון', 'card_tasks_open'],
+		['#/program', 'תוכנית למתחילים', 'program_waiting', 'icol_view_all'],
 		['#/candidates', 'מועמדים לחיוב', 'candidates_new'],
 		['sep'],
 		['#/new', 'חוב חדש', null, 'icol_create_draft'],
@@ -249,6 +251,7 @@
 	}
 
 	clear(root);
+	add(root, toasts);
 	add(root, h('div', { class: 'icol-shell' },
 		h('aside', { class: 'icol-side' }, h('div', { class: 'icol-logo' }, h('img', { src: C.logo, alt: 'INSIDERS' })), h('div', { class: 'icol-sub', text: 'תשלומים וגבייה · ' + (C.version || '') }), nav),
 		add2(main, [topbar, page])
@@ -278,6 +281,7 @@
 		if (r.path === '/exceptions') { return viewExceptions(); }
 		if (r.path === '/cards') { return viewCards(); }
 		if (r.path === '/candidates') { return viewCandidates(); }
+		if (r.path.indexOf('/program') === 0) { return viewProgram(r.path.split('/')[2] || 'queue'); }
 		if (r.path.indexOf('/tasks') === 0) { return viewTasks(); }
 		if (r.path.indexOf('/settings') === 0) { return viewSettings(r.path.split('/')[2] || 'health'); }
 		if (r.path === '/security') { return viewSecurity(); }
@@ -305,6 +309,7 @@
 				tile('משימות כרטיס פתוחות', String(k.card_tasks_open), 'עדכון אמצעי תשלום לחיובים הבאים', '#/cards', k.card_tasks_open > 0),
 				tile('חריגים פתוחים', String(k.exceptions_open), null, '#/exceptions', k.exceptions_open > 0),
 				tile('טיוטות', String(k.drafts), 'ממתינות לאישור והפעלה', '#/cases?state=draft'),
+				can('icol_view_all') ? tile('תוכנית למתחילים: ממתינים לאישור', String(k.program_waiting || 0), (k.journey_active || 0) + ' תלמידים בליווי לפני המועד', '#/program', k.program_waiting > 0) : null,
 				tile('מועמדים מדשבורד ההכנסות', String(k.candidates_new), 'עבר המועד לפתיחת חשבון', '#/candidates')
 			));
 			var by = {};
@@ -343,7 +348,7 @@
 				['id', 'תיק', function (r) { return h('span', { class: 'num', text: '#' + r.id }); }],
 				['customer', 'לקוח', function (r) { return h('span', {}, r.customer, h('span', { class: 'sub', text: r.phone || '' })); }],
 				['source', 'מקור', function (r) { return h('span', {}, r.source_label, r.entry_mode === 'handover' ? h('span', { class: 'sub', text: 'המשך טיפול' }) : null); }],
-				['due', 'יתרה', function (r) { return h('span', { class: 'num', text: r.due_minor ? money(r.due_minor, r.currency) : ', ' }); }, 'num'],
+				['due', 'יתרה', function (r) { return h('span', { class: 'num', text: money(r.due_minor || 0, r.currency) }); }, 'num'],
 				['age', 'גיל', function (r) { return r.age_days === null ? null : h('span', { class: 'num', text: r.age_days + ' ימים' }); }],
 				['state', 'מצב טיפול', function (r) { return h('span', {}, stateCell(r.state), r.state_reason ? h('span', { class: 'sub', text: r.state_reason }) : null); }],
 				['last_out', 'פנייה אחרונה', 'last_out'],
@@ -393,13 +398,14 @@
 		var stateChips = [chip(L.state[c.workflow_state] || c.workflow_state, 'violet'), chip(L.source[c.source_type] + (c.entry_mode === 'handover' ? ' · המשך טיפול' : ''))];
 		if (Number(c.dispute_open)) { stateChips.push(chip('מחלוקת פתוחה', 'bad')); }
 		if (Number(c.claims_account_opened)) { stateChips.push(chip('טענת פתיחת חשבון', 'warn')); }
+		if (d.journey) { stateChips.push(chip('לפני המועד · ' + d.journey.track_label, d.journey.track === 'declined' ? 'warn' : 'info')); }
 		if (d.order) { stateChips.push(chip('כרטיס: ' + (L.card[d.order.card_status] || d.order.card_status), d.order.card_status === 'update_required' ? 'warn' : (d.order.card_status === 'verified' ? 'ok' : ''))); }
 
 		add(page, h('div', { class: 'icol-page-head' }, h('div', {}, h('a', { href: '#/cases', text: '← לרשימת התיקים' })), h('div', { class: 'muted num', text: 'תיק #' + c.id + ' · גרסה ' + c.version })));
 		add(page, h('div', { class: 'icol-case-head' },
 			h('div', { class: 'icol-card icol-person' },
 				h('h2', { text: cu.full_name }),
-				h('div', { class: 'muted num', text: [cu.phone, cu.email].filter(Boolean).join(' · ') }),
+				h('div', { class: 'muted num' }, phone(cu.phone), cu.phone && cu.email ? ' · ' : '', cu.email || ''),
 				h('div', { class: 'meta' }, stateChips),
 				h('div', { class: 'meta' }, contact),
 				c.state_reason ? h('div', { class: 'muted', style: 'margin-top:8px', text: 'סיבת המצב: ' + c.state_reason }) : null,
@@ -407,11 +413,20 @@
 			),
 			h('div', { class: 'icol-money' },
 				h('div', { class: 'm due' }, h('div', { class: 'l', text: 'יתרה שהגיע מועדה' }), h('div', { class: 'v', text: money(f.due_balance_minor, f.currency) })),
-				h('div', { class: 'm' }, h('div', { class: 'l', text: 'תשלומים עתידיים' }), h('div', { class: 'v', text: f.not_due_minor ? money(f.not_due_minor, f.currency) : (d.future && d.future.future_installments ? d.future.future_installments + ' תשלומים' : ', ') })),
+				h('div', { class: 'm' }, h('div', { class: 'l', text: 'תשלומים עתידיים' }), h('div', { class: 'v', text: f.not_due_minor ? money(f.not_due_minor, f.currency) : (d.future && d.future.future_installments ? d.future.future_installments + ' תשלומים' : 'אין') })),
 				h('div', { class: 'm' }, h('div', { class: 'l', text: 'תקבולים ששויכו' }), h('div', { class: 'v', text: money(f.allocated_minor, f.currency) }))
 			)
 		));
 
+		if (d.journey) {
+			add(page, h('div', { class: 'icol-banner sim' }, h('div', {},
+				h('strong', { text: 'ליווי לפני המועד. ' }),
+				'המועד: ' + ((d.agreement && d.agreement.account_open_deadline) ? d.agreement.account_open_deadline.split('-').reverse().join('/') : '') +
+				(d.journey.last_step ? ' · הודעה אחרונה: ' + d.journey.last_step : ' · עוד לא נשלחה הודעה') +
+				(d.journey.amount_text ? ' · אם לא ייפתח חשבון: ' + d.journey.amount_text : '') +
+				(d.journey.declined_at ? ' · הודיע שלא יפתח (' + ({ button: 'לחצן בוואטסאפ', pipedrive: 'סיבת lost בפייפדרייב', rep: 'נציג' }[d.journey.declined_source] || '') + ', ' + d.journey.declined_at + ')' : '')),
+				h('a', { href: '#/program', text: 'לתוכנית למתחילים' })));
+		}
 		var bar = h('div', { class: 'icol-actionbar' });
 		add(bar, [
 			actionBtn(d, 'preview', c.workflow_state === 'draft' ? 'תצוגה מקדימה והפעלה' : 'תצוגת ההודעה הבאה', c.workflow_state === 'draft' ? 'primary' : '', function () { previewModal(d); }),
@@ -425,6 +440,8 @@
 			actionBtn(d, 'adjust', 'התאמה כספית', '', function () { adjustModal(d); }),
 			actionBtn(d, 'resolve_dispute', 'סגירת מחלוקת', '', function () { resolveFlagModal(d, 'resolve-dispute', 'סגירת מחלוקת'); }),
 			actionBtn(d, 'resolve_account_claim', 'החלטה על טענת פתיחת חשבון', '', function () { resolveFlagModal(d, 'resolve-account-claim', 'החלטה על טענת פתיחת חשבון'); }),
+			d.journey && d.actions.decline && d.actions.decline.allowed ? actionBtn(d, 'decline', 'סימון: לא יפתח חשבון', '', function () { simpleModal('התלמיד לא יפתח חשבון', 'התלמיד עובר למסלול הייעודי: אין יותר הודעות על פתיחת חשבון, והוא נכנס לרשימת אישור החיובים. מומלץ לסמן גם את הדיל כ-lost עם הסיבה הייעודית.', [field('note', 'מה התלמיד אמר', 'textarea', { required: true })], function (fs) { return api.post('/cases/' + c.id + '/decline', { note: val(fs[0]) }); }, d, 'הועבר למסלול הייעודי'); }) : null,
+			d.actions.credit && d.actions.credit.allowed ? actionBtn(d, 'credit', 'זיכוי בוצע', '', function () { creditModal(d); }) : null,
 			can('icol_work_case') ? h('button', { class: 'icol-btn sm', text: 'הערה פנימית', onclick: function () { simpleModal('הערה פנימית', 'ההערה מסומנת כפנימית ולא תישלח ללקוח.', [field('text', 'הערה', 'textarea', { required: true })], function (fs) { return api.post('/cases/' + c.id + '/notes', { text: val(fs[0]) }); }, d); } }) : null,
 			can('icol_work_case') ? h('button', { class: 'icol-btn sm', text: 'תיעוד שיחה', onclick: function () { contactModal(d); } }) : null,
 			can('icol_work_case') ? h('button', { class: 'icol-btn sm', text: 'העברת בעלות', onclick: function () { ownerModal(d); } }) : null,
@@ -456,7 +473,9 @@
 			add(body, card);
 		});
 		if (!d.finance.items.length) { add(body, h('div', { class: 'icol-empty', text: 'אין פריטי חוב' })); }
-		if (can('icol_create_draft') && d.case.workflow_state !== 'closed') {
+		if (d.journey) {
+			add(body, h('p', { class: 'muted', text: 'לפני המועד אין חיוב. אחרי המועד, או אחרי שהתלמיד הודיע שלא יפתח חשבון, החיוב נוצר מרשימת האישור בתוכנית למתחילים.' }));
+		} else if (can('icol_create_draft') && d.case.workflow_state !== 'closed') {
 			add(body, h('button', { class: 'icol-btn sm', text: 'הוספת פריט חוב', onclick: function () { addItemModal(d); } }));
 		}
 		if (d.requests.length) {
@@ -514,6 +533,10 @@
 	}
 
 	/* ---------- case modals ---------- */
+	function creditModal(d) {
+		var fs = [field('evidence_ref', 'אסמכתת הזיכוי בטרנזילה', 'text', { required: true, help: 'מספר עסקת הזיכוי או האסמכתה מטרנזילה' }), field('note', 'מה נבדק', 'textarea', { placeholder: 'לדוגמה: החשבון נפתח ב-20/11 ועומד בתנאי התוכנית' })];
+		simpleModal('רישום זיכוי לפי תנאי התוכנית', 'קודם מבצעים את הזיכוי בטרנזילה. הרישום כאן מבטל את התשלום בספרים, מאפס את החיוב וסוגר את התיק, ופותח משימה להסיר את מוצר החיוב מהדיל בפייפדרייב. לא נשלחת הודעה לתלמיד.', fs, function (x) { return api.post('/cases/' + d.case.id + '/credit', { evidence_ref: val(x[0]), note: val(x[1]) }); }, d, 'הזיכוי נרשם');
+	}
 	function simpleModal(title, lead, fields, submit, d, okMsg) {
 		modal({ title: title, lead: lead, body: h('div', { class: 'icol-form' }, fields.map(function (f2) { return f2.el; })), actions: [{ label: 'שמירה', kind: 'primary', onClick: function () { return submit(fields).then(function () { toast(okMsg || 'נשמר', 'ok'); if (d) { reload(d); } else { route(); } }); } }] });
 	}
@@ -540,8 +563,9 @@
 					? h('div', { class: 'row2' }, h('span', { text: 'סכום לגבייה לאחר אישור' }), h('strong', { class: 'num', text: money(p.finance_summary.draft_minor, p.finance_summary.currency) }))
 					: h('div', { class: 'row2' }, h('span', { text: 'יתרה שהגיע מועדה' }), h('strong', { class: 'num', text: money(p.finance_summary.due_balance_minor, p.finance_summary.currency) })),
 				p.finance_summary.not_due_minor ? h('div', { class: 'row2' }, h('span', { text: 'טרם הגיע מועד' }), h('span', { class: 'num', text: money(p.finance_summary.not_due_minor) })) : null,
-				h('div', { class: 'row2' }, h('span', { text: 'מועד פנייה' }), h('strong', { text: p.send_after_local })),
-				h('div', { class: 'row2' }, h('span', { text: 'תבנית' }), h('span', { text: p.template_id + ' · גרסה ' + p.template_version })),
+				p.journey && p.journey.step_label ? h('div', { class: 'row2' }, h('span', { text: 'שלב בליווי' }), h('strong', { text: p.journey.step_label })) : null,
+				p.send_after_local ? h('div', { class: 'row2' }, h('span', { text: 'מועד פנייה' }), h('strong', { text: p.send_after_local })) : null,
+				p.template_id ? h('div', { class: 'row2' }, h('span', { text: 'תבנית' }), h('span', { text: p.template_id + ' · גרסה ' + p.template_version })) : null,
 				h('div', { class: 'row2' }, h('span', { text: 'מצב משלוח' }), h('span', { text: p.mode === 'live' ? 'חי' : 'סימולציה (לא יישלח)' })),
 				p.link_route && !p.link_route.allowed ? h('div', { class: 'row2' }, h('span', { text: 'קישור תשלום' }), h('span', { text: p.link_route.reason })) : null);
 			var acts = [];
@@ -550,7 +574,7 @@
 					onClick: function () { return api.post('/cases/' + d.case.id + '/activate', { version: d.case.version, balance_version: p.balance_version }).then(function () { toast('התיק הופעל', 'ok'); reload(d); }); } });
 			}
 			modal({ title: draft ? 'סיכום לפני הפעלה' : 'ההודעה הבאה', lead: draft ? 'זה בדיוק מה שיישלח ומתי. ההפעלה בודקת שוב שהיתרה לא השתנתה.' : 'כך תיראה ההודעה הבאה. לפני שליחה המערכת בודקת הכול מחדש.', wide: true,
-				body: h('div', {}, summary, h('div', { class: 'icol-section-title', style: 'margin-top:12px', text: 'נוסח ההודעה' }), h('div', { class: 'icol-preview', text: p.rendered_text }), (p.blockers || []).length ? [h('div', { class: 'icol-section-title', text: 'חסימות ובדיקות' }), blockers] : h('div', { class: 'muted', text: 'אין חסימות כרגע.' })),
+				body: h('div', {}, summary, h('div', { class: 'icol-section-title', style: 'margin-top:12px', text: 'נוסח ההודעה' }), p.rendered_text ? h('div', { class: 'icol-preview', text: p.rendered_text }) : h('div', { class: 'muted', text: 'אין הודעה מתוכננת.' }), (p.blockers || []).length ? [h('div', { class: 'icol-section-title', text: 'חסימות ובדיקות' }), blockers] : h('div', { class: 'muted', text: 'אין חסימות כרגע.' })),
 				actions: acts, cancelLabel: 'סגירה' });
 		}).catch(fail);
 	}
@@ -830,6 +854,117 @@
 			actions: [{ label: 'יצירת טיוטה', kind: 'primary', onClick: function () { return api.post('/candidates/' + c.id + '/draft', { amount: val(fs[0]), due_at: val(fs[1]), approval_basis: val(fs[2]), document_ref: val(fs[3]), clarification_first: val(fs[4]) }).then(function (r) { location.hash = '#/cases/' + r.case_id; }); } }] });
 	}
 
+	/* ---------- beginner program ---------- */
+	var TRACK = { reach: ['ליווי לפני המועד', 'info'], declined: ['הודיע שלא יפתח', 'warn'], late: ['המועד עבר לפני הכניסה', 'violet'] };
+	function trackChip(t) { var x = TRACK[t] || [t, '']; return chip(x[0], x[1]); }
+	function viewProgram(tab) {
+		var tabs = [['queue', 'אישור חיובים'], ['journey', 'בליווי לפני המועד'], ['import', 'ייבוא תלמידים']];
+		clear(page);
+		add(page, pageHead('תוכנית למתחילים', 'ליווי לפני המועד, אישור החיובים אחרי המועד, וזיכוי למי שפתח חשבון אחרי תשלום.'));
+		var bar = h('div', { class: 'icol-tabs' });
+		tabs.forEach(function (t) { add(bar, h('button', { class: tab === t[0] ? 'on' : '', text: t[1], onclick: function () { location.hash = '#/program/' + t[0]; } })); });
+		var body = h('div');
+		add(page, [bar, body]);
+		loading(body);
+		({ queue: programQueue, journey: programJourney, import: programImport }[tab] || programQueue)(body);
+	}
+	function programQueue(body) {
+		api.get('/program/queue').then(function (q) {
+			clear(body);
+			if (q.sync && q.sync.stale) { add(body, h('div', { class: 'icol-banner stop', text: 'דשבורד ההכנסות לא סנכרן את פייפדרייב לאחרונה. אי אפשר לאשר חיוב לתלמיד מהדשבורד עד שהסנכרון יתעדכן, כי ייתכן שהוא כבר פתח חשבון.' })); }
+			if (!q.rows.length) { add(body, h('div', { class: 'icol-empty', text: 'אין תלמידים שממתינים לאישור חיוב.' })); return; }
+			var ready = q.rows.filter(function (r) { return r.ready; });
+			var blocked = q.rows.filter(function (r) { return !r.ready; });
+			var boxes = {};
+			var sumEl = h('span', { class: 'muted' });
+			var btn = h('button', { class: 'icol-btn primary', text: 'אישור החיובים שסומנו' });
+			var basis = field('basis', 'בסיס החיוב (נשמר עם כל חיוב)', 'textarea', { value: q.basis, rows: 2, wide: true, required: true });
+			var picked = function () { return ready.filter(function (r) { return boxes[r.case_id] && boxes[r.case_id].checked; }); };
+			var update = function () { var p = picked(), s = 0; p.forEach(function (r) { s += Number(r.amount_minor || 0); }); sumEl.textContent = p.length + ' תלמידים · ' + money(s); btn.disabled = !p.length || !can('icol_approve_debt'); };
+			var nameCell = function (r) { return h('span', {}, h('a', { href: '#/cases/' + r.case_id, text: r.name }), h('span', { class: 'sub' }, phone(r.phone), r.deal_id ? ' · דיל ' + r.deal_id : '')); };
+			var notes = function (r) { return h('span', { class: 'icol-mode' }, (r.blockers || []).map(function (b) { return chip(b, 'bad'); }), (r.warnings || []).map(function (w) { return chip(w, 'warn'); })); };
+			var cols = [
+				['name', 'תלמיד', nameCell],
+				['track', 'מסלול', function (r) { return trackChip(r.track); }],
+				['deadline', 'מועד', function (r) { return h('span', {}, r.deadline_he, h('span', { class: 'sub', text: r.before_deadline ? 'לפני המועד, תשלום מרצון' : 'הסכם מ-' + (r.signed_at || '').split('-').reverse().join('/') })); }],
+				['amount', 'סכום', function (r) { return h('span', {}, h('strong', { class: 'num', text: money(r.amount_minor) }), r.amount_text.indexOf('(') > 0 ? h('span', { class: 'sub', text: r.amount_text.slice(r.amount_text.indexOf('(') + 1, -1) }) : (r.no_registration_fee ? h('span', { class: 'sub', text: 'ללא דמי רישום' }) : null)); }],
+				['msgs', 'הודעות ליווי', function (r) { return h('span', {}, String(r.messages), r.last_message ? h('span', { class: 'sub', text: 'אחרונה ' + r.last_message }) : null); }],
+				['notes', '', notes]
+			];
+			if (ready.length) {
+				var all = h('input', { type: 'checkbox', checked: true, 'aria-label': 'סימון הכול', onchange: function () { ready.forEach(function (r) { boxes[r.case_id].checked = all.checked; }); update(); } });
+				ready.forEach(function (r) { boxes[r.case_id] = h('input', { type: 'checkbox', checked: true, 'aria-label': 'לאשר את ' + r.name, onchange: update }); });
+				add(body, h('div', { class: 'icol-card' },
+					h('div', { class: 'icol-page-head', style: 'margin-bottom:8px' }, h('div', {}, h('h3', { text: 'מוכנים לאישור · ' + ready.length }), h('div', { class: 'muted', text: 'הסכום מחושב לפי תאריך ההסכם ולפי תווית דמי הרישום בדיל. כל תלמיד נבדק שוב מול הדשבורד ברגע האישור.' })), h('label', { class: 'icol-check' }, all, 'סימון הכול')),
+					table([['pick', '', function (r) { return boxes[r.case_id]; }]].concat(cols), ready),
+					h('div', { class: 'icol-form', style: 'margin-top:12px' }, basis.el),
+					h('div', { class: 'icol-actions', style: 'margin-top:12px' }, btn, sumEl)));
+				btn.addEventListener('click', function () {
+					var p = picked();
+					var s = 0; p.forEach(function (r) { s += Number(r.amount_minor || 0); });
+					modal({ title: 'אישור ' + p.length + ' חיובים', lead: 'סך הכול ' + money(s) + '. כל חיוב נרשם עם שמך ועם בסיס החיוב. הודעות התשלום יוצאות לפי מדיניות הפנייה, לא מיד.', actions: [{ label: 'אישור', kind: 'primary', onClick: function () {
+						return api.post('/program/approve', { case_ids: p.map(function (r) { return r.case_id; }), basis: val(basis) }).then(function (res) {
+							toast('אושרו ' + res.approved + ' חיובים', 'ok');
+							if (res.skipped && res.skipped.length) { modal({ title: res.skipped.length + ' לא אושרו', lead: 'אלה השתנו מאז שהרשימה נטענה:', body: h('ul', {}, res.skipped.map(function (x) { return h('li', { text: '#' + x.case_id + ': ' + x.reason }); })), actions: [], cancelLabel: 'סגירה' }); }
+							programQueue(body);
+						});
+					} }] });
+				});
+				update();
+			}
+			if (blocked.length) {
+				add(body, h('div', { class: 'icol-card', style: 'margin-top:12px' }, h('h3', { text: 'דורשים בדיקה לפני אישור · ' + blocked.length }), table(cols, blocked, function (r) { location.hash = '#/cases/' + r.case_id; })));
+			}
+		}).catch(fail);
+	}
+	function programJourney(body) {
+		api.get('/program/journey').then(function (j) {
+			clear(body);
+			if (!j.enabled) { add(body, h('div', { class: 'icol-banner warn' }, h('div', { text: 'הליווי האוטומטי כבוי. מפעילים אותו בהגדרות, אחרי שתבניות ההודעות אושרו במטא.' }), can('icol_admin') ? h('a', { href: '#/settings/program', text: 'להגדרות' }) : null)); }
+			var counts = Object.keys(TRACK).map(function (t) { return chip(TRACK[t][0] + ' · ' + (j.by_track[t] || 0), TRACK[t][1]); });
+			add(body, h('div', { class: 'icol-page-head', style: 'margin-bottom:10px' },
+				h('div', { class: 'icol-mode' }, counts),
+				h('div', { class: 'icol-actions' }, h('span', { class: 'muted', text: 'ריצה אחרונה: ' + (j.last_run.success || 'עוד לא רצה') + (j.last_run.error ? ' · שגיאה: ' + j.last_run.error : '') }),
+					can('icol_admin') ? h('button', { class: 'icol-btn sm', text: 'הרצה עכשיו', onclick: function () { api.post('/program/sync').then(function (r) { toast(r.stale ? 'דשבורד ההכנסות לא עדכני, לא נקלטו תלמידים' : 'נקלטו ' + ((r.enrolled && r.enrolled.enrolled) || 0) + ' · נסגרו ' + (((r.resolved || {}).opened || 0) + ((r.resolved || {}).paid || 0)), r.stale ? 'err' : 'ok'); programJourney(body); }).catch(fail); } }) : null)));
+			add(body, table([
+				['name', 'תלמיד', function (r) { return h('span', {}, r.name, h('span', { class: 'sub' }, r.phone ? phone(r.phone) : 'אין טלפון')); }],
+				['track', 'מסלול', function (r) { return trackChip(r.track); }],
+				['deadline', 'מועד', function (r) { return h('span', {}, r.deadline, h('span', { class: 'sub', text: r.days_left >= 0 ? 'עוד ' + r.days_left + ' ימים' : 'עבר לפני ' + (-r.days_left) + ' ימים' })); }],
+				['state', 'מצב', function (r) { return stateCell(r.state); }],
+				['last', 'הודעה אחרונה', 'last_step'],
+				['next', 'הבאה', function (r) { return r.next_step ? h('span', {}, r.next_step, h('span', { class: 'sub', text: r.next_at })) : h('span', { class: 'muted', text: r.days_left < 0 ? 'ממתין לאישור החיוב' : 'אין' }); }],
+				['amount', 'סכום אם לא ייפתח', 'amount_text'],
+				['owner', 'נציג', 'owner'],
+				['flags', '', function (r) { return r.flags.length ? h('span', { class: 'icol-mode' }, r.flags.map(function (x) { return chip(x, 'warn'); })) : null; }]
+			], j.rows, function (r) { location.hash = '#/cases/' + r.case_id; }));
+		}).catch(fail);
+	}
+	function programImport(body) {
+		clear(body);
+		var ST = { new: ['ייכנס לליווי', 'ok'], exists: ['כבר יש תיק', ''], opened: ['פתח חשבון לפי הדשבורד', 'info'], invalid: ['לא תקין', 'bad'] };
+		var ta = field('text', 'שורות מאקסל', 'textarea', { rows: 10, wide: true, placeholder: 'מספר דיל\tתאריך הסכם\tטלפון\tשם\n12345\t15/06/2026\t050-1234567\tמאיה לוי' });
+		var out = h('div', { style: 'margin-top:12px' });
+		var run = function (commit) {
+			return api.post('/program/import', { text: val(ta), commit: commit }).then(function (res) {
+				clear(out);
+				var sum = res.summary || {};
+				add(out, h('div', { class: 'icol-mode', style: 'margin-bottom:8px' }, Object.keys(ST).map(function (k) { return chip(ST[k][0] + ' · ' + (sum[k] || 0), ST[k][1]); })));
+				if (res.committed) { add(out, h('div', { class: 'icol-banner sim', text: 'יובאו ' + res.queued + ' תלמידים. ' + res.enrolled + ' נכנסו לליווי עכשיו, והשאר ייכנסו בריצות הבאות (פעם בשעה).' })); }
+				add(out, table([
+					['line', 'שורה'], ['deal_id', 'דיל'], ['signed', 'תאריך הסכם', function (r) { return (r.signed || '').split('-').reverse().join('/'); }], ['deadline', 'מועד', function (r) { return (r.deadline || '').split('-').reverse().join('/'); }],
+					['amount_text', 'סכום'], ['status', 'מצב', function (r) { var x = ST[r.status] || [r.status, '']; return h('span', {}, chip(x[0], x[1]), r.errors.length ? h('span', { class: 'sub', text: r.errors.join(' · ') }) : null); }]
+				], res.rows));
+				if (!res.committed && sum.new) { add(out, h('div', { class: 'icol-actions', style: 'margin-top:12px' }, h('button', { class: 'icol-btn primary', text: 'ייבוא ' + sum.new + ' תלמידים', onclick: function () { run(true).catch(fail); } }))); }
+			});
+		};
+		add(body, h('div', { class: 'icol-card' },
+			h('h3', { text: 'תלמידים שהצטרפו לפני 1.8' }),
+			h('p', { class: 'muted', text: 'דשבורד ההכנסות לא מכיר אותם, ולכן הם לא נכנסים לבד. מעתיקים מאקסל עמודה של מספר הדיל ועמודה של תאריך ההסכם. טלפון ושם לא חובה: מה שחסר נמשך מפייפדרייב, וכך גם תווית דמי הרישום. מי שהמועד שלו עבר מקבל הודעה אחת, ונכנס לרשימת האישור אחרי המתנה לתגובה.' }),
+			h('div', { class: 'icol-form' }, ta.el),
+			h('div', { class: 'icol-actions', style: 'margin-top:12px' }, h('button', { class: 'icol-btn', text: 'בדיקה בלי לייבא', disabled: !can('icol_approve_debt'), onclick: function () { run(false).catch(fail); } })),
+			out));
+	}
+
 	/* ---------- security: phones and open sessions ---------- */
 	var DEV = { active: ['פעיל', 'ok'], pending: ['ממתין לאישור', 'warn'], revoked: ['נותק', ''] };
 	function viewSecurity() {
@@ -901,7 +1036,7 @@
 
 	/* ---------- settings ---------- */
 	function viewSettings(tab) {
-		var tabs = [['health', 'בריאות המערכת'], ['caps', 'יכולות ומצב'], ['connections', 'חיבורים'], ['policy', 'מדיניות פנייה'], ['templates', 'תבניות'], ['team', 'צוות והרשאות'], ['codes', 'קודי תשובה']];
+		var tabs = [['health', 'בריאות המערכת'], ['caps', 'יכולות ומצב'], ['program', 'תוכנית למתחילים'], ['connections', 'חיבורים'], ['policy', 'מדיניות פנייה'], ['templates', 'תבניות'], ['team', 'צוות והרשאות'], ['codes', 'קודי תשובה']];
 		clear(page);
 		add(page, pageHead('הגדרות ובריאות', 'כל שינוי נרשם ביומן. יכולות חיצוניות כבויות עד שאומתו.'));
 		var bar = h('div', { class: 'icol-tabs' });
@@ -912,7 +1047,7 @@
 		if (tab === 'health') { return settingsHealth(body); }
 		api.get('/settings').then(function (s) {
 			clear(body);
-			({ caps: settingsCaps, connections: settingsConnections, policy: settingsPolicy, templates: settingsTemplates, team: settingsTeam, codes: settingsCodes })[tab](body, s);
+			({ caps: settingsCaps, program: settingsProgram, connections: settingsConnections, policy: settingsPolicy, templates: settingsTemplates, team: settingsTeam, codes: settingsCodes })[tab](body, s);
 		}).catch(fail);
 	}
 	function saveSettings(values, secrets) { return api.post('/settings', { settings: values, secrets: secrets || {} }).then(function () { toast('ההגדרות נשמרו', 'ok'); route(); }); }
@@ -958,6 +1093,25 @@
 		];
 		var fs = caps.map(function (c) { return { key: c[0], f: field(c[0], c[1], 'checkbox', { value: Number(st[c[0]]) === 1, help: c[2], wide: true }) }; });
 		add(body, h('div', { class: 'icol-card' }, h('div', { class: 'icol-form' }, fs.map(function (x) { return x.f.el; })), h('div', { class: 'icol-actions', style: 'margin-top:12px' }, h('button', { class: 'icol-btn primary', text: 'שמירה', onclick: function () { var v = {}; fs.forEach(function (x) { v[x.key] = x.f.input.checked ? 1 : 0; }); saveSettings(v).catch(fail); } }), h('span', { class: 'muted', text: 'מתג העצירה הכללי נמצא בסרגל העליון.' }))));
+	}
+	function settingsProgram(body, s) {
+		var st = s.settings;
+		var on = field('journey_enabled', 'ליווי אוטומטי לפני המועד', 'checkbox', { value: Number(st.journey_enabled) === 1, wide: true, help: 'תלמידים שלא פתחו חשבון נכנסים לבד מדשבורד ההכנסות, 45 יום לפני המועד. להפעיל אחרי שתבניות ההודעות אושרו במטא. במצב תצוגה בלבד ההודעות מתועדות ולא נשלחות.' });
+		var f = {
+			journey_contact_basis: field('journey_contact_basis', 'על מה מבוססת ההרשאה לפנות לתלמידים בוואטסאפ', 'text', { value: st.journey_contact_basis, wide: true, required: true, help: 'לדוגמה: הסכם ההצטרפות, סעיף 9. נשמר כמקור ההרשאה של כל תלמיד שנכנס לליווי.' }),
+			journey_start_days: field('journey_start_days', 'הודעה ראשונה, ימים לפני המועד', 'number', { value: st.journey_start_days }),
+			journey_min_gap_days: field('journey_min_gap_days', 'מרווח מינימלי בין הודעות למי שנכנס באמצע (ימים)', 'number', { value: st.journey_min_gap_days }),
+			late_grace_days: field('late_grace_days', 'המתנה לתגובה לפני אישור, למי שהמועד שלו עבר (ימים)', 'number', { value: st.late_grace_days }),
+			credit_window_days: field('credit_window_days', 'חלון זיכוי אחרי תשלום (ימים)', 'number', { value: st.credit_window_days }),
+			journey_batch: field('journey_batch', 'תלמידים חדשים בכל ריצה', 'number', { value: st.journey_batch, help: 'כל תלמיד הוא קריאה לפייפדרייב. הריצה היא פעם בשעה.' }),
+			program_price_table: field('program_price_table', 'מחירון לפי תאריך ההסכם', 'textarea', { value: st.program_price_table, rows: 3, wide: true, help: 'שורה לכל מחירון: תאריך תחולה, מחיר מלא, דמי רישום. לדוגמה: 2026-08-01 980 100. תלמיד משלם את המחיר שהיה בתוקף בתאריך ההסכם שלו, פחות דמי הרישום.' }),
+			no_registration_label: field('no_registration_label', 'תווית בדיל לתלמיד שלא שילם דמי רישום', 'text', { value: st.no_registration_label, help: 'השם המדויק של התווית בפייפדרייב. לתלמיד עם התווית לא מפחיתים את דמי הרישום.' }),
+			declined_lost_reasons: field('declined_lost_reasons', 'סיבות lost שמעבירות למסלול "לא יפתח חשבון"', 'textarea', { value: st.declined_lost_reasons, rows: 2, help: 'שורה לכל סיבה, בדיוק כמו בפייפדרייב.' })
+		};
+		f.program_price_table.input.setAttribute('dir', 'ltr');
+		add(body, h('div', { class: 'icol-card' }, h('div', { class: 'icol-form' }, on.el), h('div', { class: 'icol-fields', style: 'margin-top:10px' }, Object.keys(f).map(function (k) { return f[k].el; })),
+			h('div', { class: 'icol-actions', style: 'margin-top:12px' }, h('button', { class: 'icol-btn primary', text: 'שמירה', onclick: function () { var v = { journey_enabled: on.input.checked ? 1 : 0 }; Object.keys(f).forEach(function (k) { v[k] = val(f[k]); }); saveSettings(v).catch(function (e) { showFieldErrors(body, e); fail(e); }); } }),
+				C.diag ? h('a', { class: 'icol-btn sm', href: C.diag.tools.replace('icol_diag=tools', 'icol_diag=program'), target: '_blank', rel: 'noopener', text: 'בדיקה: מי ייכנס לליווי' }) : null)));
 	}
 	function settingsConnections(body, s) {
 		var st = s.settings;
@@ -1008,7 +1162,7 @@
 	}
 	function settingsTemplates(body, s) {
 		add(body, h('p', { class: 'muted', text: 'עריכת נוסח יוצרת גרסה חדשה במצב טיוטה: נוסח ששונה אינו הנוסח שמטא אישרה. בהודעות ללקוח לא משתמשים במילים "חוב" או "גבייה" (מדיניות WhatsApp Business אוסרת שימוש לגביית חובות).' }));
-		add(body, table([['key', 'תבנית'], ['channel', 'ערוץ', function (t) { return { whatsapp_template: 'תבנית WhatsApp', whatsapp_session: 'הודעת שירות (24ש׳)', internal: 'פנימי' }[t.channel] || t.channel; }], ['provider_name', 'שם ב-WATI'], ['version', 'גרסה'], ['approval_state', 'אישור', function (t) { return chip({ draft: 'טיוטה', submitted: 'הוגשה', approved: 'מאושרת', rejected: 'נדחתה' }[t.approval_state] || t.approval_state, t.approval_state === 'approved' ? 'ok' : 'warn'); }], ['body', 'נוסח', function (t) { return h('span', { style: 'white-space:pre-wrap;display:block;max-width:520px', text: t.body }); }],
+		add(body, table([['key', 'תבנית'], ['channel', 'ערוץ', function (t) { return { whatsapp_template: 'תבנית WhatsApp', whatsapp_session: 'הודעת שירות (24ש׳)', internal: 'פנימי' }[t.channel] || t.channel; }], ['provider_name', 'שם ב-WATI'], ['version', 'גרסה'], ['approval_state', 'אישור', function (t) { return chip({ draft: 'טיוטה', submitted: 'הוגשה', approved: 'מאושרת', rejected: 'נדחתה' }[t.approval_state] || t.approval_state, t.approval_state === 'approved' ? 'ok' : 'warn'); }], ['body', 'נוסח', function (t) { return h('span', { style: 'display:block;max-width:520px' }, h('span', { style: 'white-space:pre-wrap;display:block', text: t.body }), (t.buttons || []).length ? h('span', { class: 'icol-mode', style: 'margin-top:6px' }, t.buttons.map(function (b) { return chip(b, 'info'); })) : null, t.meta_category ? h('span', { class: 'sub', text: 'קטגוריה מומלצת במטא: ' + ({ utility: 'Utility', marketing: 'Marketing' }[t.meta_category] || t.meta_category) }) : null); }],
 			['act', '', function (t) { return h('button', { class: 'icol-btn sm', text: 'עריכה', onclick: function () { editTemplate(t); } }); }]], s.templates));
 	}
 	function editTemplate(t) {

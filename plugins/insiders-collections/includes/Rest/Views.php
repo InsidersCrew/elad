@@ -71,7 +71,9 @@ final class Views {
 				'card_tasks_open'     => (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'card_update_tasks' ) . " WHERE state IN ('open','in_progress','needs_clarification')" ),
 				'exceptions_open'     => (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'exceptions' ) . " WHERE status = 'open'" ),
 				'drafts'              => $one( "SELECT COUNT(*) {$base} AND c.workflow_state = 'draft'", $args ),
-				'candidates_new'      => (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'program_candidates' ) . " WHERE status = 'new'" ),
+				'candidates_new'      => (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'program_candidates' ) . " WHERE status = 'new' AND (source IS NULL OR source <> 'import')" ),
+				'journey_active'      => (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'cases' ) . " WHERE phase = 'commitment' AND workflow_state <> 'closed'" ),
+				'program_waiting'     => (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed' AND (a.account_open_deadline < %s OR c.track = 'declined') AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'debt_items' ) . ' d WHERE d.case_id = c.id AND d.approved_at IS NOT NULL)', Clock::today() ),
 				'my_tasks'            => (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'tasks' ) . " WHERE status = 'open' AND (assigned_to = %d OR assigned_to IS NULL) AND type <> 'alert'", get_current_user_id() ),
 			),
 			'by_state'    => Db::rows( "SELECT c.workflow_state AS state, COUNT(*) AS n {$base} GROUP BY c.workflow_state", ...$args ),
@@ -229,6 +231,14 @@ final class Views {
 			'timeline'   => $timeline,
 			'audit'      => array_map( static fn( $l ) => array( 'local' => Clock::display( $l['occurred_at'] ), 'action' => $l['action'], 'actor' => 'user' === $l['actor_type'] ? self::user_name( $l['actor_id'] ) : 'מערכת', 'reason' => $l['reason'], 'entity' => $l['entity_type'] . '#' . $l['entity_id'] ), Db::rows( 'SELECT * FROM ' . Db::t( 'audit_log' ) . " WHERE (entity_type = 'case' AND entity_id = %d) OR (entity_type = 'debt_item' AND entity_id IN (SELECT id FROM " . Db::t( 'debt_items' ) . ' WHERE case_id = %d)) ORDER BY id DESC LIMIT 200', $id, $id ) ),
 			'actions'    => self::actions( $case, $summary ),
+			'journey'    => 'commitment' === $case['phase'] ? array(
+				'track'       => $case['track'],
+				'track_label' => \Insiders\Collections\Domain\Journey::TRACKS[ $case['track'] ] ?? '',
+				'last_step'   => $case['track_step'] ? ( \Insiders\Collections\Domain\Journey::STEP_LABELS[ $case['track_step'] ] ?? $case['track_step'] ) : '',
+				'declined_at' => Clock::display( $case['declined_at'] ),
+				'declined_source' => $case['declined_source'],
+				'amount_text' => $agr ? \Insiders\Collections\Domain\Pricing::amount_text( $agr ) : '',
+			) : null,
 			'pending'    => Db::rows( 'SELECT id, type, run_at, state FROM ' . Db::t( 'scheduled_actions' ) . " WHERE case_id = %d AND state IN ('pending','claimed') ORDER BY run_at", $id ),
 		);
 	}
@@ -253,6 +263,8 @@ final class Views {
 			'close'     => $a( $can( 'icol_work_case' ) && 'closed' !== $s && 0 === count( array_filter( $summary['items'], static fn( $i ) => ! in_array( $i['finance_state'], array( 'settled', 'cancelled' ), true ) ) ), 'אפשר לסגור רק כשכל הפריטים הוסדרו או בוטלו' ),
 			'resolve_dispute' => $a( $can( 'icol_approve_debt' ) && (int) $case['dispute_open'], 'אין מחלוקת פתוחה' ),
 			'resolve_account_claim' => $a( $can( 'icol_approve_debt' ) && (int) $case['claims_account_opened'], 'אין טענת פתיחת חשבון' ),
+			'decline'   => $a( $can( 'icol_work_case' ) && 'commitment' === $case['phase'] && 'declined' !== $case['track'] && 'closed' !== $s, 'זמין רק לתלמיד בליווי לפני המועד' ),
+			'credit'    => $a( $can( 'icol_verify_payment' ) && 'non_open_charge' === $case['source_type'] && $summary['allocated_minor'] > 0, 'זמין רק לתיק של התוכנית שיש בו תשלום' ),
 		);
 	}
 
@@ -326,6 +338,44 @@ final class Views {
 			'rows'   => $rows,
 			'source' => has_filter( 'icol_beginner_program_candidates' ) ? 'filter' : ( $ifd['available'] ? 'finance_dashboard' : ( '' !== (string) Settings::get( 'revenue_meta_deadline' ) ? 'meta' : 'none' ) ),
 			'sync'   => $ifd['available'] ? array( 'ok_at' => $ifd['sync_ok_at'] ? Clock::display( $ifd['sync_ok_at'] ) : null, 'age_hours' => $ifd['sync_age_hours'], 'stale' => $ifd['stale'] ) : null,
+		);
+	}
+
+	/** Students in the pre-deadline phase, with the next message of their track. */
+	public static function journey(): array {
+		$rows = Db::rows(
+			'SELECT c.id, c.customer_id, c.workflow_state, c.track, c.track_step, c.next_action_type, c.next_action_at, c.owner_id, c.claims_account_opened, c.dispute_open, c.agreement_id, u.full_name, u.phone_e164, u.contact_status, a.account_open_deadline, a.signed_at, a.no_registration_fee, a.deal_status, a.lost_reason, a.pipedrive_deal_id, a.deal_checked_at, a.type, a.joined_at, a.price_total_minor, a.fee_credit_minor
+			 FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'customers' ) . ' u ON u.id = c.customer_id JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id
+			 WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed' ORDER BY a.account_open_deadline, c.id LIMIT 1500"
+		);
+		$out = array();
+		foreach ( $rows as $r ) {
+			$next  = \Insiders\Collections\Domain\Journey::next_step( $r, $r );
+			$out[] = array(
+				'case_id'     => (int) $r['id'],
+				'name'        => $r['full_name'],
+				'phone'       => $r['phone_e164'],
+				'state'       => $r['workflow_state'],
+				'track'       => $r['track'],
+				'track_label' => \Insiders\Collections\Domain\Journey::TRACKS[ $r['track'] ] ?? '',
+				'deadline'    => \Insiders\Collections\Domain\Journey::date_he( (string) $r['account_open_deadline'] ),
+				'days_left'   => (int) floor( ( strtotime( $r['account_open_deadline'] ) - strtotime( Clock::today() ) ) / DAY_IN_SECONDS ),
+				'last_step'   => $r['track_step'] ? ( \Insiders\Collections\Domain\Journey::STEP_LABELS[ $r['track_step'] ] ?? $r['track_step'] ) : '',
+				'next_step'   => $next ? ( \Insiders\Collections\Domain\Journey::STEP_LABELS[ $next['key'] ] ?? $next['key'] ) : '',
+				'next_at'     => 'send_journey' === $r['next_action_type'] ? Clock::display( $r['next_action_at'] ) : ( $next ? \Insiders\Collections\Domain\Journey::date_he( $next['date'] ) : '' ),
+				'amount_text' => \Insiders\Collections\Domain\Pricing::amount_text( $r ),
+				'no_fee'      => (bool) (int) $r['no_registration_fee'],
+				'owner'       => self::user_name( $r['owner_id'] ),
+				'flags'       => array_values( array_filter( array( (int) $r['claims_account_opened'] ? 'טענת פתיחה' : '', (int) $r['dispute_open'] ? 'מחלוקת' : '', empty( $r['phone_e164'] ) ? 'אין טלפון' : '', $r['deal_checked_at'] ? '' : 'הדיל לא נקרא' ) ) ),
+			);
+		}
+		$beat = Runner::beats()['journey'] ?? array();
+		return array(
+			'rows'     => $out,
+			'by_track' => array_count_values( array_column( $out, 'track' ) ),
+			'enabled'  => Settings::on( 'journey_enabled' ),
+			'basis'    => (string) Settings::get( 'journey_contact_basis' ),
+			'last_run' => array( 'attempt' => Clock::display( $beat['attempt'] ?? null ), 'success' => Clock::display( $beat['success'] ?? null ), 'error' => $beat['last_error'] ?? '', 'note' => mb_substr( (string) ( $beat['last_note'] ?? '' ), 0, 300 ) ),
 		);
 	}
 

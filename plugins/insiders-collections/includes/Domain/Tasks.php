@@ -31,6 +31,9 @@ final class Tasks {
 		'promise_request'    => array( 'label' => 'החלטה על בקשת מועד תשלום', 'due_days' => 1 ),
 		'alert'              => array( 'label' => 'התראה', 'due_days' => 0 ),
 		'crm_record'         => array( 'label' => 'רישום התשלום בדיל בפייפדרייב', 'due_days' => 1 ),
+		'open_call'          => array( 'label' => 'שיחה לליווי פתיחת חשבון', 'due_days' => 0 ),
+		'crm_lost'           => array( 'label' => 'סימון הדיל כ-lost בפייפדרייב', 'due_days' => 1 ),
+		'program_credit'     => array( 'label' => 'זיכוי לפי תנאי התוכנית', 'due_days' => 2 ),
 	);
 
 	public static function open( string $task_key, string $type, array $opts = array() ): int {

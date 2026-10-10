@@ -182,7 +182,8 @@
 
 @media (max-width:1100px){.icol-case-head,.icol-split{grid-template-columns:1fr}.icol-money{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:860px){.icol-shell{grid-template-columns:1fr}.icol-side{position:static;height:auto}.icol-nav{flex-direction:row;flex-wrap:wrap}.icol-top{top:46px}.icol-repeat-row{grid-template-columns:1fr 1fr}}
-@media (max-width:600px){.icol-money{grid-template-columns:1fr}.icol-page{padding:16px}}
+@media (max-width:600px){.icol-money{grid-template-columns:1fr}.icol-page{padding:16px}.icol-top{flex-wrap:wrap;padding:12px 16px}}
+.icol-ltr{direction:ltr;unicode-bidi:isolate;display:inline-block}
 
 /* Scan gate (lock screen, pairing). Lives inside .icol-app like everything else. */
 .icol-gate{min-height:calc(100vh - 32px);display:flex;align-items:flex-start;justify-content:center;padding:56px 16px;background:radial-gradient(120% 60% at 85% 0%,rgba(70,15,255,.16),transparent 60%),var(--bg)}

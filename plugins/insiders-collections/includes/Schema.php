@@ -66,6 +66,12 @@ final class Schema {
 				extensions_json TEXT NULL,
 				status_checked_at DATE NULL,
 				pipedrive_deal_id BIGINT UNSIGNED NULL,
+				price_total_minor BIGINT NULL,
+				fee_credit_minor BIGINT NULL,
+				no_registration_fee TINYINT(1) NOT NULL DEFAULT 0,
+				deal_status VARCHAR(12) NULL,
+				lost_reason VARCHAR(190) NULL,
+				deal_checked_at DATETIME NULL,
 				billing_policy_version INT NULL,
 				created_by BIGINT UNSIGNED NULL,
 				created_at DATETIME NULL,
@@ -105,6 +111,11 @@ final class Schema {
 				active_key VARCHAR(100) NULL,
 				source_type VARCHAR(30) NOT NULL,
 				entry_mode VARCHAR(20) NOT NULL DEFAULT 'new',
+				phase VARCHAR(12) NOT NULL DEFAULT 'charge',
+				track VARCHAR(20) NULL,
+				track_step VARCHAR(30) NULL,
+				declined_at DATETIME NULL,
+				declined_source VARCHAR(20) NULL,
 				workflow_state VARCHAR(30) NOT NULL DEFAULT 'draft',
 				state_reason VARCHAR(255) NULL,
 				owner_id BIGINT UNSIGNED NULL,
@@ -131,6 +142,7 @@ final class Schema {
 				PRIMARY KEY (id),
 				UNIQUE KEY active_key (active_key),
 				KEY state_next (workflow_state, next_action_at),
+				KEY phase (phase, workflow_state),
 				KEY customer (customer_id),
 				KEY owner (owner_id)",
 			'debt_items' => "
@@ -607,14 +619,34 @@ final class Schema {
 			'program_candidates.pipedrive_person_id' => self::ensure_column( 'program_candidates', 'pipedrive_person_id', 'BIGINT UNSIGNED NULL AFTER source' ),
 			'program_candidates.pipedrive_deal_id'   => self::ensure_column( 'program_candidates', 'pipedrive_deal_id', 'BIGINT UNSIGNED NULL AFTER pipedrive_person_id' ),
 			'agreements.pipedrive_deal_id'           => self::ensure_column( 'agreements', 'pipedrive_deal_id', 'BIGINT UNSIGNED NULL AFTER status_checked_at' ),
+			// v3: the pre-deadline journey (commitment phase) and the price rule.
+			'agreements.price_total_minor'           => self::ensure_column( 'agreements', 'price_total_minor', 'BIGINT NULL AFTER pipedrive_deal_id' ),
+			'agreements.fee_credit_minor'            => self::ensure_column( 'agreements', 'fee_credit_minor', 'BIGINT NULL AFTER price_total_minor' ),
+			'agreements.no_registration_fee'         => self::ensure_column( 'agreements', 'no_registration_fee', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER fee_credit_minor' ),
+			'agreements.deal_status'                 => self::ensure_column( 'agreements', 'deal_status', 'VARCHAR(12) NULL AFTER no_registration_fee' ),
+			'agreements.lost_reason'                 => self::ensure_column( 'agreements', 'lost_reason', 'VARCHAR(190) NULL AFTER deal_status' ),
+			'agreements.deal_checked_at'             => self::ensure_column( 'agreements', 'deal_checked_at', 'DATETIME NULL AFTER lost_reason' ),
+			// Existing cases are all in the charge phase: the column default says so.
+			'cases.phase'                            => self::ensure_column( 'cases', 'phase', "VARCHAR(12) NOT NULL DEFAULT 'charge' AFTER entry_mode" ),
+			'cases.track'                            => self::ensure_column( 'cases', 'track', 'VARCHAR(20) NULL AFTER phase' ),
+			'cases.track_step'                       => self::ensure_column( 'cases', 'track_step', 'VARCHAR(30) NULL AFTER track' ),
+			'cases.declined_at'                      => self::ensure_column( 'cases', 'declined_at', 'DATETIME NULL AFTER track_step' ),
+			'cases.declined_source'                  => self::ensure_column( 'cases', 'declined_source', 'VARCHAR(20) NULL AFTER declined_at' ),
 		);
+		$out['cases.phase_index'] = self::ensure_index( 'cases', 'phase', '(phase, workflow_state)' );
 		// v1 had wp_user_id NOT NULL; candidates from the finance dashboard are keyed by Pipedrive person.
 		$table    = Db::t( 'program_candidates' );
 		$nullable = $wpdb->get_var( $wpdb->prepare( 'SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s', $table, 'wp_user_id' ) );
 		$out['program_candidates.wp_user_id_null'] = 'NO' === $nullable ? false !== $wpdb->query( "ALTER TABLE `{$table}` MODIFY wp_user_id BIGINT UNSIGNED NULL" ) : true;
-		$index = $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s', $table, 'person' ) );
-		$out['program_candidates.person_index'] = (int) $index > 0 ? true : false !== $wpdb->query( "ALTER TABLE `{$table}` ADD KEY person (pipedrive_person_id)" );
+		$out['program_candidates.person_index'] = self::ensure_index( 'program_candidates', 'person', '(pipedrive_person_id)' );
 		return $out;
+	}
+
+	private static function ensure_index( string $name, string $index, string $columns ): bool {
+		global $wpdb;
+		$table = Db::t( $name );
+		$have  = $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s', $table, $index ) );
+		return (int) $have > 0 ? true : false !== $wpdb->query( "ALTER TABLE `{$table}` ADD KEY `{$index}` {$columns}" );
 	}
 
 	/** Verifies every table exists and is InnoDB (transactions + row locks depend on it). */

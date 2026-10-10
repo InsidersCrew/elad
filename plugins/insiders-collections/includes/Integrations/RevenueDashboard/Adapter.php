@@ -183,7 +183,7 @@ final class Adapter {
 		}
 
 		// Active non-open cases and what the dashboard now says about each student.
-		$active = Db::rows( 'SELECT c.*, u.wp_user_id, u.pipedrive_person_id, a.pipedrive_deal_id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'customers' ) . ' u ON u.id = c.customer_id LEFT JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE c.source_type = 'non_open_charge' AND c.workflow_state NOT IN ('closed','human_review')" );
+		$active = Db::rows( 'SELECT c.*, u.wp_user_id, u.pipedrive_person_id, a.pipedrive_deal_id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'customers' ) . ' u ON u.id = c.customer_id LEFT JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE c.source_type = 'non_open_charge' AND c.phase = 'charge' AND c.workflow_state NOT IN ('closed','human_review')" );
 		$status = array(); // case id => opened|paid
 		if ( 'finance_dashboard' === $c['source'] ) {
 			$waiting = Db::rows( 'SELECT id, pipedrive_person_id, pipedrive_deal_id FROM ' . Db::t( 'program_candidates' ) . " WHERE status = 'new' AND pipedrive_deal_id IS NOT NULL" );

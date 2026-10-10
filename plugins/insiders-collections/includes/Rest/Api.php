@@ -7,6 +7,8 @@ use Insiders\Collections\Domain\CardTasks;
 use Insiders\Collections\Domain\Customers;
 use Insiders\Collections\Domain\DomainError;
 use Insiders\Collections\Domain\Exceptions;
+use Insiders\Collections\Domain\Journey;
+use Insiders\Collections\Domain\ProgramCharges;
 use Insiders\Collections\Domain\Ledger;
 use Insiders\Collections\Domain\Matching;
 use Insiders\Collections\Domain\Messaging;
@@ -129,6 +131,24 @@ final class Api {
 		$r( 'POST', "/candidates/$id/draft", 'icol_create_draft', static fn( $q ) => Matching::candidate_to_draft( Http::int( $q, 'id' ), (array) $q->get_json_params() ), true );
 		$r( 'POST', "/candidates/$id/dismiss", 'icol_create_draft', static function ( $q ) { Matching::dismiss_candidate( Http::int( $q, 'id' ), Http::str( $q, 'note' ) ); return array( 'ok' => true ); }, true );
 		$r( 'POST', "/inbox/$id/replay", 'icol_admin', static fn( $q ) => Inbox::replay( Http::int( $q, 'id' ) ), true );
+
+		// Beginner program: journey, daily approval, credit window, import.
+		// Every student on one screen: the collections officer's view, like the full case list.
+		$r( 'GET', '/program/queue', 'icol_view_all', static fn() => ProgramCharges::queue() );
+		$r( 'GET', '/program/journey', 'icol_view_all', static fn() => Views::journey() );
+		$r( 'POST', '/program/approve', 'icol_approve_debt', static fn( $q ) => ProgramCharges::approve( (array) $q->get_param( 'case_ids' ), Http::str( $q, 'basis' ) ), true );
+		$r( 'POST', '/program/import', 'icol_approve_debt', static fn( $q ) => ProgramCharges::import( (string) $q->get_param( 'text' ), (bool) $q->get_param( 'commit' ) ), true );
+		$r( 'POST', '/program/sync', 'icol_admin', static fn() => Journey::sync(), true );
+		$r( 'POST', "/cases/$id/decline", 'icol_work_case', static function ( $q ) {
+			$case_id = self::case_id( $q );
+			$note    = Http::str( $q, 'note' );
+			if ( '' === $note ) {
+				throw new DomainError( 'validation_failed', 'יש לתעד מה התלמיד אמר', 400, array( 'note' => 'חובה' ) );
+			}
+			Journey::decline( $case_id, 'rep', 'נציג סימן שהתלמיד לא יפתח חשבון: ' . $note );
+			return Cases::response( $case_id );
+		}, true );
+		$r( 'POST', "/cases/$id/credit", 'icol_verify_payment', static fn( $q ) => ProgramCharges::record_credit( self::case_id( $q ), Http::str( $q, 'evidence_ref' ), Http::str( $q, 'note' ) ), true );
 
 		// Admin.
 		$r( 'POST', '/settings', 'icol_admin', static fn( $q ) => self::save_settings( $q ), true );
@@ -277,6 +297,15 @@ final class Api {
 			if ( in_array( $k, array_merge( $allowed, $extra ), true ) && ! in_array( $k, array( 'kill_switch', 'gate_idle_minutes', 'gate_session_hours' ), true ) ) {
 				$clean[ $k ] = is_array( $v ) ? wp_json_encode( $v ) : sanitize_textarea_field( (string) $v );
 			}
+		}
+		if ( isset( $clean['program_price_table'] ) ) {
+			$bad = \Insiders\Collections\Domain\Pricing::validate( $clean['program_price_table'] );
+			if ( $bad || '' === trim( $clean['program_price_table'] ) ) {
+				throw new DomainError( 'validation_failed', 'שורות לא תקינות במחירון: ' . ( $bad ? implode( ' · ', $bad ) : 'המחירון ריק' ), 422, array( 'program_price_table' => 'פורמט: תאריך מחיר דמי-רישום' ) );
+			}
+		}
+		if ( ! empty( $clean['journey_enabled'] ) && '' === trim( (string) ( $clean['journey_contact_basis'] ?? Settings::get( 'journey_contact_basis' ) ) ) ) {
+			throw new DomainError( 'validation_failed', 'לפני הפעלת הליווי יש לתעד על מה מבוססת ההרשאה לפנות לתלמידים בוואטסאפ', 422, array( 'journey_contact_basis' => 'חובה' ) );
 		}
 		$before = array_intersect_key( Settings::all(), $clean );
 		Settings::set( $clean );

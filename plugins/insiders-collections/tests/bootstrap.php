@@ -28,13 +28,15 @@ final class T {
 	public static int $wati_seq = 0;
 	public static ?string $ai_reply = null;
 	public static array $pd_persons = array(); // person_id => v2 person
+	public static array $pd_deals = array();   // deal_id => v2 deal
+	public static array $pd_labels = array( array( 'id' => 55, 'label' => 'ללא דמי רישום' ), array( 'id' => 56, 'label' => 'VIP' ) );
 
 	public static function reset(): void {
 		global $wpdb;
 		foreach ( array_keys( Schema::tables() ) as $t ) {
 			$wpdb->query( 'TRUNCATE TABLE ' . Db::t( $t ) );
 		}
-		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner' ) as $o ) {
+		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner', 'icol_pd_label' ) as $o ) {
 			delete_option( $o );
 		}
 		delete_option( 'icol_settings' );
@@ -44,6 +46,7 @@ final class T {
 		self::$tranzila_stos = array();
 		self::$fail_next = array();
 		self::$pd_persons = array();
+		self::$pd_deals   = array();
 		\Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::flush();
 		Clock::freeze( Clock::local_to_ts( '2026-10-11', '10:00' ) ); // Sunday, business day
 		Settings::set(
@@ -288,6 +291,14 @@ add_filter(
 		if ( false !== strpos( $url, 'pipedrive' ) && preg_match( '#/api/v2/persons/(\d+)#', $url, $pm ) ) {
 			$person = T::$pd_persons[ (int) $pm[1] ] ?? null;
 			return $person ? $json( array( 'success' => true, 'data' => $person ) ) : $json( array( 'success' => false, 'error' => 'not found' ), 404 );
+		}
+		if ( false !== strpos( $url, 'pipedrive' ) && preg_match( '#/api/v2/deals\?#', $url ) ) {
+			parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $qq );
+			$ids = array_map( 'intval', explode( ',', (string) ( $qq['ids'] ?? '' ) ) );
+			return $json( array( 'success' => true, 'data' => array_values( array_filter( array_map( static fn( $i ) => T::$pd_deals[ $i ] ?? null, $ids ) ) ) ) );
+		}
+		if ( false !== strpos( $url, 'pipedrive' ) && false !== strpos( $url, '/api/v2/dealFields/label' ) ) {
+			return $json( array( 'success' => true, 'data' => array( 'field_code' => 'label', 'options' => T::$pd_labels ) ) );
 		}
 		if ( false !== strpos( $url, 'pipedrive' ) ) {
 			return $json( array( 'success' => true, 'data' => array( 'id' => 777 ) ) );

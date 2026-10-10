@@ -29,6 +29,9 @@ final class Messaging {
 		if ( ! $case || ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			return null;
 		}
+		if ( 'commitment' === ( $case['phase'] ?? 'charge' ) ) {
+			return Journey::plan_next( $case_id ); // before the deadline the steps follow the date, not a cadence
+		}
 		$policy = Policy::effective_or_draft();
 		$step   = (int) $case['sequence_step'];
 		$now    = Clock::now();
@@ -129,9 +132,11 @@ final class Messaging {
 			$item = count( $open ) . ' תשלומים';
 		}
 		$email = (string) ( $customer['email'] ?? '' );
+		$agr   = $case['agreement_id'] ? Db::row( 'SELECT * FROM ' . Db::t( 'agreements' ) . ' WHERE id = %d', (int) $case['agreement_id'] ) : null;
 		$promise = Db::row( 'SELECT * FROM ' . Db::t( 'promises' ) . " WHERE case_id = %d AND state IN ('approved','broken') ORDER BY promised_at DESC LIMIT 1", (int) $case['id'] );
 		return array(
 			'greeting'     => Templates::greeting( Customers::greeting_name( $customer ) ),
+			'name'         => Templates::name_or_neutral( Customers::greeting_name( $customer ) ),
 			'item'         => $item,
 			'amount'       => $summary['due_balance_minor'] > 0 ? Money::format( $summary['due_balance_minor'] ) : '',
 			'balance'      => $summary['due_balance_minor'] > 0 ? Money::format( $summary['due_balance_minor'] ) : '',
@@ -139,6 +144,9 @@ final class Messaging {
 			'link'         => $link,
 			'email_masked' => $email ? self::mask_email( $email ) : '',
 			'promise_date' => $promise ? gmdate( 'd/m', strtotime( $promise['promised_at'] ) ) : '',
+			// Beginner program: the deadline and the amount by the price rule (Pricing).
+			'deadline'     => ! empty( $agr['account_open_deadline'] ) ? Journey::date_he( (string) $agr['account_open_deadline'] ) : '',
+			'amount_text'  => $agr && 'beginner_program' === $agr['type'] ? Pricing::amount_text( $agr ) : '',
 		);
 	}
 
@@ -171,6 +179,9 @@ final class Messaging {
 	/** §19 חוזה תצוגה: text, versions, send_after and every blocker. */
 	public static function preview( int $case_id ): array {
 		$case    = Workflow::get( $case_id );
+		if ( 'commitment' === ( $case['phase'] ?? 'charge' ) ) {
+			return Journey::preview( $case_id );
+		}
 		$policy  = Policy::effective_or_draft();
 		$comp    = self::compose( $case_id, false );
 		$pending = Db::row( 'SELECT run_at FROM ' . Db::t( 'scheduled_actions' ) . " WHERE case_id = %d AND type = 'send_reminder' AND state = 'pending' ORDER BY run_at LIMIT 1", $case_id );
@@ -255,7 +266,7 @@ final class Messaging {
 		);
 	}
 
-	private static function handle_block( array $action, array $case, array $guard ): string {
+	public static function handle_block( array $action, array $case, array $guard ): string {
 		$codes = array_column( $guard['blocking'], 'code' );
 		if ( $guard['transient'] ) {
 			return 'retry:' . implode( ',', $codes );
@@ -486,9 +497,10 @@ final class Messaging {
 		} else {
 			$status = 'התשלום הזה הוסדר.';
 		}
-		$tpl = Templates::get( 'payment_verified' );
+		$program = 'non_open_charge' === $case['source_type'] && $summary['due_balance_minor'] <= 0 && ! $card_open;
+		$tpl = Templates::get( $program ? 'program_paid' : 'payment_verified' );
 		$customer = Customers::get( (int) $case['customer_id'] );
-		$vars = array( 'greeting' => Templates::greeting( Customers::greeting_name( $customer ) ), 'paid' => Money::format( $paid_minor ), 'status_line' => $status );
+		$vars = array( 'greeting' => Templates::greeting( Customers::greeting_name( $customer ) ), 'name' => Templates::name_or_neutral( Customers::greeting_name( $customer ) ), 'paid' => Money::format( $paid_minor ), 'status_line' => $status );
 		[ $text, $miss ] = Templates::render( $tpl, $vars );
 		if ( $miss ) {
 			return null;

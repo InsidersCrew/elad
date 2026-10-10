@@ -27,10 +27,14 @@ final class Intents {
 		'dispute'        => '/(לא חייב|לא חייבת|לא מגיע לכם|לבטל|ביטול|מחלוקת|לא הסכמתי|לא חתמתי|עורך דין|עו"ד|תלונה|הונאה|רמאות|גניבה)/iu',
 		'human'          => '/(נציג|נציגה|בן אדם|אדם אמיתי|לדבר עם|תתקשרו|תחזרו אליי|שיחה טלפונית|טלפון אליי|מישהו מהצוות)/iu',
 		'claims_paid'    => '/(שילמתי|כבר שילמתי|העברתי|שולם|הסדרתי|ביצעתי תשלום|עשיתי העברה|אסמכתא|אסמכתה|קבלה)/iu',
+		'stuck'          => '/(תקוע|תקועה|נתקע|נתקעה|התחלתי (את )?(ה)?פתיחה|בתהליך (של )?פתיחה|החשבון בבדיקה|ממתין לאישור|ממתינה לאישור|מחכה לאישור)/iu',
 		'opened_account' => '/(פתחתי חשבון|כבר פתחתי|יש לי חשבון|החשבון נפתח|פתחתי את החשבון)/iu',
+		// Before wants_to_open: "לא רוצה לפתוח" contains "רוצה לפתוח".
+		'declines_open'  => '/((?<!\p{L})לא\s+(אפתח|רוצה לפתוח|מתכוו(ן|נת) לפתוח|מעוניי(ן|נת) לפתוח|אפתח חשבון)|אין לי כוונה לפתוח)/iu',
 		'wants_to_open'  => '/(רוצה לפתוח|אפשר לפתוח|איך פותחים|לפתוח עכשיו|עזרה בפתיחה)/iu',
 		'hardship'       => '/(פריסה|בתשלומים|קשה לי|אין לי כסף|מצב כלכלי|לא יכול לשלם|לא יכולה לשלם|מובטל|מובטלת|הנחה)/iu',
 		'promise'        => '/(אשלם|אסדיר|אעביר|בתחילת החודש|בסוף החודש|בשבוע הבא|ביום (ראשון|שני|שלישי|רביעי|חמישי|שישי)|(?<!\p{L})ב(ראשון|שני|שלישי|רביעי|חמישי)(?!\p{L})|עד ה?-?\s?\d{1,2}|ב-?\s?\d{1,2}\s*(ל|\/)\s*\d{1,2}|(?<!\p{L})מחר(?!\p{L})|אחרי המשכורת|כשתיכנס המשכורת)/iu',
+		'next_cohort'    => '/(מחזור הבא|למחזור אחר|לעבור מחזור|להצטרף למחזור|לדחות את ה?השתתפות)/iu',
 		'bot_question'   => '/(בוט|רובוט|אוטומטי|מערכת אוטומטית|אדם או מחשב|ai\b)/iu',
 		'link_request'   => '/(קישור|לינק|link|איך משלמים|איפה משלמים|איך אפשר לשלם|לשלם עכשיו)/iu',
 	);
@@ -41,6 +45,11 @@ final class Intents {
 		}
 		if ( in_array( $type, array( 'image', 'document', 'video', 'sticker' ), true ) && '' === trim( $text ) ) {
 			return array( 'intent' => 'media', 'source' => 'rules', 'confidence' => 'rule' );
+		}
+		// A quick-reply button arrives as its exact title: a decision, not text to interpret.
+		$button = Journey::button_intent( $text );
+		if ( $button ) {
+			return array( 'intent' => $button, 'source' => 'button', 'confidence' => 'rule' );
 		}
 		foreach ( self::RULES as $intent => $re ) {
 			if ( preg_match( $re, $text ) ) {
@@ -53,6 +62,16 @@ final class Intents {
 	/** Applies the §10 table to every open case of the customer. */
 	public static function apply( int $customer_id, int $message_id, array $intent, array $cases, array $msg ): void {
 		$name   = $intent['intent'];
+		$ai_case = $cases[0] ?? null;
+		// Before the deadline the beginner-program replies have their own answers (Journey);
+		// whatever it does not handle continues through the table below.
+		$cases  = Journey::on_intent( $name, (string) ( $intent['source'] ?? 'rules' ), $cases, $customer_id, $message_id, $msg );
+		if ( in_array( $name, array( 'question', 'declines_open', 'stuck', 'next_cohort' ), true ) ) {
+			// Outside the pre-deadline phase these are ordinary messages for a person. An opening "in
+			// progress" still matters after a program charge was approved; elsewhere it is just text.
+			$program = (bool) array_filter( $cases, static fn( $c ) => 'non_open_charge' === $c['source_type'] );
+			$name    = ( 'stuck' === $name && $program ) ? 'opened_account' : 'unclear';
+		}
 		$sendable_or_waiting = array_values( array_filter( $cases, static fn( $c ) => 'closed' !== $c['workflow_state'] ) );
 		$first  = $sendable_or_waiting[0] ?? null;
 		$to_review = static function ( array $c, string $reason ) {
@@ -190,9 +209,10 @@ final class Intents {
 				break;
 		}
 
-		if ( $first && Settings::on( 'cap_ai_suggestions' ) ) {
+		$ai_case = $first ?? $ai_case;
+		if ( $ai_case && Settings::on( 'cap_ai_suggestions' ) ) {
 			// Suggestion only, stored for the rep. Failure here changes nothing above.
-			Classifier::suggest_later( (int) $first['id'], $message_id );
+			Classifier::suggest_later( (int) $ai_case['id'], $message_id );
 		}
 	}
 

@@ -180,6 +180,60 @@ final class FinanceDashboard {
 		return self::resolutions( array( $person_id ) )['by_deal'][ $deal_id ] ?? null;
 	}
 
+	/** IFD's ledger (transactions + product_map) is optional: older versions or a partial install lack it. */
+	public static function ledger_available(): bool {
+		static $ok = null;
+		if ( null !== $ok ) {
+			return $ok;
+		}
+		global $wpdb;
+		$need = array(
+			'transactions' => array( 'person_id', 'product_id', 'txn_date', 'state' ),
+			'product_map'  => array( 'product_id', 'resolves_commitment', 'is_penalty' ),
+		);
+		$ok = true;
+		foreach ( $need as $t => $cols ) {
+			$have = $wpdb->get_col( $wpdb->prepare( 'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s', self::table( $t ) ) );
+			if ( array_diff( $cols, (array) $have ) ) {
+				$ok = false;
+			}
+		}
+		return $ok;
+	}
+
+	/**
+	 * First account-opening product per person on or after $since (YYYY-MM-DD), from
+	 * IFD's ledger: a product that resolves the commitment and is not the penalty.
+	 * The commitment row cannot answer this after a payment (it is already resolved
+	 * as 'fixed'), and it does not exist for students who joined before the baseline.
+	 *
+	 * @return array<int,string> person_id => first txn_date
+	 */
+	public static function opened_since( array $person_ids, string $since ): array {
+		$person_ids = array_values( array_unique( array_filter( array_map( 'intval', $person_ids ) ) ) );
+		if ( ! $person_ids || ! self::ledger_available() ) {
+			return array();
+		}
+		global $wpdb;
+		$in   = implode( ',', $person_ids );
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT t.person_id, MIN(t.txn_date) AS first_at FROM ' . self::table( 'transactions' ) . ' t
+				 JOIN ' . self::table( 'product_map' ) . " m ON m.product_id = t.product_id
+				 WHERE t.person_id IN ($in) AND t.txn_date >= %s AND m.resolves_commitment = 1 AND m.is_penalty = 0
+				   AND (t.state IS NULL OR t.state NOT IN ('reversed','void','deleted'))
+				 GROUP BY t.person_id",
+				$since
+			),
+			ARRAY_A
+		);
+		$out = array();
+		foreach ( (array) $rows as $r ) {
+			$out[ (int) $r['person_id'] ] = (string) $r['first_at'];
+		}
+		return $out;
+	}
+
 	/** The penalty product price IFD pulled from the Pipedrive catalog (gross, includes VAT), in agorot. */
 	public static function penalty_gross(): ?int {
 		$p   = get_option( 'ifd_penalty_price', null );

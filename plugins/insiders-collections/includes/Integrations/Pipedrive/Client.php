@@ -118,6 +118,106 @@ final class Client {
 		);
 	}
 
+	private static function base(): string {
+		return rtrim( (string) Settings::get( 'pipedrive_api_base' ), '/' );
+	}
+
+	/**
+	 * Enrollment deals, 100 per call (v2 ?ids=). What the beginner program needs from
+	 * each one: status + lost_reason (the dedicated "won't open" reason), the label ids
+	 * ("no registration fee") and the owner (who calls the student back).
+	 * v2 returns label_ids[]; v1 returned label as "1,2". Both are read.
+	 *
+	 * @return array{ok:bool,error?:string,deals:array<int,array>}
+	 */
+	public static function deals( array $ids ): array {
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+		if ( ! self::configured() ) {
+			return array( 'ok' => false, 'error' => 'Pipedrive לא מחובר', 'deals' => array() );
+		}
+		$out = array();
+		foreach ( array_chunk( $ids, 100 ) as $chunk ) {
+			$r = Http::request( 'GET', add_query_arg( array( 'ids' => implode( ',', $chunk ), 'limit' => 100, 'api_token' => Settings::secret( 'pipedrive_token' ) ), self::base() . '/api/v2/deals' ) );
+			if ( Http::OK !== $r['outcome'] || ! is_array( $r['json']['data'] ?? null ) ) {
+				return array( 'ok' => false, 'error' => $r['error'] ?: 'no data', 'deals' => $out );
+			}
+			foreach ( $r['json']['data'] as $d ) {
+				if ( is_array( $d ) && ! empty( $d['id'] ) ) {
+					$out[ (int) $d['id'] ] = self::deal_shape( $d );
+				}
+			}
+		}
+		return array( 'ok' => true, 'deals' => $out );
+	}
+
+	private static function deal_shape( array $d ): array {
+		$labels = $d['label_ids'] ?? ( isset( $d['label'] ) && '' !== (string) $d['label'] ? explode( ',', (string) $d['label'] ) : array() );
+		$owner  = $d['owner_id'] ?? ( $d['user_id'] ?? null );
+		return array(
+			'id'          => (int) $d['id'],
+			'status'      => (string) ( $d['status'] ?? '' ),
+			'lost_reason' => trim( (string) ( $d['lost_reason'] ?? '' ) ),
+			'label_ids'   => array_values( array_filter( array_map( 'intval', (array) $labels ) ) ),
+			'owner_id'    => is_array( $owner ) ? (int) ( $owner['id'] ?? 0 ) : (int) $owner,
+			'person_id'   => is_array( $d['person_id'] ?? null ) ? (int) ( $d['person_id']['value'] ?? 0 ) : (int) ( $d['person_id'] ?? 0 ),
+			'title'       => (string) ( $d['title'] ?? '' ),
+		);
+	}
+
+	/**
+	 * The id of a deal label by its name (a number in the setting is used as is).
+	 * Fields API v2 first (dealFields/label), then the v1 list. Cached for a day.
+	 */
+	public static function label_id( string $name ): ?int {
+		$name = trim( $name );
+		if ( '' === $name ) {
+			return null;
+		}
+		if ( ctype_digit( $name ) ) {
+			return (int) $name;
+		}
+		$cache = get_option( 'icol_pd_label', array() );
+		if ( is_array( $cache ) && ( $cache['name'] ?? '' ) === $name && ( $cache['at'] ?? 0 ) > time() - DAY_IN_SECONDS ) {
+			return null === $cache['id'] ? null : (int) $cache['id'];
+		}
+		if ( ! self::configured() ) {
+			return null;
+		}
+		$token   = Settings::secret( 'pipedrive_token' );
+		$options = null;
+		$r       = Http::request( 'GET', add_query_arg( array( 'api_token' => $token ), self::base() . '/api/v2/dealFields/label' ) );
+		if ( Http::OK === $r['outcome'] && is_array( $r['json']['data']['options'] ?? null ) ) {
+			$options = $r['json']['data']['options'];
+		} else {
+			$r = Http::request( 'GET', add_query_arg( array( 'api_token' => $token, 'limit' => 500 ), self::base() . '/v1/dealFields' ) );
+			foreach ( (array) ( $r['json']['data'] ?? array() ) as $f ) {
+				if ( 'label' === ( $f['key'] ?? ( $f['field_code'] ?? '' ) ) ) {
+					$options = (array) ( $f['options'] ?? array() );
+				}
+			}
+		}
+		if ( null === $options ) {
+			return null; // not cached: a transient failure must not hide the label for a day
+		}
+		$id = null;
+		foreach ( $options as $o ) {
+			if ( trim( (string) ( $o['label'] ?? '' ) ) === $name ) {
+				$id = (int) $o['id'];
+			}
+		}
+		update_option( 'icol_pd_label', array( 'name' => $name, 'id' => $id, 'at' => time() ), false );
+		return $id;
+	}
+
+	/** WordPress user mapped to a Pipedrive user (team screen: icol_pipedrive_user_id). */
+	public static function wp_user_for_owner( int $pd_user_id ): ?int {
+		if ( $pd_user_id <= 0 ) {
+			return null;
+		}
+		$users = get_users( array( 'meta_key' => 'icol_pipedrive_user_id', 'meta_value' => (string) $pd_user_id, 'number' => 1, 'fields' => 'ID' ) );
+		return $users ? (int) $users[0] : null;
+	}
+
 	private static function find_by_marker( string $marker, ?array $customer ): ?string {
 		$q = array( 'limit' => 50, 'sort_by' => 'add_time', 'sort_direction' => 'desc' );
 		if ( $customer && ! empty( $customer['pipedrive_person_id'] ) ) {

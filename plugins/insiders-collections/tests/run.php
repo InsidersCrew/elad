@@ -1158,6 +1158,414 @@ $tests['G05'] = array( 'הגדרה ראשונה בלי wp-config: בעלים מ�
 	T::check( ! empty( $km[1] ) && ! str_contains( (string) wp_json_encode( \Insiders\Collections\Rest\Views::health() ), $km[1] ), 'the key itself is not shown on the health screen' );
 } );
 
+/* ---------------------------------------------------------------- beginner program (0.3.0) */
+
+use Insiders\Collections\Domain\Journey;
+use Insiders\Collections\Domain\Pricing;
+use Insiders\Collections\Domain\ProgramCharges;
+use Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard;
+
+/** IFD fixtures, Pipedrive and the journey switched on. Returns an error text when IFD is missing. */
+function program_env(): string {
+	global $wpdb;
+	if ( ! FinanceDashboard::available() ) {
+		return 'insiders-finance-dashboard tables present (activate the plugin in the test site)';
+	}
+	foreach ( array( 'commitments', 'leads', 'snapshots', 'transactions', 'product_map' ) as $t ) {
+		$wpdb->query( 'TRUNCATE TABLE ' . FinanceDashboard::table( $t ) );
+	}
+	ifd_fresh();
+	Settings::set_secret( 'pipedrive_token', 'pd-test' );
+	Settings::set( array( 'pipedrive_api_base' => 'https://insiders.pipedrive.test', 'journey_enabled' => 1, 'journey_contact_basis' => 'הסכם ההצטרפות, סעיף 9' ) );
+	return '';
+}
+
+/** The dashboard read Pipedrive an hour ago (a frozen clock moved by days would make it stale). */
+function ifd_fresh(): void {
+	global $wpdb;
+	$wpdb->replace( FinanceDashboard::table( 'snapshots' ), array( 'source_key' => 'pipedrive_deals', 'ok' => 1, 'ok_at' => gmdate( 'Y-m-d H:i:s', Clock::now() - HOUR_IN_SECONDS ), 'attempt_at' => gmdate( 'Y-m-d H:i:s', Clock::now() - 60 ), 'payload' => '{}' ) );
+	FinanceDashboard::flush();
+}
+
+function pday( string $date, string $time = '10:00' ): void {
+	T::at( $date, $time );
+	ifd_fresh();
+}
+
+function student_phone( int $person ): string {
+	return '050' . sprintf( '%07d', $person );
+}
+
+function ifd_student( int $person, int $deal, string $signed, array $o = array() ): void {
+	global $wpdb;
+	$wpdb->insert( FinanceDashboard::table( 'commitments' ), array( 'person_id' => $person, 'deal_id' => $deal, 'signed_at' => $signed, 'resolved_at' => $o['resolved'] ?? null, 'resolution_kind' => $o['kind'] ?? null, 'signed_source' => 'stage_time', 'owner_name' => 'נועה', 'created_at' => '2026-08-01 00:00:00' ) );
+	$wpdb->replace( FinanceDashboard::table( 'leads' ), array( 'person_id' => $person, 'person_name' => 'תלמיד ' . $person, 'entered_at' => $signed ) );
+	T::$pd_persons[ $person ] = array( 'id' => $person, 'name' => 'נועם ' . $person, 'first_name' => 'נועם', 'emails' => array( array( 'value' => 's' . $person . '@example.test', 'primary' => true ) ), 'phones' => array( array( 'value' => student_phone( $person ), 'primary' => true ) ) );
+	T::$pd_deals[ $deal ] = array( 'id' => $deal, 'title' => 'הרשמה ' . $person, 'status' => $o['status'] ?? 'won', 'lost_reason' => $o['lost_reason'] ?? null, 'label_ids' => $o['label_ids'] ?? array(), 'owner_id' => 11, 'person_id' => $person );
+	FinanceDashboard::flush();
+}
+
+function student_case( int $person ): ?array {
+	return Db::row( 'SELECT c.* FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'customers' ) . ' u ON u.id = c.customer_id WHERE u.pipedrive_person_id = %d ORDER BY c.id DESC LIMIT 1', $person );
+}
+
+function sent_templates( int $customer_id ): array {
+	return array_column( Db::rows( 'SELECT template_key FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'out' AND channel = 'whatsapp' ORDER BY id", $customer_id ), 'template_key' );
+}
+
+function pending_journey( int $case_id ): ?array {
+	$a = Db::row( 'SELECT * FROM ' . Db::t( 'scheduled_actions' ) . " WHERE case_id = %d AND state = 'pending' AND type IN ('send_journey','send_reminder') ORDER BY run_at LIMIT 1", $case_id );
+	if ( $a ) {
+		$a['step']  = json_decode( (string) $a['payload'], true )['step'] ?? null;
+		$a['local'] = Clock::local( (int) Clock::ts( $a['run_at'] ) )->format( 'Y-m-d H:i' );
+	}
+	return $a;
+}
+
+$tests['P01'] = array( 'ליווי לפני המועד: כניסה מהדשבורד, הודעות לפי המועד, כניסה באמצע הרצף', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 601, 9601, '2026-08-01' );                                                      // deadline Fri 30.10, T-45 already passed
+	ifd_student( 602, 9602, '2026-09-20' );                                                      // deadline 19.12: more than 45 days away
+	ifd_student( 603, 9603, '2026-08-05', array( 'resolved' => '2026-09-01', 'kind' => 'attributed' ) ); // opened an account
+	$r = Journey::sync();
+	T::eq( 1, $r['enrolled']['enrolled'] ?? null, 'only the unresolved student inside the 45-day window enters' );
+	$case = student_case( 601 );
+	T::eq( array( 'commitment', 'reach', 'active' ), array( $case['phase'], $case['track'], $case['workflow_state'] ), 'commitment phase, reach track, active' );
+	$agr  = Db::row( 'SELECT * FROM ' . Db::t( 'agreements' ) . ' WHERE id = %d', (int) $case['agreement_id'] );
+	T::eq( array( '2026-08-01', '2026-10-30', 9601, 98000, 10000 ), array( $agr['signed_at'], $agr['account_open_deadline'], (int) $agr['pipedrive_deal_id'], (int) $agr['price_total_minor'], (int) $agr['fee_credit_minor'] ), 'agreement: signing date, deadline, deal and the price rule' );
+	$cust = Customers::get( (int) $case['customer_id'] );
+	T::eq( array( '+972500000601', 'verified', true ), array( $cust['phone_e164'], $cust['contact_status'], Customers::permission( (int) $cust['id'], 'whatsapp' ) ), 'phone from Pipedrive, contact basis from the settings' );
+	T::eq( 0, T::count( 'debt_items' ), 'nothing is owed before the deadline' );
+	$p = pending_journey( (int) $case['id'] );
+	T::eq( array( 'j_intro', '2026-10-11 10:00' ), array( $p['step'], $p['local'] ), 'a late joiner starts with the opening message, now' );
+
+	T::tick();
+	T::eq( array( 'j_intro' ), sent_templates( (int) $cust['id'] ), 'opening message sent' );
+	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'j_intro'" );
+	T::check( str_contains( $m['body'], '30/10/2026' ) && str_contains( $m['body'], 'היי נועם' ) && in_array( $m['delivery_state'], array( 'queued', 'accepted', 'sent' ), true ), 'deadline and first name in the text, handed to WATI' );
+	$p = pending_journey( (int) $case['id'] );
+	T::eq( array( 'j_t14', '2026-10-15 09:00' ), array( $p['step'], $p['local'] ), 'T-30 already passed; T-14 falls on Friday and moves back to Thursday' );
+
+	pday( '2026-10-15', '09:05' );
+	T::tick();
+	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'j_t14'" );
+	T::check( $m && str_contains( $m['body'], '880 ₪ (980 ₪ פחות 100 ₪ דמי הרישום ששולמו)' ), 'the amount: price by signing date minus the registration fee' );
+	T::eq( 'j_t7', pending_journey( (int) $case['id'] )['step'], 'next: a week before' );
+	pday( '2026-10-22', '09:05' );
+	T::tick();
+	T::eq( '2026-10-27 09:00', pending_journey( (int) $case['id'] )['local'], 'T-3 on Tuesday' );
+	pday( '2026-10-27', '09:05' );
+	T::tick();
+	T::eq( array( 'j_t0', '2026-10-29 09:06' ), array( pending_journey( (int) $case['id'] )['step'], pending_journey( (int) $case['id'] )['local'] ), 'deadline day on Friday: Thursday, 48 hours after T-3, never after the deadline' );
+	pday( '2026-10-29', '09:10' );
+	T::tick();
+	T::eq( array( 'j_intro', 'j_t14', 'j_t7', 'j_t3', 'j_t0' ), sent_templates( (int) $cust['id'] ), 'the whole sequence, one message per step, none on the same day' );
+	T::eq( null, pending_journey( (int) $case['id'] ), 'nothing more before the deadline' );
+	T::eq( 'await_approval', Workflow::get( (int) $case['id'] )['next_action_type'], 'the case waits for the approval' );
+
+	pday( '2026-11-04', '10:00' ); // 19.12 - 45
+	T::tick();
+	$c2 = student_case( 602 );
+	T::check( $c2 && 'j_intro' === ( pending_journey( (int) $c2['id'] )['step'] ?? '' ) || ( $c2 && in_array( 'j_intro', sent_templates( (int) $c2['customer_id'] ), true ) ), 'the second student enters exactly 45 days before the deadline' );
+	T::eq( null, student_case( 603 ), 'a student who opened an account never enters' );
+} );
+
+$tests['P02'] = array( 'לחצן ״לא אפתח חשבון״: מסלול ייעודי, אישור, קישור לפני המועד, תשלום וזיכוי עתידי', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 611, 9611, '2026-08-01' );
+	Journey::sync();
+	T::tick();
+	$case = student_case( 611 );
+	$cid  = (int) $case['customer_id'];
+	T::inbound( Journey::BTN_DECLINE, '972500000611', array( 'type' => 'button' ) );
+	T::tick();
+	$case = Workflow::get( (int) $case['id'] );
+	T::eq( array( 'declined', 'button', 'active' ), array( $case['track'], $case['declined_source'], $case['workflow_state'] ), 'declined track, recorded as the student\'s own button' );
+	$ack = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'j_declined_ack'" );
+	T::check( $ack && str_contains( $ack['body'], '30/10/2026' ) && str_contains( $ack['body'], '880 ₪' ) && 0 === (int) $ack['counts_toward_quota'], 'the "understood" reply with the amount and deadline, not a reminder' );
+	T::eq( 1, T::count( 'tasks', "type = 'crm_lost'" ), 'the rep is asked to mark the deal lost with the dedicated reason' );
+	T::eq( null, pending_journey( (int) $case['id'] ), 'no more account nudges, nothing before approval' );
+
+	$q = ProgramCharges::queue();
+	T::eq( array( 1, true, true, 88000 ), array( $q['ready'], $q['rows'][0]['ready'], $q['rows'][0]['before_deadline'], $q['rows'][0]['amount_minor'] ), 'in the approval list before the deadline, with the computed amount' );
+	T::as( 'rep' );
+	try {
+		ProgramCharges::approve( array( (int) $case['id'] ), 'x' );
+		T::check( false, 'a rep cannot approve a charge' );
+	} catch ( \Insiders\Collections\Domain\DomainError $e ) {
+		T::eq( 'forbidden', $e->error_code, 'approval is for the collections officer' );
+	}
+	T::as( 'collector' );
+	$res = ProgramCharges::approve( array( (int) $case['id'] ), $q['basis'] );
+	T::as_admin();
+	T::eq( 1, $res['approved'], 'approved' );
+	$item = Db::row( 'SELECT * FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d', (int) $case['id'] );
+	T::eq( array( 88000, '2026-10-11', 'open' ), array( (int) $item['original_amount_minor'], $item['due_at'], $item['finance_state'] ), 'payable now: the student chose not to open' );
+	T::eq( 'commitment', Workflow::get( (int) $case['id'] )['phase'], 'still before the deadline' );
+	T::eq( 'd_link', pending_journey( (int) $case['id'] )['step'], 'the payment details are next' );
+	pday( '2026-10-13', '11:00' );
+	T::tick();
+	$link = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'd_link'" );
+	T::check( $link && str_contains( $link['body'], '/pay/' ) && str_contains( $link['body'], '880 ₪' ), 'payment details with our link' );
+	T::eq( 'd_t0', pending_journey( (int) $case['id'] )['step'], 'one more message, on the deadline day' );
+
+	T::as( 'collector' );
+	Payments::manual_verification( array( 'customer_id' => $cid, 'amount' => '880', 'method' => 'bank_transfer', 'evidence_ref' => 'B-611', 'allocations' => array( array( 'debt_item_id' => (int) $item['id'], 'amount' => '880' ) ) ) );
+	T::as_admin();
+	T::eq( 'closed', Workflow::get( (int) $case['id'] )['workflow_state'], 'paid before the deadline: closed' );
+	T::eq( null, pending_journey( (int) $case['id'] ), 'the deadline-day message is cancelled' );
+	$conf = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'program_paid'" );
+	T::check( $conf && str_contains( $conf['body'], 'זיכוי' ), 'program confirmation mentions the credit option' );
+	T::eq( 1, T::count( 'tasks', "type = 'crm_record'" ), 'the rep records the payment on the deal' );
+	T::eq( 0, T::count( 'scheduled_actions', "state = 'pending'" ), 'no reminders after payment' );
+} );
+
+$tests['P03'] = array( 'פייפדרייב: סיבת lost ייעודית, תווית ללא דמי רישום, מחירון לפי תאריך ההסכם', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	delete_metadata( 'user', 0, 'icol_pipedrive_user_id', '', true );
+	ifd_student( 621, 9621, '2026-08-01', array( 'label_ids' => array( 55 ) ) );
+	ifd_student( 622, 9622, '2026-08-02', array( 'status' => 'lost', 'lost_reason' => ' לא  מעוניין לפתוח חשבון ' ) );
+	ifd_student( 623, 9623, '2026-08-03', array( 'status' => 'lost', 'lost_reason' => 'מחיר' ) );
+	$r = Journey::sync();
+	T::eq( array( 3, 1, 55 ), array( $r['enrolled']['enrolled'], $r['deals']['declined'], $r['deals']['label_id'] ), 'three enrolled, one declined by the dedicated reason, label resolved by name' );
+	$a1 = Db::row( 'SELECT * FROM ' . Db::t( 'agreements' ) . ' WHERE pipedrive_deal_id = 9621' );
+	T::eq( array( 1, '980 ₪' ), array( (int) $a1['no_registration_fee'], Pricing::amount_text( $a1 ) ), 'no registration fee: the full price' );
+	$c2 = student_case( 622 );
+	T::eq( array( 'declined', 'pipedrive' ), array( $c2['track'], $c2['declined_source'] ), 'the dedicated lost reason moves the student to the declined track' );
+	T::eq( 'reach', student_case( 623 )['track'], 'another lost reason does not' );
+	T::tick();
+	T::eq( array(), sent_templates( (int) $c2['customer_id'] ), 'a student the rep already spoke with gets no message before approval' );
+	T::eq( 1, ProgramCharges::queue()['ready'], 'and appears in the approval list' );
+	T::eq( 3, T::count( 'cases', 'owner_id IS NULL' ), 'owner left empty while the Pipedrive user is not mapped' );
+	update_user_meta( T::user( 'rep' ), 'icol_pipedrive_user_id', 11 );
+	Journey::refresh_deals();
+	T::eq( 3, T::count( 'cases', 'owner_id = %d', T::user( 'rep' ) ), 'the deal owner becomes the case owner' );
+	T::as( 'rep' );
+	T::eq( 403, T::api( 'GET', '/program/queue' )->get_status(), 'a rep does not get the list of all students' );
+	T::as_admin();
+
+	// A case someone opened by hand for an enrollment deal: the journey records it once and leaves it.
+	ifd_student( 624, 9624, '2026-08-04' );
+	[ , $manual ] = program_case( array( 'no_activate' => true, 'customer_id' => T::customer( array( 'phone' => '050-9990624', 'email' => 'm624@example.test' ) ), 'payload' => array( 'agreement' => array( 'reference' => 'AGR-624', 'document_ref' => 'drive://x', 'joined_at' => '2026-08-04', 'account_open_deadline' => '2026-11-02', 'pipedrive_deal_id' => 9624 ) ) ) );
+	Journey::sync();
+	T::eq( array( 'drafted', $manual ), array( Db::value( 'SELECT status FROM ' . Db::t( 'program_candidates' ) . ' WHERE pipedrive_deal_id = 9624' ), (int) Db::value( 'SELECT case_id FROM ' . Db::t( 'program_candidates' ) . ' WHERE pipedrive_deal_id = 9624' ) ), 'linked to the manual case, not enrolled twice' );
+
+	Settings::set( array( 'program_price_table' => "2026-01-01 980 100\n2026-10-01 1180 100" ) );
+	T::eq( array( 88000, 108000 ), array( Pricing::quote( '2026-08-01', false )['due'], Pricing::quote( '2026-10-05', false )['due'] ), 'a new price list applies only to agreements from its date' );
+	T::eq( 2, count( Pricing::validate( "2026-13-01 980 100\nabc\n2026-01-01 980 100" ) ), 'bad lines are reported' );
+	$res = T::api( 'POST', '/settings', array( 'settings' => array( 'program_price_table' => "2026-01-01 980\nxx" ) ) );
+	T::eq( 422, $res->get_status(), 'a broken price table is refused on save' );
+	Settings::set( array( 'journey_contact_basis' => '' ) );
+	$res = T::api( 'POST', '/settings', array( 'settings' => array( 'journey_enabled' => 1 ) ) );
+	T::eq( 422, $res->get_status(), 'the journey cannot be switched on without a documented contact basis' );
+} );
+
+$tests['P04'] = array( 'אחרי המועד: רשימת אישור יומית, חסימות, מעבר לשלב התשלום', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 631, 9631, '2026-08-01' );
+	ifd_student( 632, 9632, '2026-08-01' );
+	Journey::sync();
+	T::tick();
+	T::inbound( 'התחלתי את הפתיחה אבל זה תקוע', '972500000632' );
+	T::tick();
+	$c2 = student_case( 632 );
+	T::eq( array( 'human_review', 1 ), array( $c2['workflow_state'], (int) $c2['claims_account_opened'] ), 'an opening in progress goes to a person before any charge' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'j_stuck_ack'" ), 'the procedure\'s answer was sent' );
+	T::eq( 0, ProgramCharges::queue()['ready'], 'nobody to approve before the deadline' );
+
+	pday( '2026-11-01', '09:30' );
+	T::tick();
+	$q    = ProgramCharges::queue();
+	$rows = array_column( $q['rows'], null, 'case_id' );
+	$c1   = student_case( 631 );
+	T::eq( array( true, false ), array( $rows[ (int) $c1['id'] ]['ready'], $rows[ (int) $c2['id'] ]['ready'] ), 'past the deadline: ready, unless a check is open' );
+	T::as( 'collector' );
+	$res = ProgramCharges::approve( array( (int) $c1['id'], (int) $c2['id'] ), $q['basis'] );
+	T::as_admin();
+	T::eq( array( 1, 1 ), array( $res['approved'], count( $res['skipped'] ) ), 'one approved, one skipped with its reason' );
+	$c1 = Workflow::get( (int) $c1['id'] );
+	T::eq( array( 'charge', 0 ), array( $c1['phase'], (int) $c1['sequence_step'] ), 'an ordinary charge case from here' );
+	T::tick();
+	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'program_charge_link'", (int) $c1['customer_id'] );
+	T::check( $m && str_contains( $m['body'], '880' ) && str_contains( $m['body'], '/pay/' ), 'the payment message with the computed amount and link' );
+	T::eq( 0, T::count( 'program_candidates', "status = 'new'" ), 'the old candidates list stays empty: the journey owns these students' );
+} );
+
+$tests['P05'] = array( 'פתיחת חשבון לפני המועד סוגרת את הליווי לבד', function () {
+	global $wpdb;
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 641, 9641, '2026-08-01' );
+	Journey::sync();
+	T::tick();
+	$case = student_case( 641 );
+	$wpdb->update( FinanceDashboard::table( 'commitments' ), array( 'resolved_at' => '2026-10-12', 'resolution_kind' => 'attributed' ), array( 'deal_id' => 9641 ) );
+	pday( '2026-10-12', '12:00' );
+	T::tick();
+	$case = Workflow::get( (int) $case['id'] );
+	T::eq( 'closed', $case['workflow_state'], 'closed without a person: nothing was claimed' );
+	T::eq( 0, T::count( 'scheduled_actions', "state = 'pending'" ), 'no further messages' );
+	T::eq( 'resolved', Db::value( 'SELECT status FROM ' . Db::t( 'program_candidates' ) . ' WHERE case_id = %d', (int) $case['id'] ), 'marked resolved' );
+
+	// A stale dashboard enrolls nobody.
+	ifd_student( 642, 9642, '2026-08-02' );
+	$wpdb->update( FinanceDashboard::table( 'snapshots' ), array( 'ok_at' => gmdate( 'Y-m-d H:i:s', Clock::now() - 40 * HOUR_IN_SECONDS ) ), array( 'source_key' => 'pipedrive_deals' ) );
+	FinanceDashboard::flush();
+	$r = Journey::sync();
+	T::eq( array( true, null ), array( $r['stale'], student_case( 642 ) ), 'stale: nobody enters' );
+} );
+
+$tests['P06'] = array( 'תלמידים שהצטרפו לפני 1.8: ייבוא מאקסל, הודעה אחת, אישור אחרי המתנה', function () {
+	global $wpdb;
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	$wpdb->insert( FinanceDashboard::table( 'product_map' ), array( 'product_id' => 500, 'category_id' => 1, 'resolves_commitment' => 1, 'attributable' => 1, 'is_penalty' => 0 ) );
+	$wpdb->insert( FinanceDashboard::table( 'transactions' ), array( 'source' => 'pipedrive', 'source_ref' => 'd9702:p500', 'txn_date' => '2026-07-15', 'direction' => 'revenue', 'category_id' => 1, 'amount_gross' => 500, 'amount_net' => 423.73, 'person_id' => 702, 'product_id' => 500, 'deal_id' => 9702 ) );
+	T::$pd_deals[9701] = array( 'id' => 9701, 'status' => 'won', 'label_ids' => array( 55 ), 'owner_id' => 11, 'person_id' => 701 );
+	T::$pd_deals[9702] = array( 'id' => 9702, 'status' => 'won', 'label_ids' => array(), 'owner_id' => 11, 'person_id' => 702 );
+	$text = "מספר דיל\tתאריך הסכם\tטלפון\tשם\n9701\t15/06/2026\t050-3334444\tמאיה לוי\n9702\t01/06/2026\t\t\n9703\t01/06/2026\t\t\n9704\t31/02/2026\t\t";
+	T::as( 'collector' );
+	$dry = ProgramCharges::import( $text, false );
+	T::eq( array( 'new', 'opened', 'invalid', 'invalid' ), array_column( $dry['rows'], 'status' ), 'dry run: new, already opened (dashboard ledger), deal not found, bad date' );
+	T::eq( '980 ₪', $dry['rows'][0]['amount_text'], 'the label on the deal sets the amount' );
+	T::eq( 0, T::count( 'cases' ), 'a dry run writes nothing' );
+	$res = ProgramCharges::import( $text, true );
+	T::as_admin();
+	T::eq( array( 1, 1 ), array( $res['queued'], $res['enrolled'] ), 'one student imported and enrolled' );
+	$case = student_case( 701 );
+	T::eq( array( 'late', 'commitment', '2026-09-13' ), array( $case['track'], $case['phase'], Db::value( 'SELECT account_open_deadline FROM ' . Db::t( 'agreements' ) . ' WHERE id = %d', (int) $case['agreement_id'] ) ), 'late track, deadline = signing + 90 days' );
+	T::eq( 0, count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], '/persons/701' ) ) ), 'the phone came with the file: no Pipedrive person call' );
+	T::tick();
+	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'l_intro'" );
+	T::check( $m && str_contains( $m['body'], '13/09/2026' ) && str_contains( $m['body'], '980 ₪' ) && str_contains( $m['body'], 'היי מאיה' ), 'one message: the deadline passed, open now or pay' );
+	$row = ProgramCharges::queue()['rows'][0];
+	T::check( ! $row['ready'] && str_contains( implode( ' ', $row['blockers'] ), '18/10/2026' ), 'approval waits a week for an answer' );
+	pday( '2026-10-19', '10:00' );
+	T::eq( true, ProgramCharges::queue()['rows'][0]['ready'], 'then ready' );
+	T::as( 'collector' );
+	T::eq( 0, ProgramCharges::import( $text, true )['queued'], 'importing the same file again adds nobody' );
+	T::as_admin();
+} );
+
+$tests['P07'] = array( 'חלון זיכוי: פתיחת חשבון אחרי תשלום פותחת משימה, הזיכוי נרשם ידנית', function () {
+	global $wpdb;
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	$wpdb->insert( FinanceDashboard::table( 'product_map' ), array( 'product_id' => 500, 'category_id' => 1, 'resolves_commitment' => 1, 'attributable' => 1, 'is_penalty' => 0 ) );
+	$c = T::customer( array( 'pipedrive_person_id' => 651 ) );
+	[ , $case ] = program_case( array( 'customer_id' => $c, 'payload' => array( 'agreement' => array( 'reference' => 'AGR-651', 'document_ref' => 'drive://a', 'joined_at' => '2026-07-01', 'account_open_deadline' => '2026-09-30', 'pipedrive_deal_id' => 9651 ) ) ) );
+	$item = (int) Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d', $case );
+	T::as( 'collector' );
+	Payments::manual_verification( array( 'customer_id' => $c, 'amount' => '980', 'method' => 'bank_transfer', 'evidence_ref' => 'B-651', 'allocations' => array( array( 'debt_item_id' => $item, 'amount' => '980' ) ) ) );
+	T::as_admin();
+	T::eq( 'closed', Workflow::get( $case )['workflow_state'], 'paid and closed' );
+	T::eq( 0, T::count( 'scheduled_actions', "state = 'pending'" ), 'no reminders after the payment' );
+	$wpdb->insert( FinanceDashboard::table( 'transactions' ), array( 'source' => 'pipedrive', 'source_ref' => 'd1:p500', 'txn_date' => '2026-11-20', 'direction' => 'revenue', 'category_id' => 1, 'amount_gross' => 500, 'amount_net' => 423.73, 'person_id' => 651, 'product_id' => 500, 'deal_id' => 9651 ) );
+	pday( '2026-11-21' );
+	$r = ProgramCharges::credit_watch();
+	T::eq( 1, $r['credit_tasks'], 'an account opened within 90 days of paying opens a credit task' );
+	ProgramCharges::credit_watch();
+	T::eq( 1, T::count( 'tasks', "type = 'program_credit'" ), 'once' );
+	T::as( 'rep' );
+	$res = T::api( 'POST', '/cases/' . $case . '/credit', array( 'evidence_ref' => 'TZ-1', 'note' => 'x' ) );
+	T::eq( 403, $res->get_status(), 'a rep cannot record a credit' );
+	T::as( 'collector' );
+	ProgramCharges::record_credit( $case, 'TZ-CREDIT-1', 'החשבון נבדק מול הברוקר' );
+	T::as_admin();
+	$it = Db::row( 'SELECT * FROM ' . Db::t( 'debt_items' ) . ' WHERE id = %d', $item );
+	T::eq( array( 'cancelled', 0 ), array( $it['finance_state'], (int) $it['cached_balance_minor'] ), 'the charge is credited to zero, not reopened' );
+	T::eq( 'refunded', Db::value( 'SELECT status FROM ' . Db::t( 'payments' ) . ' WHERE customer_id = %d', $c ), 'the payment is marked refunded' );
+	T::eq( 'closed', Workflow::get( $case )['workflow_state'], 'the case stays closed' );
+	T::eq( array( 'done', 1 ), array( Db::value( 'SELECT status FROM ' . Db::t( 'tasks' ) . " WHERE type = 'program_credit'" ), T::count( 'tasks', "task_key = %s", 'crm_credit:' . $case ) ), 'credit task done, the rep removes the penalty from the deal' );
+	T::eq( 0, T::count( 'exceptions', "type = 'refund_or_chargeback' AND status = 'open'" ), 'a planned credit is not an alarm' );
+	T::eq( 0, T::count( 'messages', "direction = 'out' AND created_at > %s", Clock::utc( Clock::now() - 60 ) ), 'no message to the student from the credit itself' );
+} );
+
+$tests['P08'] = array( 'תשובות בליווי: שאלה, ״רוצה לפתוח״, מחזור הבא, סירוב בטקסט חופשי', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	foreach ( array( 661, 662, 663, 664 ) as $i => $p ) {
+		ifd_student( $p, 9600 + $p, '2026-08-0' . ( $i + 1 ) );
+	}
+	Journey::sync();
+	T::tick();
+	T::inbound( Journey::BTN_OPEN, '972500000661', array( 'type' => 'button' ) );
+	T::tick();
+	$c = student_case( 661 );
+	$t = Db::row( 'SELECT * FROM ' . Db::t( 'tasks' ) . " WHERE type = 'open_call'" );
+	T::check( 'human_review' === $c['workflow_state'] && $t && 'high' === $t['priority'] && str_contains( $t['reason'], '30/10/2026' ), '"I want to open": a call task for the rep, the journey pauses' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'j_open_ack'", (int) $c['customer_id'] ), 'the student is told a rep will call' );
+
+	T::inbound( Journey::BTN_QUESTION, '972500000662', array( 'type' => 'button' ) );
+	T::tick();
+	$c = student_case( 662 );
+	T::check( 'human_review' === $c['workflow_state'] && (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'j_question_ack'", (int) $c['customer_id'] ), '"I have a question": to a person, with an acknowledgment' );
+
+	T::inbound( 'אפשר לעבור למחזור הבא?', '972500000663' );
+	T::tick();
+	$c = student_case( 663 );
+	$ack = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'j_next_cohort'", (int) $c['customer_id'] );
+	T::check( $ack && str_contains( $ack['body'], '01/11/2026' ), 'next cohort: the fixed answer, the deadline stays' );
+	T::check( in_array( $c['workflow_state'], array( 'active', 'waiting_reply' ), true ) && pending_journey( (int) $c['id'] ), 'and the journey continues' );
+
+	T::inbound( 'אני לא מתכוון לפתוח חשבון כרגע', '972500000664' );
+	T::tick();
+	$c = student_case( 664 );
+	T::eq( array( 'reach', 'human_review' ), array( $c['track'], $c['workflow_state'] ), 'free text is not a decision: a person reads it' );
+	T::check( str_contains( (string) Db::value( 'SELECT reason FROM ' . Db::t( 'tasks' ) . ' WHERE case_id = %d ORDER BY id DESC LIMIT 1', (int) $c['id'] ), 'lost' ), 'the task explains how to move the student to the declined track' );
+	$res = T::api( 'POST', '/cases/' . $c['id'] . '/decline', array( 'note' => 'אישר בשיחה שלא יפתח' ) );
+	T::eq( array( 200, 'declined', 'rep' ), array( $res->get_status(), student_case( 664 )['track'], student_case( 664 )['declined_source'] ), 'or the rep marks it from the case screen' );
+} );
+
+$tests['P09'] = array( 'תבניות: כללי מטא (לא מתחילות ולא מסתיימות במשתנה), "היי לך" כשהשם לא אמין, לחצנים עד 25 תווים', function () {
+	foreach ( Templates::defaults() as $k => $tpl ) {
+		T::eq( array(), Templates::lint( $tpl['body'], $tpl['kind'], $tpl['channel'] ), 'template ' . $k . ' passes the rules' );
+		foreach ( (array) $tpl['buttons'] as $b ) {
+			T::check( mb_strlen( $b ) <= 25, 'button "' . $b . '" fits WhatsApp\'s 25 characters' );
+		}
+	}
+	try {
+		Templates::save( 'j_t30', array( 'body' => '{{name}}, תזכורת עד {{deadline}}' ) );
+		T::check( false, 'a body that starts with a variable is refused' );
+	} catch ( \Insiders\Collections\Domain\DomainError $e ) {
+		T::eq( 'template_rules', $e->error_code, 'a body that starts with a variable is refused' );
+	}
+	try {
+		Templates::save( 'j_t30', array( 'body' => 'היי {{name}}, הסכום {{amount_text}}{{deadline}} עד' ) );
+		T::check( false, 'two variables side by side are refused' );
+	} catch ( \Insiders\Collections\Domain\DomainError $e ) {
+		T::eq( 'template_rules', $e->error_code, 'two variables side by side are refused' );
+	}
+	$I = \Insiders\Collections\Domain\Intents::class;
+	T::eq( 'stuck', $I::classify( 'ניסיתי אבל החשבון לא נפתח, זה תקוע', 'text' )['intent'], '"the account did not open" is an opening in trouble' );
+	T::check( 'declines_open' !== $I::classify( 'החשבון לא נפתח לי', 'text' )['intent'], '"did not open" is not a refusal' );
+	T::eq( array( 'declines_open', 'button' ), array_values( array_intersect_key( $I::classify( 'לא אפתח חשבון', 'button' ), array_flip( array( 'intent', 'source' ) ) ) ), 'the button is a decision' );
+	$c = T::customer( array( 'first_name' => 'ד.', 'first_name_reliable' => false ) );
+	[ , $case ] = program_case( array( 'customer_id' => $c ) );
+	$vars = Messaging::variables( Workflow::get( $case ), null );
+	T::eq( 'לך', $vars['name'], 'an unreliable first name becomes "היי לך", never an empty variable' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

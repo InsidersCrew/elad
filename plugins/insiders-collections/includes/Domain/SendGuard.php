@@ -89,7 +89,9 @@ final class SendGuard {
 
 		// Money: fresh, approved, due, positive.
 		$summary = Ledger::case_summary( $case_id );
-		if ( $is_reminder && $summary['due_balance_minor'] <= 0 ) {
+		// Before the deadline nothing is owed yet: only a message carrying a payment link needs a balance.
+		$commitment = 'commitment' === ( $case['phase'] ?? 'charge' ) && ! ( $tpl['requires_link'] ?? false );
+		if ( $is_reminder && $summary['due_balance_minor'] <= 0 && ! $commitment ) {
 			$add( 'no_due_balance', 'case', 'אין יתרה שהגיע מועד פירעונה' );
 		}
 		if ( $summary['review_items'] > 0 ) {

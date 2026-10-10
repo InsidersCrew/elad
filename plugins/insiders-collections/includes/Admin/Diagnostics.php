@@ -54,6 +54,9 @@ final class Diagnostics {
 			case 'revenue_candidates':
 				self::dump( Revenue::candidates() );
 				break;
+			case 'program':
+				self::dump( self::program() );
+				break;
 			case 'tranzila_auth':
 				self::tranzila_auth();
 				break;
@@ -92,7 +95,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}
@@ -119,6 +122,48 @@ final class Diagnostics {
 			}
 		}
 		echo "checked {$n} files, {$bad} failed\n";
+	}
+
+	/** Beginner program, read-only: what the hourly job would do now, without doing it. */
+	private static function program(): array {
+		$fd    = \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::class;
+		$S     = \Insiders\Collections\Support\Settings::class;
+		$Db    = \Insiders\Collections\Support\Db::class;
+		$today = \Insiders\Collections\Support\Clock::today();
+		$until = gmdate( 'Y-m-d', strtotime( $today . ' UTC' ) + (int) $S::get( 'journey_start_days' ) * DAY_IN_SECONDS );
+		$rows  = $fd::available() ? $fd::unresolved_until( $until ) : array();
+		$taken = array_column( $Db::rows( 'SELECT candidate_key, status FROM ' . $Db::t( 'program_candidates' ) ), 'status', 'candidate_key' );
+		$would = array();
+		foreach ( $rows as $r ) {
+			$n   = Revenue::normalize( $r );
+			$key = $n ? Revenue::candidate_key( $n ) : '';
+			$would[] = array( 'person' => $r['pipedrive_person_id'], 'deal' => $r['pipedrive_deal_id'], 'deadline' => $r['deadline'], 'track' => $r['deadline'] < $today ? 'late' : 'reach', 'status' => $taken[ $key ] ?? 'ייכנס בריצה הבאה' );
+		}
+		$label = (string) $S::get( 'no_registration_label' );
+		return array(
+			'enabled'          => $S::on( 'journey_enabled' ),
+			'contact_basis'    => '' !== trim( (string) $S::get( 'journey_contact_basis' ) ) ? 'מתועד' : 'חסר (חובה לפני הפעלה)',
+			'display_only'     => $S::on( 'display_only' ),
+			'start_days'       => (int) $S::get( 'journey_start_days' ),
+			'price_table'      => array_map( static fn( $p ) => $p['from'] . ': ' . ( $p['total'] / 100 ) . ' ₪, דמי רישום ' . ( $p['registration'] / 100 ) . ' ₪', \Insiders\Collections\Domain\Pricing::table() ),
+			'price_table_errors' => \Insiders\Collections\Domain\Pricing::validate( (string) $S::get( 'program_price_table' ) ),
+			'no_fee_label'     => $label . ' → ' . ( \Insiders\Collections\Integrations\Pipedrive\Client::configured() ? ( \Insiders\Collections\Integrations\Pipedrive\Client::label_id( $label ) ?? 'לא נמצאה תווית בשם הזה בפייפדרייב' ) : 'פייפדרייב לא מחובר' ),
+			'declined_reasons' => \Insiders\Collections\Domain\Journey::declined_reasons(),
+			'finance_dashboard' => $fd::available() ? array( 'stale' => $fd::contract()['stale'], 'sync_ok_at' => $fd::contract()['sync_ok_at'], 'ledger_for_credit' => $fd::ledger_available() ) : 'לא נמצא',
+			'cases'            => $Db::rows( 'SELECT phase, COALESCE(track, \'-\') AS track, workflow_state, COUNT(*) AS n FROM ' . $Db::t( 'cases' ) . " WHERE source_type = 'non_open_charge' GROUP BY phase, track, workflow_state" ),
+			'last_run'         => Runner::beats()['journey'] ?? 'עוד לא רץ',
+			// One real deal read back, to see that Pipedrive returns status, lost reason and labels as expected.
+			'deal_sample'      => ( static function () use ( $Db ) {
+				$deal = (int) $Db::value( 'SELECT a.pipedrive_deal_id FROM ' . $Db::t( 'agreements' ) . " a WHERE a.type = 'beginner_program' AND a.pipedrive_deal_id IS NOT NULL ORDER BY a.id DESC LIMIT 1" );
+				if ( ! $deal || ! \Insiders\Collections\Integrations\Pipedrive\Client::configured() ) {
+					return 'אין עדיין דיל לבדיקה';
+				}
+				$r = \Insiders\Collections\Integrations\Pipedrive\Client::deals( array( $deal ) );
+				return $r['deals'][ $deal ] ?? ( 'הדיל ' . $deal . ' לא חזר מפייפדרייב' . ( empty( $r['error'] ) ? '' : ': ' . $r['error'] ) );
+			} )(),
+			'unresolved_within_window' => count( $would ),
+			'students'         => array_slice( $would, 0, 60 ),
+		);
 	}
 
 	private static function tranzila_auth(): void {

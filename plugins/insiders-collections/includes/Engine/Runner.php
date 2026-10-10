@@ -48,6 +48,9 @@ final class Runner {
 			$r['inbox']   = self::job( 'inbox', static fn() => Inbox::process( 50 ) );
 			$r['actions'] = self::job( 'actions', static fn() => self::run_actions( 50 ) );
 			$r['outbox']  = self::job( 'outbox', static fn() => Outbox::process( 50 ) );
+			if ( \Insiders\Collections\Domain\Journey::enabled() && self::due( 'journey', HOUR_IN_SECONDS ) ) {
+				$r['journey'] = self::job( 'journey', static fn() => \Insiders\Collections\Domain\Journey::sync() );
+			}
 			if ( TranzilaClient::configured() && self::due( 'reconcile', 15 * MINUTE_IN_SECONDS ) ) {
 				$r['reconcile'] = self::job( 'reconcile', static fn() => Reconciler::incremental() );
 			}
@@ -154,6 +157,19 @@ final class Runner {
 				}
 				$res = Messaging::execute_reminder( $a );
 				break;
+			case 'send_journey':
+				if ( ( Clock::ts( $a['run_at'] ) ?? 0 ) < Clock::now() - 12 * HOUR_IN_SECONDS ) {
+					Scheduler::finish( $id, 'cancelled', 'replanned_after_delay' );
+					\Insiders\Collections\Domain\Journey::plan_next( (int) $a['case_id'] );
+					return 'replanned';
+				}
+				$res = \Insiders\Collections\Domain\Journey::execute( $a );
+				if ( 'cancel:stale_step' === $res ) {
+					Scheduler::finish( $id, 'cancelled', $res );
+					\Insiders\Collections\Domain\Journey::plan_next( (int) $a['case_id'] );
+					return $res;
+				}
+				break;
 			case 'escalate_no_reply':
 				$res = self::escalate( $a );
 				break;
@@ -216,6 +232,7 @@ final class Runner {
 		}
 		$r['card_overdue'] = count( $overdue );
 		$r['revenue']      = Revenue::sync();
+		$r['credit']       = \Insiders\Collections\Domain\ProgramCharges::credit_watch();
 		if ( TranzilaClient::configured() ) {
 			$r['reconcile_full'] = Reconciler::daily_full();
 		}
