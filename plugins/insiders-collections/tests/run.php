@@ -1641,6 +1641,67 @@ $tests['P10'] = array( 'דאבל צ׳ק: מתג כבוי, דשבורד לא עד
 	T::check( str_contains( (string) Db::value( 'SELECT reason FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', 'crm_credit:' . $prog ), '980' ), 'the CRM task names the credited amount, not the whole payment' );
 } );
 
+$tests['P11'] = array( '״אני רוצה לשלם״: מסלול תשלום, קישור ברגע האישור או מיד כשההגדרה פעילה; ״כבר פתחתי חשבון״ ביום המועד', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 691, 9691, '2026-08-01' );
+	ifd_student( 692, 9692, '2026-08-02' );
+	ifd_student( 693, 9693, '2026-08-03' );
+	Journey::sync();
+	T::tick();
+	$d = Templates::defaults();
+	T::eq( array( 2, 3, 3 ), array( count( $d['j_intro']['buttons'] ), count( $d['j_t7']['buttons'] ), count( $d['j_t0']['buttons'] ) ), 'two buttons on the opening message, three later' );
+	T::check( in_array( Journey::BTN_PAY, $d['j_t30']['buttons'], true ) && in_array( Journey::BTN_OPENED, $d['j_t0']['buttons'], true ) && ! in_array( Journey::BTN_DECLINE, $d['j_t0']['buttons'], true ) && ! in_array( Journey::BTN_PAY, $d['j_intro']['buttons'], true ), 'pay from 30 days out, "already opened" on the deadline day, no "will not open" button' );
+
+	// Student 1 presses "I want to pay" the day after the opening message: a person approves, the link goes at once.
+	pday( '2026-10-12', '10:00' );
+	$c1 = student_case( 691 );
+	T::inbound( Journey::BTN_PAY, '972500000691', array( 'type' => 'button' ) );
+	T::tick();
+	$c1 = Workflow::get( (int) $c1['id'] );
+	T::eq( array( 'declined', 'pay_button', 'active' ), array( $c1['track'], $c1['declined_source'], $c1['workflow_state'] ), 'the payment route, recorded as the student\'s own request' );
+	$ack = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'j_pay_ack'", (int) $c1['customer_id'] );
+	T::check( $ack && str_contains( $ack['body'], '880 ₪' ), 'the reply names the amount and promises the link' );
+	T::eq( 1, T::count( 'tasks', "type = 'approve_charge' AND status = 'open'" ), 'a task for the officer, due today' );
+	$q = ProgramCharges::queue();
+	T::eq( array( true, (int) $c1['id'] ), array( $q['rows'][0]['pay_requested'], $q['rows'][0]['case_id'] ), 'first in the approval list, marked as a pay request' );
+	T::as( 'collector' );
+	$res = ProgramCharges::approve( array( (int) $c1['id'] ), $q['basis'] );
+	T::as_admin();
+	T::eq( 1, $res['approved'], 'approved' );
+	$link = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'd_link'", (int) $c1['customer_id'] );
+	T::check( $link && str_contains( $link['body'], '/pay/' ), 'the payment details went out at the moment of approval, a day after the previous message' );
+	T::eq( 'done', Db::value( 'SELECT status FROM ' . Db::t( 'tasks' ) . " WHERE type = 'approve_charge'" ), 'the task closes itself' );
+	T::eq( 'd_t0', pending_journey( (int) $c1['id'] )['step'] ?? null, 'then only the deadline-day message' );
+
+	// Student 2 with the setting on: the charge and the link without a person.
+	Settings::set( array( 'program_auto_charge_on_pay_request' => 1 ) );
+	$c2 = student_case( 692 );
+	T::inbound( Journey::BTN_PAY, '972500000692', array( 'type' => 'button' ) );
+	T::tick();
+	$item = Db::row( 'SELECT * FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d', (int) $c2['id'] );
+	T::check( $item && 88000 === (int) $item['original_amount_minor'] && null === $item['approved_by'] && null !== $item['approved_at'], 'the charge is created by the system, by the price rule' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'd_link'", (int) $c2['customer_id'] ), 'and the link goes out at once' );
+	T::eq( 0, T::count( 'messages', "customer_id = %d AND template_key = 'j_pay_ack'", (int) $c2['customer_id'] ), 'no "we will send" reply when the link itself went' );
+	T::eq( 0, T::count( 'tasks', "type = 'approve_charge' AND case_id = %d", (int) $c2['id'] ), 'nothing for the officer to approve' );
+	Settings::set( array( 'program_auto_charge_on_pay_request' => 0 ) );
+
+	// Student 3 presses "already opened": a check before any charge.
+	$c3 = student_case( 693 );
+	T::inbound( Journey::BTN_OPENED, '972500000693', array( 'type' => 'button' ) );
+	T::tick();
+	$c3 = Workflow::get( (int) $c3['id'] );
+	T::eq( array( 'human_review', 1, 'reach' ), array( $c3['workflow_state'], (int) $c3['claims_account_opened'], $c3['track'] ), '"already opened": to a person, no charge' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND template_key = 'j_opened_ack'", (int) $c3['customer_id'] ), 'with the procedure\'s reply' );
+	pday( '2026-11-02', '10:00' );
+	T::eq( false, array_column( ProgramCharges::queue()['rows'], 'ready', 'case_id' )[ (int) $c3['id'] ] ?? null, 'not approvable while the claim is open' );
+	$I = \Insiders\Collections\Domain\Intents::class;
+	T::eq( array( 'wants_to_pay', 'wants_to_pay' ), array( $I::classify( 'אני רוצה לשלם', 'button' )['intent'], $I::classify( 'לשלם עכשיו', 'button' )['intent'] ), 'the pay button, also reworded' );
+	T::check( 'wants_to_pay' !== $I::classify( 'אני רוצה לשלם', 'text' )['intent'], 'typed words are not the button' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

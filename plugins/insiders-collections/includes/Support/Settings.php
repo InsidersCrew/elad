@@ -73,6 +73,7 @@ final class Settings {
 		'program_price_table'            => '2026-01-01 980 100', // per line: effective-from date, full price, registration fee (an earlier agreement gets the first line)
 		'no_registration_label'          => 'ללא דמי רישום',
 		'declined_lost_reasons'          => 'לא מעוניין לפתוח חשבון',
+		'program_auto_charge_on_pay_request' => 0, // "אני רוצה לשלם": approve and send the link at once, without a person
 		'gate_idle_minutes'              => 30,  // scan again after 30 minutes without activity
 		'gate_session_hours'             => 8,   // and at most once per working day
 	);

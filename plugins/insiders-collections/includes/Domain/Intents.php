@@ -67,11 +67,11 @@ final class Intents {
 		// Before the deadline the beginner-program replies have their own answers (Journey);
 		// whatever it does not handle continues through the table below.
 		$cases  = Journey::on_intent( $name, (string) ( $intent['source'] ?? 'rules' ), $cases, $customer_id, $message_id, $msg );
-		if ( in_array( $name, array( 'question', 'declines_open', 'stuck', 'next_cohort' ), true ) ) {
+		if ( in_array( $name, array( 'question', 'declines_open', 'wants_to_pay', 'stuck', 'next_cohort' ), true ) ) {
 			// Outside the pre-deadline phase these are ordinary messages for a person. An opening "in
 			// progress" still matters after a program charge was approved; elsewhere it is just text.
 			$program = (bool) array_filter( $cases, static fn( $c ) => 'non_open_charge' === $c['source_type'] );
-			$name    = ( 'stuck' === $name && $program ) ? 'opened_account' : 'unclear';
+			$name    = 'wants_to_pay' === $name ? 'link_request' : ( ( 'stuck' === $name && $program ) ? 'opened_account' : 'unclear' );
 		}
 		$sendable_or_waiting = array_values( array_filter( $cases, static fn( $c ) => 'closed' !== $c['workflow_state'] ) );
 		$first  = $sendable_or_waiting[0] ?? null;

@@ -34,6 +34,8 @@ final class Journey {
 	public const BTN_OPEN     = 'אני רוצה לפתוח חשבון';
 	public const BTN_QUESTION = 'יש לי שאלה';
 	public const BTN_DECLINE  = 'לא אפתח חשבון';
+	public const BTN_PAY      = 'אני רוצה לשלם';
+	public const BTN_OPENED   = 'כבר פתחתי חשבון';
 
 	/** Reach-track steps: template key => days before the deadline. */
 	public const REACH = array(
@@ -45,7 +47,7 @@ final class Journey {
 
 	public const TRACKS = array(
 		'reach'    => 'ליווי לפני המועד',
-		'declined' => 'הודיע שלא יפתח חשבון',
+		'declined' => 'מסלול תשלום',
 		'late'     => 'המועד עבר לפני הכניסה',
 	);
 
@@ -654,6 +656,41 @@ final class Journey {
 		);
 	}
 
+	/**
+	 * The payment details right after the charge of a student who asked to pay was
+	 * approved: a reply to their request, not a reminder, so the reminder quota and the
+	 * 48-hour gap do not apply. Hard blockers (opt-out, identity, no phone, setup) still do.
+	 * Returns the message id, or null when it could not go (the step is then planned as usual).
+	 */
+	public static function send_now( int $case_id, string $step ): ?int {
+		$case = Workflow::get( $case_id );
+		if ( ! $case || 'commitment' !== $case['phase'] || ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) || ! self::enabled() ) {
+			return null;
+		}
+		$comp = self::compose( $case_id, $step, false );
+		$g    = SendGuard::check( $case_id, array( 'template' => $comp['template'], 'is_reminder' => false ) );
+		$hard = array_filter( $g['blocking'], static fn( $b ) => in_array( $b['code'], array( 'opted_out', 'identity', 'shared_phone', 'no_phone', 'conversation_owner', 'delivery_unknown', 'no_permission' ), true ) || 'setup' === $b['scope'] );
+		if ( $comp['missing'] || $hard ) {
+			Tasks::open( 'pay_link_blocked:' . $case_id, 'reply_review', array( 'case_id' => $case_id, 'customer_id' => (int) $case['customer_id'], 'priority' => 'high', 'reason' => 'התלמיד ביקש לשלם, אבל פרטי התשלום לא יכולים לצאת: ' . implode( ' · ', array_merge( array_column( $hard, 'message' ), $comp['missing'] ? array( 'חסר ערך: ' . implode( ',', $comp['missing'] ) ) : array() ) ) ) );
+			return null;
+		}
+		if ( $comp['template']['requires_link'] ) {
+			$comp = self::compose( $case_id, $step, true );
+			if ( $comp['missing'] ) {
+				return null;
+			}
+		}
+		Scheduler::cancel_for_case( $case_id, 'pay_details_sent' );
+		return Db::transaction(
+			function () use ( $case, $case_id, $comp, $g, $step ) {
+				$message_id = Messaging::record_outbound( $case, $comp['template'], $comp['rendered_text'], $g['mode'], 'system', null, $comp['vars'] );
+				Workflow::transition( $case_id, 'waiting_reply', 'נשלחו פרטי התשלום לבקשת התלמיד' . ( 'live' === $g['mode'] ? '' : ' (סימולציה)' ), null, array( 'track_step' => $step, 'last_outbound_at' => Clock::utc() ), 'journey' );
+				self::plan_next( $case_id );
+				return $message_id;
+			}
+		);
+	}
+
 	/** Preview for the case screen: the next journey message, when it would go and what blocks it. */
 	public static function preview( int $case_id ): array {
 		$case   = Workflow::get( $case_id );
@@ -711,6 +748,8 @@ final class Journey {
 			self::BTN_OPEN     => 'wants_to_open',
 			self::BTN_QUESTION => 'question',
 			self::BTN_DECLINE  => 'declines_open',
+			self::BTN_PAY      => 'wants_to_pay',
+			self::BTN_OPENED   => 'opened_account',
 		)[ $text ] ?? null;
 		if ( $exact ) {
 			return $exact;
@@ -719,6 +758,12 @@ final class Journey {
 		// constants when the templates are edited in WATI; the key words decide.
 		if ( preg_match( '/לא\s+(אפתח|נפתח|רוצה|מתכוו|מעוניי)/u', $text ) ) {
 			return 'declines_open';
+		}
+		if ( preg_match( '/לשלם|תשלום/u', $text ) ) {
+			return 'wants_to_pay';
+		}
+		if ( preg_match( '/פתחתי|כבר פתוח|נפתח כבר/u', $text ) ) {
+			return 'opened_account';
 		}
 		if ( preg_match( '/לפתוח|פתיחת|פתיחה/u', $text ) ) {
 			return 'wants_to_open';
@@ -737,7 +782,7 @@ final class Journey {
 	public static function on_intent( string $intent, string $source, array $cases, int $customer_id, int $message_id, array $msg ): array {
 		$mine = array_values( array_filter( $cases, static fn( $c ) => 'commitment' === ( $c['phase'] ?? 'charge' ) && 'closed' !== $c['workflow_state'] ) );
 		$rest = array_values( array_filter( $cases, static fn( $c ) => ! in_array( $c, $mine, true ) ) );
-		$handled = array( 'wants_to_open', 'question', 'declines_open', 'opened_account', 'stuck', 'next_cohort', 'promise', 'link_request' );
+		$handled = array( 'wants_to_open', 'question', 'declines_open', 'wants_to_pay', 'opened_account', 'stuck', 'next_cohort', 'promise', 'link_request' );
 		if ( ! $mine || ! in_array( $intent, $handled, true ) ) {
 			return $cases;
 		}
@@ -771,6 +816,17 @@ final class Journey {
 						// Free text is not a decision: "not now" and "never" read alike.
 						$review( $c, 'נראה שהתלמיד לא מתכוון לפתוח חשבון, לבדיקת נציג' );
 						Tasks::open( 'reply:' . $id . ':' . $message_id, 'reply_review', array( 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'נראה שהתלמיד לא מתכוון לפתוח חשבון: "' . $text . '". אם זה סופי, לסמן את הדיל כ-lost עם הסיבה הייעודית והמערכת תעביר למסלול המתאים.' ) );
+					}
+					break;
+				case 'wants_to_pay':
+					// The positive form of the same decision: the payment route, no more account nudges.
+					self::decline( $id, 'pay_button', 'התלמיד לחץ "' . self::BTN_PAY . '"' );
+					Tasks::open( 'crm_lost:' . $id, 'crm_lost', array( 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'התלמיד ביקש לשלם במקום לפתוח חשבון. לסמן את הדיל כ-lost עם הסיבה "' . ( preg_split( '/\R/', (string) Settings::get( 'declined_lost_reasons' ) )[0] ?? '' ) . '".' ) );
+					$sent = Settings::on( 'program_auto_charge_on_pay_request' ) && ProgramCharges::auto_charge( $id, 'התלמיד ביקש לשלם בלחצן בוואטסאפ' ) && self::send_now( $id, 'd_link' );
+					if ( ! $sent ) {
+						// A person approves the charge; the link goes out the moment they do.
+						Tasks::open( 'pay_request:' . $id, 'approve_charge', array( 'case_id' => $id, 'customer_id' => $customer_id, 'priority' => 'high', 'reason' => 'התלמיד לחץ "' . self::BTN_PAY . '". לאשר את החיוב ברשימת התוכנית למתחילים, והקישור יישלח מיד.' ) );
+						$reply = 'j_pay_ack';
 					}
 					break;
 				case 'opened_account':
@@ -820,7 +876,7 @@ final class Journey {
 		$extra = array( 'track' => 'declined', 'declined_at' => Clock::utc(), 'declined_source' => $source );
 		Scheduler::cancel_for_case( $case_id, 'declined' );
 		Tasks::close_by_key( 'open_call:' . $case_id, 'התלמיד הודיע שלא יפתח חשבון' );
-		if ( 'button' === $source && Workflow::can( $case['workflow_state'], 'active' ) ) {
+		if ( in_array( $source, array( 'button', 'pay_button' ), true ) && Workflow::can( $case['workflow_state'], 'active' ) ) {
 			Workflow::transition( $case_id, 'active', $reason, null, $extra, 'journey' );
 		} else {
 			Workflow::touch( $case_id, $extra, 'case.declined', $reason );

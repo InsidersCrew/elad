@@ -34,6 +34,7 @@ final class Tasks {
 		'open_call'          => array( 'label' => 'שיחה לליווי פתיחת חשבון', 'due_days' => 0 ),
 		'crm_lost'           => array( 'label' => 'סימון הדיל כ-lost בפייפדרייב', 'due_days' => 1 ),
 		'program_credit'     => array( 'label' => 'זיכוי לפי תנאי התוכנית', 'due_days' => 2 ),
+		'approve_charge'     => array( 'label' => 'אישור חיוב: התלמיד ביקש לשלם', 'due_days' => 0 ),
 	);
 
 	public static function open( string $task_key, string $type, array $opts = array() ): int {

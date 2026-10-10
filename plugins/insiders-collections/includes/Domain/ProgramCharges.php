@@ -95,6 +95,7 @@ final class ProgramCharges {
 				'deadline'     => $r['account_open_deadline'],
 				'deadline_he'  => Journey::date_he( (string) $r['account_open_deadline'] ),
 				'before_deadline' => $r['account_open_deadline'] >= $today,
+				'pay_requested' => 'pay_button' === $r['declined_source'],
 				'deal_id'      => $r['pipedrive_deal_id'] ? (int) $r['pipedrive_deal_id'] : null,
 				'no_registration_fee' => (bool) (int) $r['no_registration_fee'],
 				'amount_minor' => $quote['due'] ?? null,
@@ -106,6 +107,7 @@ final class ProgramCharges {
 				'ready'        => ! $block,
 			);
 		}
+		usort( $out, static fn( $a, $b ) => ( (int) $b['pay_requested'] <=> (int) $a['pay_requested'] ) ?: strcmp( (string) $a['deadline'], (string) $b['deadline'] ) ?: ( $a['case_id'] <=> $b['case_id'] ) );
 		return array(
 			'rows'  => $out,
 			'ready' => count( array_filter( $out, static fn( $x ) => $x['ready'] ) ),
@@ -160,8 +162,11 @@ final class ProgramCharges {
 						Audit::log( 'program_charge.approve', 'case', $id, null, array( 'item' => $item, 'amount' => (int) $q['amount_minor'], 'track' => $q['track'] ), $why . '. ' . $basis );
 					}
 				);
-				if ( $q['before_deadline'] ) {
-					Journey::plan_next( $id ); // declined before the deadline: the payment details, then the deadline day
+				Tasks::close_by_key( 'pay_request:' . $id, 'החיוב אושר' );
+				if ( $q['pay_requested'] && Journey::send_now( $id, 'd_link' ) ) {
+					// The student asked to pay: the details go now, as a reply, whatever the day.
+				} elseif ( $q['before_deadline'] ) {
+					Journey::plan_next( $id ); // the payment details, then the deadline day
 				} else {
 					Journey::to_charge( $id );
 				}
@@ -173,6 +178,42 @@ final class ProgramCharges {
 			$done[] = $id;
 		}
 		return array( 'approved' => count( $done ), 'case_ids' => $done, 'skipped' => $skip );
+	}
+
+	/**
+	 * The charge for a student who pressed "אני רוצה לשלם", without a person, when the
+	 * setting allows it. The same checks as the queue, run by the system: no earlier
+	 * approved item, a price, and no resolution in the dashboard.
+	 */
+	public static function auto_charge( int $case_id, string $basis ): bool {
+		$case = Workflow::get( $case_id );
+		$agr  = $case ? Journey::agreement( $case ) : null;
+		$cust = $case ? Customers::get( (int) $case['customer_id'] ) : null;
+		if ( ! $case || ! $agr || ! $cust || 'commitment' !== $case['phase'] || 'closed' === $case['workflow_state'] ) {
+			return false;
+		}
+		if ( Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d AND approved_at IS NOT NULL', $case_id ) ) {
+			return true; // already approved by a person
+		}
+		$quote = Pricing::for_agreement( $agr );
+		if ( ! $quote || (int) $case['dispute_open'] || (int) $case['claims_account_opened'] ) {
+			return false;
+		}
+		if ( ! FinanceDashboard::available() || FinanceDashboard::contract()['stale'] ) {
+			return false;
+		}
+		if ( $agr['pipedrive_deal_id'] && $cust['pipedrive_person_id'] && FinanceDashboard::deal_resolution( (int) $cust['pipedrive_person_id'], (int) $agr['pipedrive_deal_id'] ) ) {
+			return false;
+		}
+		Db::transaction(
+			function () use ( $case_id, $quote, $basis, $agr ) {
+				$item = Cases::insert_item( $case_id, array( 'amount_minor' => (int) $quote['due'], 'due_at' => Clock::today(), 'description' => 'תוכנית הליווי למתחילים', 'evidence_ref' => $agr['pipedrive_deal_id'] ? 'pipedrive:deal:' . (int) $agr['pipedrive_deal_id'] : '' ), 'ILS', false, $basis, 'program:' . $case_id );
+				Db::update( 'debt_items', array( 'approved_at' => Clock::utc() ), array( 'id' => $item ) ); // approved_by stays empty: the system, by the setting
+				Ledger::recompute( $item );
+				Audit::log( 'program_charge.auto', 'case', $case_id, null, array( 'item' => $item, 'amount' => (int) $quote['due'] ), $basis );
+			}
+		);
+		return true;
 	}
 
 	/* --------------------------------------------------------- credit window */

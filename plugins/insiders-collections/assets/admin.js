@@ -855,7 +855,7 @@
 	}
 
 	/* ---------- beginner program ---------- */
-	var TRACK = { reach: ['ליווי לפני המועד', 'info'], declined: ['הודיע שלא יפתח', 'warn'], late: ['המועד עבר לפני הכניסה', 'violet'] };
+	var TRACK = { reach: ['ליווי לפני המועד', 'info'], declined: ['מסלול תשלום', 'warn'], late: ['המועד עבר לפני הכניסה', 'violet'] };
 	function trackChip(t) { var x = TRACK[t] || [t, '']; return chip(x[0], x[1]); }
 	function viewProgram(tab) {
 		var tabs = [['queue', 'אישור חיובים'], ['journey', 'בליווי לפני המועד'], ['import', 'ייבוא תלמידים']];
@@ -885,7 +885,7 @@
 			var notes = function (r) { return h('span', { class: 'icol-mode' }, (r.blockers || []).map(function (b) { return chip(b, 'bad'); }), (r.warnings || []).map(function (w) { return chip(w, 'warn'); })); };
 			var cols = [
 				['name', 'תלמיד', nameCell],
-				['track', 'מסלול', function (r) { return trackChip(r.track); }],
+				['track', 'מסלול', function (r) { return h('span', { class: 'icol-mode' }, trackChip(r.track), r.pay_requested ? chip('ביקש לשלם', 'ok') : null); }],
 				['deadline', 'מועד', function (r) { return h('span', {}, r.deadline_he, h('span', { class: 'sub', text: r.before_deadline ? 'לפני המועד, תשלום מרצון' : 'הסכם מ-' + (r.signed_at || '').split('-').reverse().join('/') })); }],
 				['amount', 'סכום', function (r) { return h('span', {}, h('strong', { class: 'num', text: money(r.amount_minor) }), r.amount_text.indexOf('(') > 0 ? h('span', { class: 'sub', text: r.amount_text.slice(r.amount_text.indexOf('(') + 1, -1) }) : (r.no_registration_fee ? h('span', { class: 'sub', text: 'ללא דמי רישום' }) : null)); }],
 				['msgs', 'הודעות ליווי', function (r) { return h('span', {}, String(r.messages), r.last_message ? h('span', { class: 'sub', text: 'אחרונה ' + r.last_message }) : null); }],
@@ -1104,13 +1104,14 @@
 			late_grace_days: field('late_grace_days', 'המתנה לתגובה לפני אישור, למי שהמועד שלו עבר (ימים)', 'number', { value: st.late_grace_days }),
 			credit_window_days: field('credit_window_days', 'חלון זיכוי אחרי תשלום (ימים)', 'number', { value: st.credit_window_days }),
 			journey_batch: field('journey_batch', 'תלמידים חדשים בכל ריצה', 'number', { value: st.journey_batch, help: 'כל תלמיד הוא קריאה לפייפדרייב. הריצה היא פעם בשעה.' }),
+			program_auto_charge_on_pay_request: field('program_auto_charge_on_pay_request', 'כשתלמיד לוחץ "אני רוצה לשלם": לאשר את החיוב ולשלוח את הקישור מיד', 'checkbox', { value: Number(st.program_auto_charge_on_pay_request) === 1, wide: true, help: 'כבוי: אחראי הגבייה מאשר ברשימה, והקישור יוצא ברגע האישור. פעיל: המערכת מאשרת לבד לפי המחירון, אחרי אותן בדיקות מול הדשבורד, והתלמיד מקבל את הקישור בתוך דקה.' }),
 			program_price_table: field('program_price_table', 'מחירון לפי תאריך ההסכם', 'textarea', { value: st.program_price_table, rows: 3, wide: true, help: 'שורה לכל מחירון: תאריך תחולה, מחיר מלא, דמי רישום. לדוגמה: 2026-08-01 980 100. תלמיד משלם את המחיר שהיה בתוקף בתאריך ההסכם שלו, פחות דמי הרישום.' }),
 			no_registration_label: field('no_registration_label', 'תווית בדיל לתלמיד שלא שילם דמי רישום', 'text', { value: st.no_registration_label, help: 'השם המדויק של התווית בפייפדרייב. לתלמיד עם התווית לא מפחיתים את דמי הרישום.' }),
 			declined_lost_reasons: field('declined_lost_reasons', 'סיבות lost שמעבירות למסלול "לא יפתח חשבון"', 'textarea', { value: st.declined_lost_reasons, rows: 2, help: 'שורה לכל סיבה, בדיוק כמו בפייפדרייב.' })
 		};
 		f.program_price_table.input.setAttribute('dir', 'ltr');
 		add(body, h('div', { class: 'icol-card' }, h('div', { class: 'icol-form' }, on.el), h('div', { class: 'icol-fields', style: 'margin-top:10px' }, Object.keys(f).map(function (k) { return f[k].el; })),
-			h('div', { class: 'icol-actions', style: 'margin-top:12px' }, h('button', { class: 'icol-btn primary', text: 'שמירה', onclick: function () { var v = { journey_enabled: on.input.checked ? 1 : 0 }; Object.keys(f).forEach(function (k) { v[k] = val(f[k]); }); saveSettings(v).catch(function (e) { showFieldErrors(body, e); fail(e); }); } }),
+			h('div', { class: 'icol-actions', style: 'margin-top:12px' }, h('button', { class: 'icol-btn primary', text: 'שמירה', onclick: function () { var v = { journey_enabled: on.input.checked ? 1 : 0 }; Object.keys(f).forEach(function (k) { v[k] = f[k].input.type === 'checkbox' ? (f[k].input.checked ? 1 : 0) : val(f[k]); }); saveSettings(v).catch(function (e) { showFieldErrors(body, e); fail(e); }); } }),
 				C.diag ? h('a', { class: 'icol-btn sm', href: C.diag.tools.replace('icol_diag=tools', 'icol_diag=program'), target: '_blank', rel: 'noopener', text: 'בדיקה: מי ייכנס לליווי' }) : null)));
 	}
 	function settingsConnections(body, s) {
