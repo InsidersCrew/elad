@@ -1535,6 +1535,9 @@ $tests['P08'] = array( 'תשובות בליווי: שאלה, ״רוצה לפתו
 $tests['P09'] = array( 'תבניות: כללי מטא (לא מתחילות ולא מסתיימות במשתנה), "היי לך" כשהשם לא אמין, לחצנים עד 25 תווים', function () {
 	T::check( (bool) array_filter( Templates::lint( 'היי {{name}}, התשלום בסך {{paid}} ₪ התקבל, תודה.', 'payment_confirmation', 'whatsapp_template' ), fn( $p ) => str_contains( $p, '₪' ) ), 'a sign typed after {{paid}} is refused: the value already has it' );
 	T::eq( array(), Templates::lint( 'היי {{name}}, התשלום בסך {{paid}} התקבל, תודה.', 'payment_confirmation', 'whatsapp_template' ), 'without the sign the body passes' );
+	T::eq( array(), Templates::lint( "התשלום בסך {{paid}} התקבל, תודה רבה!\n\nאנחנו כאן לשירותך בהמשך הדרך לכל עניין ושאלה 🙏🏼", 'payment_confirmation', 'whatsapp_template' ), 'an emoji with a skin tone is one emoji' );
+	T::eq( array(), Templates::lint( 'היי {{name}}, תודה 👩‍💻 ונתראה.', 'payment_confirmation', 'whatsapp_template' ), 'a joined emoji sequence is one emoji' );
+	T::check( in_array( 'יותר מאימוג׳י אחד', Templates::lint( 'היי {{name}} 🙂 תודה 🙏🏼', 'payment_confirmation', 'whatsapp_template' ), true ), 'two emojis are still refused' );
 	$old = get_option( 'icol_templates', array() );
 	update_option( 'icol_templates', array( 'reminder_reply' => array( 'body' => 'היי {{name}}, לגבי {{item}}, בסך {{balance}} ₪.\nאפשר לכתוב לנו.', 'version' => 2 ) ), false );
 	Templates::strip_currency_sign();

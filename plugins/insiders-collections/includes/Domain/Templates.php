@@ -193,7 +193,9 @@ final class Templates {
 				$p[] = 'שני משתנים צמודים (מטא דוחה)';
 			}
 		}
-		preg_match_all( '/[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]/u', $body, $m );
+		// One emoji may carry a skin tone, a variation selector or a ZWJ sequence (🙏🏼, 👩‍💻): the whole sequence counts once.
+		$emoji = '[\x{1F300}-\x{1F3FA}\x{1F400}-\x{1FAFF}\x{2600}-\x{27BF}][\x{1F3FB}-\x{1F3FF}\x{FE0F}]*';
+		preg_match_all( '/' . $emoji . '(?:\x{200D}' . $emoji . ')*/u', $body, $m );
 		if ( count( $m[0] ) > 1 ) {
 			$p[] = 'יותר מאימוג׳י אחד';
 		}
