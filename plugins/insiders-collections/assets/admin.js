@@ -1059,7 +1059,7 @@
 			var q = function (arr) { return (arr || []).map(function (r) { return r.state + ': ' + r.n; }).join(' · ') || '—'; };
 			add(body, h('div', { class: 'icol-split' },
 				h('div', { class: 'icol-card' }, h('h3', { text: 'עבודות מתוזמנות, ניסיון מול הצלחה' }), table([['job', 'עבודה'], ['attempt', 'ניסיון אחרון'], ['success', 'הצלחה אחרונה'], ['error', 'שגיאה אחרונה']], jobs),
-					hl.reconcile_stale ? h('div', { class: 'icol-banner warn', style: 'margin-top:10px', text: 'ההתאמה מול טרנזילה לא עדכנית, תזכורות לחיובים חוזרים מושהות עד חידוש.' }) : null,
+					hl.reconcile_stale && hl.integrations.tranzila ? h('div', { class: 'icol-banner warn', style: 'margin-top:10px', text: 'ההתאמה מול טרנזילה לא עדכנית, תזכורות לחיובים חוזרים מושהות עד חידוש.' }) : null,
 					h('div', { class: 'icol-actions', style: 'margin-top:10px' }, can('icol_admin') ? h('button', { class: 'icol-btn sm', text: 'הרצת מחזור עבודה עכשיו', onclick: function () { api.post('/tools/tick').then(function (r) { toast('בוצע: ' + JSON.stringify(r).slice(0, 160), 'ok'); route(); }).catch(fail); } }) : null, C.diag ? h('a', { class: 'icol-btn sm', href: C.diag.tools, target: '_blank', rel: 'noopener', text: 'כלי אבחון' }) : null)),
 				h('div', { class: 'icol-card' }, h('h3', { text: 'חיבורים ותורים' }), kv([
 					['טרנזילה', hl.integrations.tranzila ? chip('מוגדר', 'ok') : chip('לא מוגדר', 'warn')], ['WATI', hl.integrations.wati ? chip('מוגדר', 'ok') : chip('לא מוגדר', 'warn')], ['פייפדרייב', hl.integrations.pipedrive ? chip('מוגדר', 'ok') : chip('לא מוגדר')], ['AI', hl.integrations.ai ? chip('זמין', 'ok') : chip('לא זמין')], ['הצפנה', hl.integrations.encryption ? chip('מפתח קיים', 'ok') : chip('חסר ICOL_ENCRYPTION_KEY', 'bad')],
