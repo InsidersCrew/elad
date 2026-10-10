@@ -158,7 +158,7 @@ final class Api {
 		$r( 'POST', '/kill-switch', 'icol_work_case', static fn( $q ) => self::kill_switch( $q ), true );
 		$r( 'POST', '/policy/draft', 'icol_admin', static fn( $q ) => array( 'version' => Policy::save_draft( (array) $q->get_param( 'config' ), Http::str( $q, 'note' ) ) ), true );
 		$r( 'POST', '/policy/(?P<version>\d+)/approve', 'icol_admin', static function ( $q ) { Policy::approve( Http::int( $q, 'version' ) ); return array( 'ok' => true ); }, true );
-		$r( 'POST', '/templates/(?P<key>[a-z_]+)', 'icol_admin', static fn( $q ) => Templates::save( Http::str( $q, 'key' ), (array) $q->get_json_params() ), true );
+		$r( 'POST', '/templates/(?P<key>[a-z0-9_]+)', 'icol_admin', // keys like j_t30 carry digits static fn( $q ) => Templates::save( Http::str( $q, 'key' ), (array) $q->get_json_params() ), true );
 		$r( 'POST', "/users/$id/role", 'icol_admin', static fn( $q ) => self::set_role( $q ), true );
 		$r( 'POST', '/integrations/(?P<name>[a-z]+)/unsuspend', 'icol_admin', static function ( $q ) { Runner::unsuspend( Http::str( $q, 'name' ) ); return array( 'ok' => true ); }, true );
 		$r( 'POST', '/tools/tick', 'icol_admin', static fn() => Runner::tick( 'manual' ), true );

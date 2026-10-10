@@ -1556,6 +1556,8 @@ $tests['P09'] = array( 'תבניות: כללי מטא (לא מתחילות ול�
 	T::eq( array( 'declines_open', 'button' ), array_values( array_intersect_key( $I::classify( 'לא אפתח חשבון', 'button' ), array_flip( array( 'intent', 'source' ) ) ) ), 'the button is a decision' );
 	T::eq( array( 'wants_to_open', 'declines_open', 'question', null ), array( $I::classify( 'אני רוצה לפתוח חשבון עכשיו', 'button' )['intent'], $I::classify( 'לא, לא אפתח', 'button' )['intent'], $I::classify( 'יש לי שאלה קטנה', 'button' )['intent'], Journey::button_intent( 'תודה' ) ), 'a reworded button is matched by its key words' );
 	T::eq( array( 2, 3 ), array( count( Templates::defaults()['j_intro']['buttons'] ), count( Templates::defaults()['j_t30']['buttons'] ) ), 'the opening message has two buttons, the later ones three' );
+	$res = T::api( 'POST', '/templates/j_t30', array( 'provider_name' => 'program_t30_v2', 'approval_state' => 'approved' ) );
+	T::eq( array( 200, 'program_t30_v2' ), array( $res->get_status(), Templates::get( 'j_t30' )['provider_name'] ), 'a template whose key has digits can be saved from the screen' );
 	$c = T::customer( array( 'first_name' => 'ד.', 'first_name_reliable' => false ) );
 	[ , $case ] = program_case( array( 'customer_id' => $c ) );
 	$vars = Messaging::variables( Workflow::get( $case ), null );
