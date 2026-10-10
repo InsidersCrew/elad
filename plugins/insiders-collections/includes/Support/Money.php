@@ -49,6 +49,11 @@ final class Money {
 		return ( $neg ? '-' : '' ) . $out;
 	}
 
+	/** "880 ₪": the form every money variable in a message carries, so templates never add the sign themselves. */
+	public static function ils( int $minor ): string {
+		return self::format( $minor ) . ' ₪';
+	}
+
 	public static function symbol( string $currency ): string {
 		return array( 'ILS' => '₪', 'USD' => '$', 'EUR' => '€' )[ $currency ] ?? $currency;
 	}

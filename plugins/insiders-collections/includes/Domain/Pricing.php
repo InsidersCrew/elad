@@ -91,8 +91,8 @@ final class Pricing {
 		$credit = $no_registration_fee ? 0 : (int) $row['registration'];
 		$due    = (int) $row['total'] - $credit;
 		$text   = $credit > 0
-			? Money::format( $due ) . ' ₪ (' . Money::format( (int) $row['total'] ) . ' ₪ פחות ' . Money::format( $credit ) . ' ₪ דמי הרישום ששולמו)'
-			: Money::format( $due ) . ' ₪';
+			? Money::ils( $due ) . ' (' . Money::ils( (int) $row['total'] ) . ' פחות ' . Money::ils( $credit ) . ' דמי הרישום ששולמו)'
+			: Money::ils( $due );
 		return array( 'total' => (int) $row['total'], 'credit' => $credit, 'due' => $due, 'text' => $text, 'from' => $row['from'] );
 	}
 

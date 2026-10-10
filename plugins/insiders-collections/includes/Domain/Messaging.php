@@ -138,8 +138,8 @@ final class Messaging {
 			'greeting'     => Templates::greeting( Customers::greeting_name( $customer ) ),
 			'name'         => Templates::name_or_neutral( Customers::greeting_name( $customer ) ),
 			'item'         => $item,
-			'amount'       => $summary['due_balance_minor'] > 0 ? Money::format( $summary['due_balance_minor'] ) : '',
-			'balance'      => $summary['due_balance_minor'] > 0 ? Money::format( $summary['due_balance_minor'] ) : '',
+			'amount'       => $summary['due_balance_minor'] > 0 ? Money::ils( $summary['due_balance_minor'] ) : '',
+			'balance'      => $summary['due_balance_minor'] > 0 ? Money::ils( $summary['due_balance_minor'] ) : '',
 			'items_count'  => (string) count( $open ),
 			'link'         => $link,
 			'email_masked' => $email ? self::mask_email( $email ) : '',
@@ -491,7 +491,7 @@ final class Messaging {
 		$summary = Ledger::case_summary( $case_id );
 		$card_open = $case['recurring_order_id'] ? (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'card_update_tasks' ) . " WHERE recurring_order_id = %d AND state IN ('open','in_progress','needs_clarification')", (int) $case['recurring_order_id'] ) : 0;
 		if ( $summary['due_balance_minor'] > 0 ) {
-			$status = 'נשארה יתרה פתוחה של ' . Money::format( $summary['due_balance_minor'] ) . ' ₪.';
+			$status = 'נשארה יתרה פתוחה של ' . Money::ils( $summary['due_balance_minor'] ) . '.';
 		} elseif ( $card_open ) {
 			$status = 'התשלום הזה הוסדר. ניצור קשר בנוגע לאמצעי התשלום לחיובים הבאים.';
 		} else {
@@ -500,7 +500,7 @@ final class Messaging {
 		$program = 'non_open_charge' === $case['source_type'] && $summary['due_balance_minor'] <= 0 && ! $card_open;
 		$tpl = Templates::get( $program ? 'program_paid' : 'payment_verified' );
 		$customer = Customers::get( (int) $case['customer_id'] );
-		$vars = array( 'greeting' => Templates::greeting( Customers::greeting_name( $customer ) ), 'name' => Templates::name_or_neutral( Customers::greeting_name( $customer ) ), 'paid' => Money::format( $paid_minor ), 'status_line' => $status );
+		$vars = array( 'greeting' => Templates::greeting( Customers::greeting_name( $customer ) ), 'name' => Templates::name_or_neutral( Customers::greeting_name( $customer ) ), 'paid' => Money::ils( $paid_minor ), 'status_line' => $status );
 		[ $text, $miss ] = Templates::render( $tpl, $vars );
 		if ( $miss ) {
 			return null;

@@ -254,7 +254,7 @@ final class ProgramCharges {
 					'case_id'     => (int) $r['id'],
 					'customer_id' => (int) $r['customer_id'],
 					'priority'    => 'high',
-					'reason'      => 'התלמיד שילם ' . Money::format( (int) $r['paid'] ) . ' ₪ ב-' . Journey::date_he( $paid_on ) . ' ופתח חשבון ב-' . Journey::date_he( $opened ) . ', בתוך ' . $days . ' יום. לפי תנאי התוכנית מגיע זיכוי: לבדוק שהחשבון עומד בתנאים, לבצע זיכוי בטרנזילה, ולסמן בתיק "זיכוי בוצע".',
+					'reason'      => 'התלמיד שילם ' . Money::ils( (int) $r['paid'] ) . ' ב-' . Journey::date_he( $paid_on ) . ' ופתח חשבון ב-' . Journey::date_he( $opened ) . ', בתוך ' . $days . ' יום. לפי תנאי התוכנית מגיע זיכוי: לבדוק שהחשבון עומד בתנאים, לבצע זיכוי בטרנזילה, ולסמן בתיק "זיכוי בוצע".',
 				)
 			);
 			++$found;

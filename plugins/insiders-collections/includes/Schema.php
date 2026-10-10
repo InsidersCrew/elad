@@ -1,6 +1,7 @@
 <?php
 namespace Insiders\Collections;
 
+use Insiders\Collections\Domain\Templates;
 use Insiders\Collections\Support\Db;
 
 defined( 'ABSPATH' ) || exit;
@@ -639,6 +640,8 @@ final class Schema {
 		$nullable = $wpdb->get_var( $wpdb->prepare( 'SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s', $table, 'wp_user_id' ) );
 		$out['program_candidates.wp_user_id_null'] = 'NO' === $nullable ? false !== $wpdb->query( "ALTER TABLE `{$table}` MODIFY wp_user_id BIGINT UNSIGNED NULL" ) : true;
 		$out['program_candidates.person_index'] = self::ensure_index( 'program_candidates', 'person', '(pipedrive_person_id)' );
+		// v4: the money variables carry the ₪ sign; stored bodies lose the sign they used to add after it.
+		$out['templates.currency_sign'] = Templates::strip_currency_sign();
 		return $out;
 	}
 

@@ -17,6 +17,9 @@ defined( 'ABSPATH' ) || exit;
 final class Templates {
 	private const OPTION = 'icol_templates';
 
+	/** A currency sign typed after a money variable: the value already ends with " ₪". */
+	private const SIGN_AFTER_MONEY = '/(\{\{\s*(?:amount|balance|paid)\s*\}\})\s*(?:₪|ש"ח|שח|ש״ח)/u';
+
 	public static function defaults(): array {
 		$t = static fn( string $key, string $kind, string $channel, string $body, array $o = array() ) => array_merge(
 			array(
@@ -49,18 +52,18 @@ final class Templates {
 		// The deadline day (and a deadline already passed): the time to open is over. Pay, "already opened", or a question.
 		$btn_last = array( Journey::BTN_PAY, Journey::BTN_OPENED, Journey::BTN_QUESTION );
 		return array(
-			'payment_failed_link'   => $t( 'payment_failed_link', 'collection_reminder', 'whatsapp_template', "היי {{name}} 🙂 כאן צוות INSIDERS.\nהתשלום עבור {{item}} בסך {{amount}} ₪ לא עבר.\nאפשר להסדיר אותו בקישור המאובטח: {{link}}\nאם צריך עזרה, אפשר לכתוב לנו כאן.", array( 'requires_link' => true, 'params' => array( 'name', 'item', 'amount', 'link' ), 'use_when' => 'הקישור מסדיר את התשלום בפועל, והמסלול הנפרד אושר לפריט', 'block_when' => 'פריט מחזורי שטרנזילה עדיין מנסה לגבות' ) ),
-			'payment_failed_reply'  => $t( 'payment_failed_reply', 'collection_reminder', 'whatsapp_template', "היי {{name}} 🙂 כאן צוות INSIDERS.\nהתשלום עבור {{item}} בסך {{amount}} ₪ לא עבר.\nנשמח לעזור להסדיר אותו. אפשר להשיב כאן ונחזור אליך.", array( 'params' => array( 'name', 'item', 'amount' ), 'use_when' => 'אין מסלול קישור מאומת לפריט' ) ),
+			'payment_failed_link'   => $t( 'payment_failed_link', 'collection_reminder', 'whatsapp_template', "היי {{name}} 🙂 כאן צוות INSIDERS.\nהתשלום עבור {{item}} בסך {{amount}} לא עבר.\nאפשר להסדיר אותו בקישור המאובטח: {{link}}\nאם צריך עזרה, אפשר לכתוב לנו כאן.", array( 'requires_link' => true, 'params' => array( 'name', 'item', 'amount', 'link' ), 'use_when' => 'הקישור מסדיר את התשלום בפועל, והמסלול הנפרד אושר לפריט', 'block_when' => 'פריט מחזורי שטרנזילה עדיין מנסה לגבות' ) ),
+			'payment_failed_reply'  => $t( 'payment_failed_reply', 'collection_reminder', 'whatsapp_template', "היי {{name}} 🙂 כאן צוות INSIDERS.\nהתשלום עבור {{item}} בסך {{amount}} לא עבר.\nנשמח לעזור להסדיר אותו. אפשר להשיב כאן ונחזור אליך.", array( 'params' => array( 'name', 'item', 'amount' ), 'use_when' => 'אין מסלול קישור מאומת לפריט' ) ),
 			'card_fix_email'        => $t( 'card_fix_email', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS.\nהתשלום עבור {{item}} לא עבר בגלל בעיה בכרטיס האשראי.\nטרנזילה, חברת הסליקה שלנו, שלחה ל־{{email_masked}} קישור מאובטח לעדכון הכרטיס. אחרי העדכון החיוב יתבצע שוב אוטומטית.\nלא הגיע מייל? אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'item', 'email_masked' ), 'use_when' => 'כשל מסוג כרטיס, מייל תיקון הכרטיס של טרנזילה פעיל וכתובת המייל ידועה', 'block_when' => 'יותר מתשלום פתוח אחד בהוראה (ראו card_fix_email_multi)' ) ),
-			'card_fix_email_multi'  => $t( 'card_fix_email_multi', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS.\nכמה תשלומים בהוראת הקבע לא עברו בגלל בעיה בכרטיס האשראי: {{items_count}} תשלומים, בסך כולל של {{amount}} ₪.\nטרנזילה שלחה ל־{{email_masked}} קישור מאובטח לעדכון הכרטיס. אחרי העדכון התשלומים האלה ייגבו שוב אוטומטית.\nאם צריך לבדוק משהו לפני כן, אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'items_count', 'amount', 'email_masked' ), 'use_when' => 'כמה פריטים פתוחים באותה הוראה, הלקוח רואה את הסכום הכולל לפני העדכון' ) ),
+			'card_fix_email_multi'  => $t( 'card_fix_email_multi', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS.\nכמה תשלומים בהוראת הקבע לא עברו בגלל בעיה בכרטיס האשראי: {{items_count}} תשלומים, בסך כולל של {{amount}}.\nטרנזילה שלחה ל־{{email_masked}} קישור מאובטח לעדכון הכרטיס. אחרי העדכון התשלומים האלה ייגבו שוב אוטומטית.\nאם צריך לבדוק משהו לפני כן, אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'items_count', 'amount', 'email_masked' ), 'use_when' => 'כמה פריטים פתוחים באותה הוראה, הלקוח רואה את הסכום הכולל לפני העדכון' ) ),
 			'clarify_before_charge' => $t( 'clarify_before_charge', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי פתיחת חשבון המסחר במסגרת תוכנית הליווי.\nלפי הרישום אצלנו התהליך עדיין לא הושלם. כבר פתחת חשבון, או שיש משהו שצריך לבדוק יחד?", array( 'params' => array( 'name' ), 'use_when' => 'שלב בירור לפני דרישת תשלום' ) ),
-			'program_charge_link'   => $t( 'program_charge_link', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nלפי הרישום אצלנו עדיין לא נפתח חשבון מסחר, והגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות. הסכום לתשלום הוא {{amount}} ₪.\nאפשר להסדיר בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון או שיש משהו לבדוק, אפשר לכתוב לנו כאן.", array( 'requires_link' => true, 'params' => array( 'name', 'amount', 'link' ) ) ),
-			'program_charge_reply'  => $t( 'program_charge_reply', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nלפי הרישום אצלנו עדיין לא נפתח חשבון מסחר, והגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות. הסכום לתשלום הוא {{amount}} ₪.\nאפשר להשיב כאן ונשלח את פרטי ההסדרה. אם כבר פתחת חשבון או שיש משהו לבדוק, נשמח לשמוע.", array( 'params' => array( 'name', 'amount' ) ) ),
-			'reminder_link'         => $t( 'reminder_link', 'collection_reminder', 'whatsapp_template', "היי {{name}}, מזכירים לגבי התשלום עבור {{item}} שמופיע אצלנו כפתוח, בסך {{balance}} ₪.\nזה הקישור להסדרה: {{link}}\nאם משהו הסתבך, אפשר לכתוב לנו ונעזור.", array( 'requires_link' => true, 'params' => array( 'name', 'item', 'balance', 'link' ) ) ),
-			'reminder_reply'        => $t( 'reminder_reply', 'collection_reminder', 'whatsapp_template', "היי {{name}}, מזכירים לגבי התשלום עבור {{item}} שמופיע אצלנו כפתוח, בסך {{balance}} ₪.\nאם משהו הסתבך, אפשר לכתוב לנו כאן ונעזור.", array( 'params' => array( 'name', 'item', 'balance' ) ) ),
-			'promise_followup'      => $t( 'promise_followup', 'collection_reminder', 'whatsapp_template', "היי {{name}}, חוזרים אליך בהמשך למה שסיכמנו לגבי התשלום ב־{{promise_date}}.\nהיתרה בסך {{balance}} ₪ עדיין מופיעה אצלנו כפתוחה. צריך עזרה בהסדרה?", array( 'params' => array( 'name', 'promise_date', 'balance' ), 'use_when' => 'רק עם הבטחה מתועדת ומאושרת שהגיע מועדה ולא נקלט תשלום' ) ),
+			'program_charge_link'   => $t( 'program_charge_link', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nלפי הרישום אצלנו עדיין לא נפתח חשבון מסחר, והגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות. הסכום לתשלום הוא {{amount}}.\nאפשר להסדיר בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון או שיש משהו לבדוק, אפשר לכתוב לנו כאן.", array( 'requires_link' => true, 'params' => array( 'name', 'amount', 'link' ) ) ),
+			'program_charge_reply'  => $t( 'program_charge_reply', 'collection_reminder', 'whatsapp_template', "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nלפי הרישום אצלנו עדיין לא נפתח חשבון מסחר, והגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות. הסכום לתשלום הוא {{amount}}.\nאפשר להשיב כאן ונשלח את פרטי ההסדרה. אם כבר פתחת חשבון או שיש משהו לבדוק, נשמח לשמוע.", array( 'params' => array( 'name', 'amount' ) ) ),
+			'reminder_link'         => $t( 'reminder_link', 'collection_reminder', 'whatsapp_template', "היי {{name}}, מזכירים לגבי התשלום עבור {{item}} שמופיע אצלנו כפתוח, בסך {{balance}}.\nזה הקישור להסדרה: {{link}}\nאם משהו הסתבך, אפשר לכתוב לנו ונעזור.", array( 'requires_link' => true, 'params' => array( 'name', 'item', 'balance', 'link' ) ) ),
+			'reminder_reply'        => $t( 'reminder_reply', 'collection_reminder', 'whatsapp_template', "היי {{name}}, מזכירים לגבי התשלום עבור {{item}} שמופיע אצלנו כפתוח, בסך {{balance}}.\nאם משהו הסתבך, אפשר לכתוב לנו כאן ונעזור.", array( 'params' => array( 'name', 'item', 'balance' ) ) ),
+			'promise_followup'      => $t( 'promise_followup', 'collection_reminder', 'whatsapp_template', "היי {{name}}, חוזרים אליך בהמשך למה שסיכמנו לגבי התשלום ב־{{promise_date}}.\nהיתרה בסך {{balance}} עדיין מופיעה אצלנו כפתוחה. צריך עזרה בהסדרה?", array( 'params' => array( 'name', 'promise_date', 'balance' ), 'use_when' => 'רק עם הבטחה מתועדת ומאושרת שהגיע מועדה ולא נקלט תשלום' ) ),
 			'ack_paid'              => $t( 'ack_paid', 'service_reply', 'whatsapp_session', "תודה על העדכון. נעצור בינתיים את התזכורות ונבדוק שהתשלום נקלט.\nאם יש אסמכתה, אפשר לצרף אותה כאן כדי לעזור לנו לאתר אותו." ),
-			'payment_verified'      => $t( 'payment_verified', 'payment_confirmation', 'whatsapp_template', "היי {{name}}, התשלום בסך {{paid}} ₪ התקבל, תודה.\n{{status_line}}\nאם יש שאלה, אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'paid', 'status_line' ) ) ),
+			'payment_verified'      => $t( 'payment_verified', 'payment_confirmation', 'whatsapp_template', "היי {{name}}, התשלום בסך {{paid}} התקבל, תודה.\n{{status_line}}\nאם יש שאלה, אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'paid', 'status_line' ) ) ),
 			'handoff'               => $t( 'handoff', 'service_reply', 'whatsapp_session', "העברנו את הבקשה לנציג שמטפל בנושא, כדי לבדוק איתך את האפשרויות.\nבינתיים התזכורות האוטומטיות מושהות." ),
 			'bot_answer'            => $t( 'bot_answer', 'service_reply', 'whatsapp_session', "זו הודעה אוטומטית ממערכת התשלומים של INSIDERS. נציג מהצוות יחזור אליך כאן, ובינתיים התזכורות מושהות." ),
 			'stop_ack'              => $t( 'stop_ack', 'service_reply', 'whatsapp_session', "קיבלנו. לא נשלח יותר תזכורות אוטומטיות בוואטסאפ." ),
@@ -84,8 +87,8 @@ final class Templates {
 			'j_stuck_ack'           => $t( 'j_stuck_ack', 'service_reply', 'whatsapp_session', "טוב שעדכנת. נבדוק איפה הפתיחה עומדת ומה חסר כדי להשלים אותה, ונחזור אליך כאן.\nכל עוד יש תהליך פתיחה שאפשר לאמת, לא נתקדם לתשלום לפני הבדיקה." ),
 			'j_next_cohort'         => $t( 'j_next_cohort', 'service_reply', 'whatsapp_session', "אפשר בהחלט להשתלב במחזור הבא מבחינת הלימודים, ונמשיך ללוות אותך גם שם.\nרק חשוב להפריד: המעבר למחזור לא משנה את מועד ההתחייבות לפתיחת חשבון או להסדרת התשלום, שנשאר {{deadline}}.", array( 'params' => array( 'deadline' ) ) ),
 			// After a program payment: a confirmation only. No reminders after payment (decision of 2026-10-10).
-			'program_paid'          => $t( 'program_paid', 'payment_confirmation', 'whatsapp_template', "היי {{name}}, התשלום בסך {{paid}} ₪ התקבל, תודה.\nזה לא סוף הדרך: התכנים והליווי ממשיכים, ופתיחת חשבון בתוך 3 חודשים מיום התשלום מאפשרת לקבל זיכוי לפי תנאי התוכנית.\nרוצים להתקדם עם פתיחת חשבון? אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'paid' ), 'meta_category' => 'utility' ) ),
-			'internal_card_alert'   => $t( 'internal_card_alert', 'internal', 'internal', "התקבל תשלום של {{amount}} ₪ מ־{{customer}}.\nהוראת קבע {{sto_id}} במסוף {{terminal}}: נדרש לבדוק ולעדכן את אמצעי התשלום לחיובים הבאים.\nאחראי: {{assignee}}. מועד יעד: {{due}}. {{task_link}}", array( 'counts_toward_quota' => false, 'approval_state' => 'approved' ) ),
+			'program_paid'          => $t( 'program_paid', 'payment_confirmation', 'whatsapp_template', "היי {{name}}, התשלום בסך {{paid}} התקבל, תודה.\nזה לא סוף הדרך: התכנים והליווי ממשיכים, ופתיחת חשבון בתוך 3 חודשים מיום התשלום מאפשרת לקבל זיכוי לפי תנאי התוכנית.\nרוצים להתקדם עם פתיחת חשבון? אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'paid' ), 'meta_category' => 'utility' ) ),
+			'internal_card_alert'   => $t( 'internal_card_alert', 'internal', 'internal', "התקבל תשלום של {{amount}} מ־{{customer}}.\nהוראת קבע {{sto_id}} במסוף {{terminal}}: נדרש לבדוק ולעדכן את אמצעי התשלום לחיובים הבאים.\nאחראי: {{assignee}}. מועד יעד: {{due}}. {{task_link}}", array( 'counts_toward_quota' => false, 'approval_state' => 'approved' ) ),
 		);
 	}
 
@@ -140,6 +143,30 @@ final class Templates {
 		return $next;
 	}
 
+	/**
+	 * Upgrade step: bodies saved before the money variables carried the sign had
+	 * "{{paid}} ₪"; the sign is dropped so the message does not show it twice.
+	 */
+	public static function strip_currency_sign(): bool {
+		$stored  = (array) get_option( self::OPTION, array() );
+		$changed = array();
+		foreach ( $stored as $key => $tpl ) {
+			if ( ! is_array( $tpl ) || ! isset( $tpl['body'] ) ) {
+				continue;
+			}
+			$body = preg_replace( self::SIGN_AFTER_MONEY, '$1', (string) $tpl['body'] );
+			if ( $body !== $tpl['body'] ) {
+				$stored[ $key ]['body'] = $body;
+				$changed[]              = $key;
+			}
+		}
+		if ( $changed ) {
+			update_option( self::OPTION, $stored, false );
+			Audit::log( 'template.currency_sign', 'template', 0, null, array( 'keys' => $changed ), 'שדרוג: המשתנים {{amount}}, {{balance}} ו-{{paid}} כוללים ₪, הסימן הוסר מהנוסח' );
+		}
+		return true;
+	}
+
 	/** Tone rules from §9 that a machine can check. */
 	public static function lint( string $body, string $kind, string $channel = '' ): array {
 		$p = array();
@@ -148,6 +175,10 @@ final class Templates {
 		}
 		if ( preg_match( '/\x{2014}/u', $body ) ) {
 			$p[] = 'מקף ארוך';
+		}
+		// The money variables already carry the sign (Money::ils); a second one would show "880 ₪ ₪".
+		if ( preg_match( self::SIGN_AFTER_MONEY, $body, $dm ) ) {
+			$p[] = 'המשתנה ' . $dm[1] . ' כבר כולל את הסימן ₪, אין להוסיף אותו אחריו';
 		}
 		// Hebrew prefixes (ו/ה/ב/ל/מ/ש/כ) attach to the word, so \b is not enough; "חובה" and "רחוב" must pass.
 		if ( 'internal' !== $kind && preg_match( '/(?<!\p{L})[והבלמשכ]{0,2}(חוב|חובות|גבייה|גביה|פיגור|מתחמק|מתעלם|הוצאה לפועל|עורך דין|תביעה)(?!\p{L})/u', $body ) ) {

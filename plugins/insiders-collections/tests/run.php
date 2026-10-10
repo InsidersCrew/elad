@@ -1316,6 +1316,7 @@ $tests['P02'] = array( 'לחצן ״לא אפתח חשבון״: מסלול ייע
 	T::eq( null, pending_journey( (int) $case['id'] ), 'the deadline-day message is cancelled' );
 	$conf = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE template_key = 'program_paid'" );
 	T::check( $conf && str_contains( $conf['body'], 'זיכוי' ), 'program confirmation mentions the credit option' );
+	T::check( $conf && str_contains( $conf['body'], 'בסך 880 ₪ התקבל' ) && ! str_contains( $conf['body'], '₪ ₪' ), 'the paid amount carries its sign once: the variable has it, the template does not' );
 	T::eq( 1, T::count( 'tasks', "type = 'crm_record'" ), 'the rep records the payment on the deal' );
 	T::eq( 0, T::count( 'scheduled_actions', "state = 'pending'" ), 'no reminders after payment' );
 } );
@@ -1532,8 +1533,16 @@ $tests['P08'] = array( 'תשובות בליווי: שאלה, ״רוצה לפתו
 } );
 
 $tests['P09'] = array( 'תבניות: כללי מטא (לא מתחילות ולא מסתיימות במשתנה), "היי לך" כשהשם לא אמין, לחצנים עד 25 תווים', function () {
+	T::check( (bool) array_filter( Templates::lint( 'היי {{name}}, התשלום בסך {{paid}} ₪ התקבל, תודה.', 'payment_confirmation', 'whatsapp_template' ), fn( $p ) => str_contains( $p, '₪' ) ), 'a sign typed after {{paid}} is refused: the value already has it' );
+	T::eq( array(), Templates::lint( 'היי {{name}}, התשלום בסך {{paid}} התקבל, תודה.', 'payment_confirmation', 'whatsapp_template' ), 'without the sign the body passes' );
+	$old = get_option( 'icol_templates', array() );
+	update_option( 'icol_templates', array( 'reminder_reply' => array( 'body' => 'היי {{name}}, לגבי {{item}}, בסך {{balance}} ₪.\nאפשר לכתוב לנו.', 'version' => 2 ) ), false );
+	Templates::strip_currency_sign();
+	T::eq( 'היי {{name}}, לגבי {{item}}, בסך {{balance}}.\nאפשר לכתוב לנו.', Templates::get( 'reminder_reply' )['body'], 'upgrade: a stored body loses the sign after the money variable' );
+	update_option( 'icol_templates', $old, false );
 	foreach ( Templates::defaults() as $k => $tpl ) {
 		T::eq( array(), Templates::lint( $tpl['body'], $tpl['kind'], $tpl['channel'] ), 'template ' . $k . ' passes the rules' );
+		T::check( ! preg_match( '/\{\{(amount|balance|paid)\}\}\s*₪/u', $tpl['body'] ), 'template ' . $k . ' does not add ₪ after a money variable' );
 		foreach ( (array) $tpl['buttons'] as $b ) {
 			T::check( mb_strlen( $b ) <= 25, 'button "' . $b . '" fits WhatsApp\'s 25 characters' );
 		}
