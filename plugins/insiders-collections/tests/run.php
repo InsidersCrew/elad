@@ -1546,6 +1546,7 @@ $tests['P09'] = array( 'תבניות: כללי מטא (לא מתחילות ול�
 	foreach ( Templates::defaults() as $k => $tpl ) {
 		T::eq( array(), Templates::lint( $tpl['body'], $tpl['kind'], $tpl['channel'] ), 'template ' . $k . ' passes the rules' );
 		T::check( ! preg_match( '/\{\{(amount|balance|paid)\}\}\s*₪/u', $tpl['body'] ), 'template ' . $k . ' does not add ₪ after a money variable' );
+		T::eq( Templates::vars_in( $tpl['body'] ), $tpl['params'], 'template ' . $k . ': the declared variables are the ones in the body' );
 		foreach ( (array) $tpl['buttons'] as $b ) {
 			T::check( mb_strlen( $b ) <= 25, 'button "' . $b . '" fits WhatsApp\'s 25 characters' );
 		}
@@ -1714,6 +1715,39 @@ $tests['P11'] = array( '״אני רוצה לשלם״: מסלול תשלום, ק�
 	$I = \Insiders\Collections\Domain\Intents::class;
 	T::eq( array( 'wants_to_pay', 'wants_to_pay' ), array( $I::classify( 'אני רוצה לשלם', 'button' )['intent'], $I::classify( 'לשלם עכשיו', 'button' )['intent'] ), 'the pay button, also reworded' );
 	T::check( 'wants_to_pay' !== $I::classify( 'אני רוצה לשלם', 'text' )['intent'], 'typed words are not the button' );
+} );
+
+$tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
+	[ $c, $case ] = program_case();
+	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";
+	Templates::save( 'program_charge_link', array( 'body' => $short ) );
+	Templates::save( 'program_charge_link', array( 'approval_state' => 'approved' ) );
+	Templates::save( 'program_charge_reply', array( 'body' => "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות. אפשר להשיב כאן ונשלח את פרטי ההסדרה." ) );
+	Templates::save( 'program_charge_reply', array( 'approval_state' => 'approved' ) );
+	T::eq( array( 'name', 'link' ), Templates::get( 'program_charge_link' )['params'], 'the variables are read off the saved body' );
+	T::at( '2026-10-11', '10:30' );
+	Runner::run_actions( 10 );
+	T::settle( 2 );
+	$sent  = array_values( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'sendTemplateMessage' ) ) );
+	$names = $sent ? array_column( (array) ( json_decode( (string) $sent[0]['body'], true )['parameters'] ?? array() ), 'name' ) : array();
+	T::check( $sent && in_array( 'name', $names, true ) && ! in_array( 'amount', $names, true ), 'WATI receives only the variables the approved text still has (' . implode( ',', $names ) . ')' );
+	$code = '';
+	try {
+		Templates::save( 'program_charge_link', array( 'body' => str_replace( '{{name}}', '{{first_name}}', $short ) ) );
+	} catch ( \Insiders\Collections\Domain\DomainError $e ) {
+		$code = $e->error_code . ':' . $e->status;
+	}
+	T::eq( 'template_rules:422', $code, 'a variable the system does not fill is refused' );
+	$code = '';
+	try {
+		Templates::save( 'program_charge_link', array( 'body' => str_replace( ' {{link}}', '', $short ) ) );
+	} catch ( \Insiders\Collections\Domain\DomainError $e ) {
+		$code = $e->error_code . ':' . $e->status;
+	}
+	T::eq( 'template_rules:422', $code, 'a link template without {{link}} is refused' );
+	// Dropping a variable the system fills anyway is fine: program_paid without {{name}}.
+	Templates::save( 'program_paid', array( 'body' => "התשלום בסך {{paid}} התקבל, תודה רבה!\n\nאנחנו כאן לשירותך בהמשך הדרך לכל עניין ושאלה 🙏🏼" ) );
+	T::eq( array( 'paid' ), Templates::get( 'program_paid' )['params'], 'program_paid without {{name}}: one variable' );
 } );
 
 foreach ( $tests as $id => [ $title, $fn ] ) {

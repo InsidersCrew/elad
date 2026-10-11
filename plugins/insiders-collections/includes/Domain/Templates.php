@@ -88,7 +88,7 @@ final class Templates {
 			'j_next_cohort'         => $t( 'j_next_cohort', 'service_reply', 'whatsapp_session', "אפשר בהחלט להשתלב במחזור הבא מבחינת הלימודים, ונמשיך ללוות אותך גם שם.\nרק חשוב להפריד: המעבר למחזור לא משנה את מועד ההתחייבות לפתיחת חשבון או להסדרת התשלום, שנשאר {{deadline}}.", array( 'params' => array( 'deadline' ) ) ),
 			// After a program payment: a confirmation only. No reminders after payment (decision of 2026-10-10).
 			'program_paid'          => $t( 'program_paid', 'payment_confirmation', 'whatsapp_template', "היי {{name}}, התשלום בסך {{paid}} התקבל, תודה.\nזה לא סוף הדרך: התכנים והליווי ממשיכים, ופתיחת חשבון בתוך 3 חודשים מיום התשלום מאפשרת לקבל זיכוי לפי תנאי התוכנית.\nרוצים להתקדם עם פתיחת חשבון? אפשר לכתוב לנו כאן.", array( 'params' => array( 'name', 'paid' ), 'meta_category' => 'utility' ) ),
-			'internal_card_alert'   => $t( 'internal_card_alert', 'internal', 'internal', "התקבל תשלום של {{amount}} מ־{{customer}}.\nהוראת קבע {{sto_id}} במסוף {{terminal}}: נדרש לבדוק ולעדכן את אמצעי התשלום לחיובים הבאים.\nאחראי: {{assignee}}. מועד יעד: {{due}}. {{task_link}}", array( 'counts_toward_quota' => false, 'approval_state' => 'approved' ) ),
+			'internal_card_alert'   => $t( 'internal_card_alert', 'internal', 'internal', "התקבל תשלום של {{amount}} מ־{{customer}}.\nהוראת קבע {{sto_id}} במסוף {{terminal}}: נדרש לבדוק ולעדכן את אמצעי התשלום לחיובים הבאים.\nאחראי: {{assignee}}. מועד יעד: {{due}}. {{task_link}}", array( 'params' => array( 'amount', 'customer', 'sto_id', 'terminal', 'assignee', 'due', 'task_link' ), 'counts_toward_quota' => false, 'approval_state' => 'approved' ) ),
 		);
 	}
 
@@ -100,7 +100,17 @@ final class Templates {
 				$out[ $key ] = array_merge( $out[ $key ], $tpl );
 			}
 		}
+		// The variables are whatever the current body names: a variable dropped from the approved text is not sent.
+		foreach ( $out as $key => $tpl ) {
+			$out[ $key ]['params'] = self::vars_in( (string) $tpl['body'] );
+		}
 		return $out;
+	}
+
+	/** The variable names a body uses, in order of first appearance. */
+	public static function vars_in( string $body ): array {
+		preg_match_all( '/\{\{\s*([a-z_]+)\s*\}\}/', $body, $m );
+		return array_values( array_unique( $m[1] ) );
 	}
 
 	public static function get( string $key ): ?array {
@@ -117,12 +127,22 @@ final class Templates {
 			throw new DomainError( 'not_found', 'תבנית לא מוכרת', 404 );
 		}
 		$cur     = $all[ $key ];
-		$allowed = array( 'body', 'provider_name', 'params', 'approval_state', 'use_when', 'block_when' );
+		$allowed = array( 'body', 'provider_name', 'approval_state', 'use_when', 'block_when' );
 		$next    = $cur;
 		foreach ( $allowed as $f ) {
 			if ( array_key_exists( $f, $changes ) ) {
 				$next[ $f ] = $changes[ $f ];
 			}
+		}
+		// What the text names is exactly what WATI receives. A name the system never fills would block every send.
+		$next['params'] = self::vars_in( (string) $next['body'] );
+		$known          = self::vars_in( (string) self::defaults()[ $key ]['body'] );
+		$unknown        = array_values( array_diff( $next['params'], $known ) );
+		if ( $unknown ) {
+			throw new DomainError( 'template_rules', 'משתנה לא מוכר בתבנית הזו: {{' . implode( '}}, {{', $unknown ) . '}}. המשתנים הזמינים: ' . ( $known ? '{{' . implode( '}}, {{', $known ) . '}}' : 'אין' ), 422 );
+		}
+		if ( ! empty( $cur['requires_link'] ) && ! in_array( 'link', $next['params'], true ) ) {
+			throw new DomainError( 'template_rules', 'תבנית עם קישור תשלום חייבת לכלול {{link}}', 422 );
 		}
 		if ( $next['body'] !== $cur['body'] || $next['provider_name'] !== $cur['provider_name'] || $next['params'] !== $cur['params'] ) {
 			$next['version']        = (int) $cur['version'] + 1;

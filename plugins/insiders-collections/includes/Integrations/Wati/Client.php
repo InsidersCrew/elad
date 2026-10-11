@@ -121,13 +121,13 @@ final class Client {
 	}
 
 	/**
-	 * WATI parameters [{name, value}] in the order the approved template declares,
+	 * WATI parameters [{name, value}] for the variables the body names (by name, so order is free),
 	 * from the values stored at render time — what the preview showed is what is sent.
 	 */
 	private static function template_params( array $m, array $tpl ): array {
 		$vars = (array) json_decode( (string) $m['vars_json'], true );
 		$out  = array();
-		foreach ( (array) $tpl['params'] as $name ) {
+		foreach ( Templates::vars_in( (string) $tpl['body'] ) as $name ) {
 			$out[] = array( 'name' => $name, 'value' => (string) ( $vars[ $name ] ?? '' ) );
 		}
 		return $out;
