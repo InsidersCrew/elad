@@ -1717,6 +1717,31 @@ $tests['P11'] = array( '״אני רוצה לשלם״: מסלול תשלום, ק�
 	T::check( 'wants_to_pay' !== $I::classify( 'אני רוצה לשלם', 'text' )['intent'], 'typed words are not the button' );
 } );
 
+$tests['X11'] = array( 'כלי אבחון טרנזילה: טוקן ותוקף מדוח העסקאות, הודעות אחרונות, בלי לחשוף פרטי כרטיס או לקוח', function () {
+	$run = static function ( string $method, array $get = array() ): string {
+		$_GET = $get;
+		$m = new \ReflectionMethod( \Insiders\Collections\Admin\Diagnostics::class, $method );
+		ob_start();
+		$m->invoke( null );
+		$_GET = array();
+		return (string) ob_get_clean();
+	};
+	T::$tranzila_tx['77001'] = array( 'index' => '77001', 'terminal' => 'insiders', 'amount' => '100.00', 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A', 'transaction_date' => '2026-07-01', 'credit_card_token' => 'Z9a8b7c6d5e4f3g2h1k4321', 'expiration_month' => '12', 'expiration_year' => '2029', 'full_name' => 'דנה כהן', 'phone' => '0501234567', 'email' => 'd@example.test', 'card_last_4_digits' => '4580' );
+	$out = $run( 'tranzila_txn', array( 'index' => '77001' ) );
+	T::check( str_contains( $out, 'יש (' ) && str_contains( $out, 'מסתיים ב-4321' ), 'the token is reported as present, by its last four characters' );
+	T::check( str_contains( $out, 'בתוקף' ) && str_contains( $out, '100 ₪' ), 'card validity and amount are shown' );
+	T::check( ! str_contains( $out, 'Z9a8b7c6d5e4f3g2h1k4321' ) && ! str_contains( $out, 'דנה' ) && ! str_contains( $out, '0501234567' ) && ! str_contains( $out, 'd@example.test' ) && ! str_contains( $out, '2029' ), 'no token, name, phone, email or expiry value in the output' );
+	T::check( str_contains( $out, 'full_name: [מוסתר' ) && str_contains( $out, 'tranmode: A' ), 'field names are listed, identifying values hidden' );
+	T::check( str_contains( $run( 'tranzila_txn' ), '&index=' ), 'without parameters the tool explains how to use it' );
+	T::check( str_contains( $run( 'tranzila_samples' ), 'עדיין לא התקבלה' ), 'before the first notification the samples tool says so' );
+	T::tranzila( array( 'index' => '77002', 'sto_external_id' => '6001', 'sum' => '490.00', 'Response' => '051', 'TranzilaTK' => 'SECRETTOKEN9876', 'expdate' => '1229', 'contact' => 'דנה כהן' ) );
+	$samples = $run( 'tranzila_samples' );
+	T::check( str_contains( $samples, 'sto_external_id: 6001' ) && str_contains( $samples, 'Response: 051' ), 'the stored notification shows its fields' );
+	T::check( ! str_contains( $samples, 'SECRETTOKEN9876' ) && ! str_contains( $samples, 'דנה' ) && ! str_contains( $samples, '1229' ), 'no card material or name in the samples' );
+	$auth = $run( 'tranzila_auth' );
+	T::check( str_contains( $auth, 'HTTP 200, החתימה עובדת' ), 'a successful signature is reported without printing the response body' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";

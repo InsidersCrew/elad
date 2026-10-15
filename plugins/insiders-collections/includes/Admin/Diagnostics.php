@@ -60,6 +60,12 @@ final class Diagnostics {
 			case 'tranzila_auth':
 				self::tranzila_auth();
 				break;
+			case 'tranzila_txn':
+				self::tranzila_txn();
+				break;
+			case 'tranzila_samples':
+				self::tranzila_samples();
+				break;
 			case 'wati_ping':
 				self::dump( Wati::configured() ? Wati::ping() : array( 'configured' => false ) );
 				break;
@@ -95,7 +101,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}
@@ -174,9 +180,109 @@ final class Diagnostics {
 		foreach ( array( 'secret_time_nonce', 'time_nonce_secret' ) as $order ) {
 			$headers = Tranzila::auth_headers( null, null, $order );
 			$r       = Http::request( 'POST', rtrim( (string) \Insiders\Collections\Support\Settings::get( 'tranzila_api_base' ), '/' ) . '/v1/stos/get', array( 'headers' => $headers, 'body' => wp_json_encode( array( 'terminal_name' => (string) \Insiders\Collections\Support\Settings::get( 'tranzila_my_billing_terminal' ), 'sto_status' => 'active' ) ) ) );
-			echo $order . ': HTTP ' . $r['status'] . ' ' . $r['outcome'] . ' ' . mb_substr( $r['body'], 0, 200 ) . "\n";
+			if ( 200 === (int) $r['status'] ) {
+				$j    = json_decode( (string) $r['body'], true );
+				$stos = is_array( $j['stos'] ?? null ) ? $j['stos'] : array();
+				echo $order . ': HTTP 200, החתימה עובדת. הוראות קבע פעילות שהוחזרו: ' . count( $stos ) . "\n";
+				if ( $stos ) {
+					echo "  שדות של הוראה ראשונה (ערכים מוסתרים):\n";
+					self::print_fields( (array) $stos[0], '    ' );
+				}
+			} else {
+				$auth = in_array( (int) $r['status'], array( 401, 403 ), true ) ? ' (החתימה נדחתה)' : '';
+				echo $order . ': HTTP ' . $r['status'] . $auth . ' ' . mb_substr( (string) $r['body'], 0, 200 ) . "\n";
+			}
 		}
-		echo "\nהסדר שהחזיר 200 הוא הנכון, לשמור אותו בהגדרה tranzila_hmac_order.\n";
+		echo "\nהסדר שהחזיר 200 הוא הנכון: הגדרות ובריאות ← חיבורים ← סדר HMAC.\n";
+	}
+
+	/**
+	 * Read-only look at the transaction report: does a transaction carry a reusable token,
+	 * and which fields does the report return. Values that identify a person or a card are hidden.
+	 */
+	private static function tranzila_txn(): void {
+		if ( ! Tranzila::configured() ) {
+			echo "טרנזילה לא מחוברת: חסרים app key ו-secret בהגדרות ← חיבורים.\n";
+			return;
+		}
+		$terminal = preg_replace( '/[^a-z0-9_]/', '', strtolower( (string) ( $_GET['terminal'] ?? 'insiders' ) ) );
+		$index    = preg_replace( '/\D/', '', (string) ( $_GET['index'] ?? '' ) );
+		$from     = (string) ( $_GET['from'] ?? '' );
+		$to       = (string) ( $_GET['to'] ?? '' );
+		$date     = static fn( string $d ): bool => (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $d );
+		if ( '' === $index && ! $date( $from ) ) {
+			echo "שימוש: להוסיף לכתובת אחד מאלה, ולרענן.\n";
+			echo "  &index=12345            עסקה אחת לפי מספר העסקה בטרנזילה\n";
+			echo "  &from=2026-09-01&to=2026-09-07   עד 20 עסקאות בטווח תאריכים\n";
+			echo "  &terminal=insiderstok   מסוף אחר (ברירת המחדל: insiders)\n";
+			return;
+		}
+		$filter = '' !== $index
+			? array( 'transaction_index' => (int) $index )
+			: array( 'transaction_start_date' => $from, 'transaction_end_date' => $date( $to ) ? $to : $from );
+		$r = Tranzila::transactions( $terminal, $filter, 1, 20 );
+		if ( ! $r['ok'] ) {
+			echo 'הקריאה לדוח העסקאות נכשלה: ' . $r['error'] . "\n";
+			echo "אם tranzila_auth עובד והכלי הזה לא, צורת הבקשה לדוח שונה ממה שמימשנו. לשלוח את הפלט לפיתוח.\n";
+			return;
+		}
+		echo 'מסוף: ' . $terminal . ' · עסקאות שהוחזרו: ' . count( $r['rows'] ) . ( $r['total'] ? ' מתוך ' . $r['total'] : '' ) . "\n";
+		foreach ( $r['rows'] as $i => $row ) {
+			$n   = Tranzila::normalize_report_row( (array) $row );
+			$exp = (string) $n['expiry'];
+			$valid = '';
+			if ( preg_match( '/^(\d{2})(\d{2})$/', $exp, $m ) ) {
+				$last  = gmmktime( 0, 0, 0, (int) $m[1] + 1, 1, 2000 + (int) $m[2] ) - 1;
+				$valid = $last >= time() ? 'בתוקף' : 'פג תוקף';
+			}
+			echo "\n--- עסקה " . ( $i + 1 ) . "\n";
+			echo 'מספר עסקה: ' . $n['index'] . ' · תאריך: ' . $n['date'] . ' · סכום: ' . ( null === $n['amount_minor'] ? '?' : \Insiders\Collections\Support\Money::ils( (int) $n['amount_minor'] ) ) . ' · קוד תשובה: ' . $n['response'] . ' · tranmode: ' . $n['tranmode'] . ( '' !== $n['sto_id'] ? ' · הוראת קבע: ' . $n['sto_id'] : '' ) . "\n";
+			echo 'טוקן לשימוש חוזר: ' . ( '' !== $n['token'] ? 'יש (' . strlen( $n['token'] ) . ' תווים, מסתיים ב-' . substr( $n['token'], -4 ) . ')' : 'אין' ) . "\n";
+			echo 'תוקף הכרטיס: ' . ( '' !== $valid ? $valid : 'לא הוחזר' ) . "\n";
+			echo "שדות שהדוח מחזיר (ערכים מזהים מוסתרים):\n";
+			self::print_fields( (array) $row, '  ' );
+		}
+	}
+
+	/** The last notifications Tranzila sent, as stored (card material already removed), for mapping the cycle and pr_id fields. */
+	private static function tranzila_samples(): void {
+		$rows = \Insiders\Collections\Support\Db::rows( 'SELECT id, received_at, processing_state, last_error, payload_redacted FROM ' . \Insiders\Collections\Support\Db::t( 'inbox_events' ) . " WHERE provider = 'tranzila' ORDER BY id DESC LIMIT 5" );
+		if ( ! $rows ) {
+			echo "עדיין לא התקבלה הודעה מטרנזילה. אחרי שמגדירים את כתובת ה-Notify ב-My Billing, ההודעה הראשונה תופיע כאן.\n";
+			return;
+		}
+		foreach ( $rows as $row ) {
+			echo '--- הודעה #' . $row['id'] . ' · התקבלה ' . $row['received_at'] . ' · מצב: ' . $row['processing_state'] . ( $row['last_error'] ? ' · שגיאה: ' . $row['last_error'] : '' ) . "\n";
+			$payload = json_decode( (string) $row['payload_redacted'], true );
+			if ( is_array( $payload ) ) {
+				self::print_fields( $payload, '  ' );
+			} else {
+				echo "  (לא ניתן לקרוא את התוכן)\n";
+			}
+			echo "\n";
+		}
+	}
+
+	/** Field names with their values, hiding anything that identifies a person or a card. */
+	private static function print_fields( array $data, string $pad, int $depth = 0 ): void {
+		foreach ( $data as $k => $v ) {
+			if ( is_array( $v ) ) {
+				echo $pad . $k . ":\n";
+				if ( $depth < 2 ) {
+					self::print_fields( $v, $pad . '  ', $depth + 1 );
+				}
+				continue;
+			}
+			$val = (string) ( is_bool( $v ) ? ( $v ? 'true' : 'false' ) : $v );
+			if ( '' === $val ) {
+				$show = '(ריק)';
+			} elseif ( preg_match( '/(^|_)(tk|cc|cvv)|tranzilatk|token|card|expir|exp(date|month|year|mon)|name|mail|phone|mobile|contact|myid|id_?num|holder|address|ssn|^tz$|remarks|comment/i', (string) $k ) || preg_match( '/\d{9,}/', $val ) || '[redacted]' === $val ) {
+				$show = '[מוסתר, ' . mb_strlen( $val ) . ' תווים]';
+			} else {
+				$show = mb_substr( $val, 0, 60 );
+			}
+			echo $pad . $k . ': ' . $show . "\n";
+		}
 	}
 
 	private static function dump( $data, int $depth = 0 ): void {
