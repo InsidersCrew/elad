@@ -1116,16 +1116,22 @@
 	}
 	function settingsConnections(body, s) {
 		var st = s.settings;
+		// The fallback owner is a person, not a number: the team (users with a role here), the signed-in user, and the saved value.
+		var ownerOptions = [['0', 'אף אחד: נשאר בתור הכללי']], seen = {};
+		(s.users || []).concat(C.user && C.user.id ? [{ id: C.user.id, name: C.user.name }] : []).forEach(function (u) {
+			if (!seen[u.id]) { seen[u.id] = 1; ownerOptions.push([String(u.id), u.name + (u.role && s.roles && s.roles[u.role] ? ' · ' + s.roles[u.role] : '')]); }
+		});
+		if (Number(st.fallback_owner_id) && !seen[st.fallback_owner_id]) { ownerOptions.push([String(st.fallback_owner_id), 'משתמש #' + st.fallback_owner_id]); }
 		var keys = [
 			['tranzila_terminals', 'מסופי טרנזילה מוכרים (פסיקים)'], ['tranzila_my_billing_terminal', 'מסוף My Billing'], ['tranzila_pr_terminal', 'מסוף לבקשות תשלום'],
 			['tranzila_cycle_strategy', 'זיהוי מחזור', [['manual', 'ידני (בטוח)'], ['schedule', 'לפי לוח החיובים של ההוראה'], ['field', 'לפי שדה שאושר']]], ['tranzila_cycle_field', 'שדה מחזור (אם אושר)'],
 			['tranzila_charge_tranmodes', 'קידומות tranmode של חיוב'], ['tranzila_pr_match_field', 'שדה pr_id ב-Notify'], ['tranzila_hmac_order', 'סדר HMAC', [['secret_time_nonce', 'secret+time+nonce'], ['time_nonce_secret', 'time+nonce+secret']]], ['tranzila_report_amount_unit', 'יחידת סכום בדוחות', [['minor', 'אגורות (כך הדוח של טרנזילה מחזיר)'], ['major', 'שקלים']]],
 			['wati_api_base', 'כתובת API של WATI'], ['wati_channel_number', 'channel_number ב-WATI'], ['wati_conversation_attr', 'שם מאפיין בעלות השיחה'],
-			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['pay_theme', 'מראה דף התשלום', [['dark', 'כהה (מומלץ)'], ['light', 'בהיר']]], ['accessibility_url', 'קישור להצהרת הנגישות באתר'], ['fallback_owner_id', 'מזהה בעלים חלופי'],
+			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['pay_theme', 'מראה דף התשלום', [['dark', 'כהה (מומלץ)'], ['light', 'בהיר']]], ['accessibility_url', 'קישור להצהרת הנגישות באתר'], ['fallback_owner_id', 'מי מקבל משימות ותיקים בלי נציג', ownerOptions],
 			['ai_model', 'מודל AI'], ['ai_effort', 'עומק חשיבה', [['low', 'low'], ['medium', 'medium'], ['high', 'high']]],
 			['revenue_meta_deadline', 'דשבורד הכנסות: מפתח מועד אחרון'], ['revenue_meta_opened', 'דשבורד הכנסות: מפתח חשבון נפתח'], ['revenue_meta_joined', 'דשבורד הכנסות: מפתח הצטרפות'], ['revenue_meta_extension', 'דשבורד הכנסות: מפתח הארכה'], ['revenue_meta_phone', 'מפתח טלפון במשתמש'], ['revenue_candidate_horizon_days', 'ימים קדימה למועמדים'], ['revenue_max_staleness_hours', 'דשבורד הכנסות: שעות מרביות מהסנכרון האחרון']
 		];
-		var fs = keys.map(function (k) { return { key: k[0], f: Array.isArray(k[2]) ? field(k[0], k[1], 'select', { value: st[k[0]], options: k[2] }) : field(k[0], k[1], 'text', { value: st[k[0]] === undefined ? '' : st[k[0]] }) }; });
+		var fs = keys.map(function (k) { return { key: k[0], f: Array.isArray(k[2]) ? field(k[0], k[1], 'select', { value: st[k[0]] === undefined || st[k[0]] === null ? st[k[0]] : String(st[k[0]]), options: k[2] }) : field(k[0], k[1], 'text', { value: st[k[0]] === undefined ? '' : st[k[0]] }) }; });
 		var secrets = [['tranzila_app_key', 'Tranzila app key'], ['tranzila_secret', 'Tranzila secret'], ['wati_token', 'WATI token'], ['pipedrive_token', 'Pipedrive API token'], ['anthropic_api_key', 'Anthropic API key']];
 		var sf = secrets.map(function (k) { return { key: k[0], f: field(k[0], k[1] + (s.secrets[k[0]] ? ' · מוגדר' : ''), 'password', { placeholder: s.secrets[k[0]] ? 'להשאיר ריק כדי לא לשנות' : '' }) }; });
 		add(body, h('div', { class: 'icol-card' }, h('div', { class: 'icol-fields' }, fs.map(function (x) { return x.f.el; })),
