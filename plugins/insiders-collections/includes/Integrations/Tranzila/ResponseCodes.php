@@ -6,9 +6,10 @@ use Insiders\Collections\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Response code -> failure class (§4 סיווג כשל). The seed below covers only the
- * well-known Shva codes and is a STARTING POINT: the table must be confirmed
- * against Tranzila's list and real samples (setting 'tranzila_code_map' overrides).
+ * Response code -> failure class (§4 סיווג כשל). Checked against Tranzila's list
+ * (docs.tranzila.com, transaction-response-codes, 2026-10-17); 033/036/039 are kept from
+ * the older Shva list. The docs do not say which codes My Billing retries, so the
+ * classes stay conservative (setting 'tranzila_code_map' overrides).
  * Anything unmapped is "unknown", and unknown never triggers an automatic message.
  */
 final class ResponseCodes {
@@ -20,6 +21,7 @@ final class ResponseCodes {
 		'004' => 'declined',         // סירוב
 		'005' => 'suspected_fraud',  // כרטיס מזויף
 		'009' => 'technical',        // שגיאת תקשורת
+		'015' => 'expired_card',     // פג תוקף (הקוד בתיעוד של טרנזילה)
 		'033' => 'card_invalid',     // כרטיס לא תקין
 		'036' => 'expired_card',     // פג תוקף
 		'039' => 'card_invalid',     // ספרת ביקורת לא תקינה

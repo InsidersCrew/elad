@@ -276,7 +276,7 @@ final class Diagnostics {
 			$val = (string) ( is_bool( $v ) ? ( $v ? 'true' : 'false' ) : $v );
 			if ( '' === $val ) {
 				$show = '(ריק)';
-			} elseif ( preg_match( '/(^|_)(tk|cc|cvv)|tranzilatk|token|card|expir|exp(date|month|year|mon)|name|mail|phone|mobile|contact|myid|id_?num|holder|address|ssn|^tz$|remarks|comment/i', (string) $k ) || preg_match( '/\d{9,}/', $val ) || '[redacted]' === $val ) {
+			} elseif ( preg_match( '/(^|_)(tk|cc|cvv)|tranzilatk|token|card|expir|exp(date|month|year|mon)|name|mail|phone|mobile|contact|myid|id_?num|holder|address|ssn|^tz$|remarks|comment/i', (string) $k ) || preg_match( '/^user_defined_/i', (string) $k ) || preg_match( '/\d{9,}|@/', $val ) || '[redacted]' === $val ) {
 				$show = '[מוסתר, ' . mb_strlen( $val ) . ' תווים]';
 			} else {
 				$show = mb_substr( $val, 0, 60 );

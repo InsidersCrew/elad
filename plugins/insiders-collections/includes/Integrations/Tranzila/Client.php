@@ -30,7 +30,7 @@ final class Client {
 		$app    = Settings::secret( 'tranzila_app_key' );
 		$secret = Settings::secret( 'tranzila_secret' );
 		$time   = $time ?? time();
-		$nonce  = $nonce ?? bin2hex( random_bytes( 20 ) );
+		$nonce  = $nonce ?? bin2hex( random_bytes( 40 ) ); // 80 hex characters, as in Tranzila's samples
 		$key    = 'secret_time_nonce' === $order ? $secret . $time . $nonce : $time . $nonce . $secret;
 		return array(
 			'X-tranzila-api-app-key'      => $app,
@@ -117,34 +117,47 @@ final class Client {
 	}
 
 	/**
-	 * UNVERIFIED shape (docs show inconsistent examples, §16): POST /v1/pr/create.
-	 * Response carries pr_id and pr_link (not "url"). Extra fields can be merged from the
-	 * 'tranzila_pr_extra' setting once the sandbox confirms the account's schema —
-	 * no VAT rate, payment method or field is invented here.
+	 * POST /v1/pr/create, per docs.tranzila.com (payment-request/get-v1-pr-create, read 2026-10-17).
+	 * Required: terminal_name, created_by_user, created_by_system, created_via, request_date (null),
+	 * request_language, response_language, client, items, payment_plans, payment_methods, payments_number.
+	 * No send_sms/send_email: the link goes out in WhatsApp, Tranzila sends nothing itself.
+	 * No request_vat: the terminal's accounting module decides. Response: pr_id and pr_link;
+	 * the Notify of the payment carries pr_id. 'tranzila_pr_extra' can still add fields.
 	 */
 	public static function create_payment_request( array $req, array $items, array $customer ): array {
 		$terminal = (string) Settings::get( 'tranzila_pr_terminal', 'insiders' );
+		$client   = array(
+			'external_id' => 'icol-' . (int) $req['id'],
+			'name'        => (string) $customer['full_name'],
+		);
+		if ( '' !== (string) ( $customer['email'] ?? '' ) ) {
+			$client['email'] = (string) $customer['email'];
+		}
+		$client   = array_merge( $client, self::phone_parts( (string) ( $customer['phone_e164'] ?? '' ) ) );
+		$currency = (string) ( $req['currency'] ?: 'ILS' );
 		$body     = array(
 			'terminal_name'     => $terminal,
 			'created_by_user'   => 'insiders-collections',
-			'created_via'       => 'API',
+			'created_by_system' => 'insiders-collections',
+			'created_via'       => 'TRAPI',
 			'action_type'       => 1,
-			'request_currency'  => 'ILS' === $req['currency'] ? 1 : $req['currency'],
+			'request_date'      => null,
+			'request_language'  => 'hebrew',
+			'response_language' => 'hebrew',
+			'request_currency'  => $currency,
 			'payments_number'   => 1,
 			'payment_plans'     => array( 1 ),
-			'response_language' => 'hebrew',
-			'request_language'  => 'hebrew',
-			'client'            => array(
-				'name'         => (string) $customer['full_name'],
-				'email'        => (string) ( $customer['email'] ?? '' ),
-				'phone_number' => (string) ( $customer['phone_e164'] ?? '' ),
-				'internal_id'  => 'icol-' . (int) $req['id'],
-			),
+			'payment_methods'   => array( 1 ),
+			'client'            => $client,
 			'items'             => array_map(
 				static fn( $i ) => array(
-					'name'         => mb_substr( (string) $i['description'], 0, 100 ),
-					'unit_price'   => (float) number_format( $i['amount_minor'] / 100, 2, '.', '' ),
-					'units_number' => 1,
+					'name'          => mb_substr( (string) $i['description'], 0, 100 ),
+					'type'          => 'I',
+					'unit_price'    => (float) number_format( $i['amount_minor'] / 100, 2, '.', '' ),
+					'units_number'  => 1,
+					'unit_type'     => 1,
+					'price_type'    => 'G',
+					'currency_code' => $currency,
 				),
 				$items
 			),
@@ -163,5 +176,20 @@ final class Client {
 			return array( 'outcome' => Http::PERMANENT, 'error' => (string) ( $r['json']['message'] ?? 'missing pr_id/pr_link' ) );
 		}
 		return array( 'outcome' => Http::OK, 'pr_id' => $pr_id, 'url' => $link );
+	}
+
+	/** "+972501234567" -> 972 / 050 / 1234567, the three client fields Tranzila asks for. Other countries: none. */
+	public static function phone_parts( string $e164 ): array {
+		$d = preg_replace( '/\D/', '', $e164 );
+		if ( ! str_starts_with( $d, '972' ) || strlen( $d ) < 11 ) {
+			return array();
+		}
+		$local = '0' . substr( $d, 3 );
+		$cut   = in_array( substr( $local, 0, 2 ), array( '05', '07' ), true ) ? 3 : 2;
+		return array(
+			'phone_country_code' => '972',
+			'phone_area_code'    => substr( $local, 0, $cut ),
+			'phone_number'       => substr( $local, $cut ),
+		);
 	}
 }

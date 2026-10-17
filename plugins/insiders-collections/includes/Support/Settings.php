@@ -38,7 +38,7 @@ final class Settings {
 		'tranzila_cycle_field'        => '',
 		'tranzila_charge_tranmodes'   => 'A',  // tranmode prefixes that are real charges; J* = verification, C = credit
 		'tranzila_card_fix_email'     => 1,   // Tranzila emails the customer a card-fix link by itself (on by default)
-		'tranzila_pr_match_field'     => '',  // Notify field that carries pr_id; unconfirmed until a sample arrives
+		'tranzila_pr_match_field'     => '',  // empty = 'pr_id', which the docs say the payment Notify carries
 		'wati_channel_number'         => '',
 		'fallback_owner_id'           => 0,
 		'tranzila_inbound_verified'   => 0,   // inbound notification authenticity confirmed with Tranzila

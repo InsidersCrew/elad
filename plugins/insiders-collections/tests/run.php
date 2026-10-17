@@ -1742,6 +1742,30 @@ $tests['X11'] = array( 'כלי אבחון טרנזילה: טוקן ותוקף מ
 	T::check( str_contains( $auth, 'HTTP 200, החתימה עובדת' ), 'a successful signature is reported without printing the response body' );
 } );
 
+$tests['X12'] = array( 'טרנזילה לפי התיעוד: בקשת תשלום עם כל השדות החובה, nonce באורך 80, קוד 015 כפג תוקף', function () {
+	$h = \Insiders\Collections\Integrations\Tranzila\Client::auth_headers();
+	T::eq( 80, strlen( $h['X-tranzila-api-nonce'] ), 'nonce of 80 hex characters, as in the docs' );
+	T::eq( hash_hmac( 'sha256', $h['X-tranzila-api-app-key'], \Insiders\Collections\Support\Settings::secret( 'tranzila_secret' ) . $h['X-tranzila-api-request-time'] . $h['X-tranzila-api-nonce'] ), $h['X-tranzila-api-access-token'], 'access token: HMAC of the app key with secret + time + nonce' );
+	T::eq( 'expired_card', \Insiders\Collections\Integrations\Tranzila\ResponseCodes::classify( '015' ), '015 is an expired card' );
+	T::eq( array( 'phone_country_code' => '972', 'phone_area_code' => '050', 'phone_number' => '1234567' ), \Insiders\Collections\Integrations\Tranzila\Client::phone_parts( '+972501234567' ), 'mobile split into the three client fields' );
+	T::eq( array( 'phone_country_code' => '972', 'phone_area_code' => '03', 'phone_number' => '6123456' ), \Insiders\Collections\Integrations\Tranzila\Client::phone_parts( '+97236123456' ), 'landline split' );
+	T::eq( array(), \Insiders\Collections\Integrations\Tranzila\Client::phone_parts( '+447700900123' ), 'a foreign number sends no phone fields' );
+	[ $c, $case ] = program_case();
+	\Insiders\Collections\Support\Settings::set( array( 'cap_payment_links' => 1 ) );
+	$u = PaymentRequests::local_link( $case );
+	PaymentRequests::checkout( basename( $u ) );
+	$sent = array_values( array_filter( T::$http_log, static fn( $x ) => str_contains( $x['url'], 'pr/create' ) ) );
+	T::check( (bool) $sent, 'a payment request was sent to Tranzila' );
+	$b = $sent ? json_decode( (string) $sent[0]['body'], true ) : array();
+	foreach ( array( 'terminal_name', 'created_by_user', 'created_by_system', 'created_via', 'request_language', 'response_language', 'client', 'items', 'payment_plans', 'payment_methods', 'payments_number' ) as $k ) {
+		T::check( isset( $b[ $k ] ), 'required field ' . $k . ' is present' );
+	}
+	T::check( array_key_exists( 'request_date', $b ) && null === $b['request_date'], 'request_date is sent as null' );
+	T::eq( array( 'ILS', array( 1 ), 'TRAPI' ), array( $b['request_currency'] ?? null, $b['payment_methods'] ?? null, $b['created_via'] ?? null ), 'currency as ISO text, credit card, created via TRAPI' );
+	T::eq( array( 'I', 1, 'G', 'ILS' ), array( $b['items'][0]['type'] ?? null, $b['items'][0]['unit_type'] ?? null, $b['items'][0]['price_type'] ?? null, $b['items'][0]['currency_code'] ?? null ), 'item fields as documented' );
+	T::check( ! isset( $b['send_sms'] ) && ! isset( $b['send_email'] ), 'Tranzila sends nothing itself: the link goes out in WhatsApp' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";
