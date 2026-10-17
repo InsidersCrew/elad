@@ -140,7 +140,7 @@ $tests['AT06'] = array( 'הצלחה לפני אירוע הכישלון הישן'
 	T::tick();
 	T::eq( 'settled', Db::value( 'SELECT finance_state FROM ' . Db::t( 'debt_items' ) ), 'retry success settles' );
 	// A late notification of an earlier failed attempt for the same cycle.
-	T::$tranzila_tx['1000'] = array( 'index' => '1000', 'amount' => '490.00', 'currency' => '1', 'processor_response_code' => '004', 'tranmode' => 'A1705', 'transaction_date' => '2026-10-11', 'transaction_time' => '06:00:00' );
+	T::$tranzila_tx['1000'] = array( 'index' => '1000', 'amount' => 49000, 'currency' => '1', 'processor_response_code' => '004', 'tranmode' => 'A1705', 'transaction_date' => '2026-10-11', 'transaction_time' => '06:00:00' );
 	T::tranzila( array( 'index' => '1000', 'sto_external_id' => '5001', 'sum' => '490.00', 'Response' => '004' ), 'sto', false );
 	T::tick();
 	T::eq( 'settled', Db::value( 'SELECT finance_state FROM ' . Db::t( 'debt_items' ) ), 'still settled' );
@@ -669,7 +669,7 @@ $tests['AT40'] = array( 'נציג ללא הרשאת טוקן', function () {
 
 $tests['AT41'] = array( 'דוח עם יותר מעמוד אחד', function () {
 	for ( $i = 1; $i <= 1203; $i++ ) {
-		T::$tranzila_tx[ 'R' . $i ] = array( 'index' => 'R' . $i, 'amount' => '10.00', 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A' );
+		T::$tranzila_tx[ 'R' . $i ] = array( 'index' => 'R' . $i, 'amount' => 1000, 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A' );
 	}
 	$res = Reconciler::scan( '2026-10-01', '2026-10-11' );
 	T::eq( 1203, $res['rows'], 'all rows read' );
@@ -1726,12 +1726,14 @@ $tests['X11'] = array( 'כלי אבחון טרנזילה: טוקן ותוקף מ
 		$_GET = array();
 		return (string) ob_get_clean();
 	};
-	T::$tranzila_tx['77001'] = array( 'index' => '77001', 'terminal' => 'insiders', 'amount' => '100.00', 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A', 'transaction_date' => '2026-07-01', 'credit_card_token' => 'Z9a8b7c6d5e4f3g2h1k4321', 'expiration_month' => '12', 'expiration_year' => '2029', 'full_name' => 'דנה כהן', 'phone' => '0501234567', 'email' => 'd@example.test', 'card_last_4_digits' => '4580' );
+	T::$tranzila_tx['77001'] = array( 'index' => '77001', 'terminal' => 'insiders', 'amount' => 10000, 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A', 'transaction_date' => '2026-07-01', 'credit_card_token' => 'Z9a8b7c6d5e4f3g2h1k4321', 'expiration_month' => '12', 'expiration_year' => '2029', 'full_name' => 'דנה כהן', 'phone' => '0501234567', 'email' => 'd@example.test', 'card_last_4_digits' => '4580', 'user_defined_2' => '012345678', 'user_defined_5' => '0501234567', 'cavv' => 'AFrSMNGb7uB7AGeGSbYbAoABFA==', 'broker' => 'APPLE_PAY', 'card_description' => 'ויזה רגיל' );
 	$out = $run( 'tranzila_txn', array( 'index' => '77001' ) );
 	T::check( str_contains( $out, 'יש (' ) && str_contains( $out, 'מסתיים ב-4321' ), 'the token is reported as present, by its last four characters' );
 	T::check( str_contains( $out, 'בתוקף' ) && str_contains( $out, '100 ₪' ), 'card validity and amount are shown' );
 	T::check( ! str_contains( $out, 'Z9a8b7c6d5e4f3g2h1k4321' ) && ! str_contains( $out, 'דנה' ) && ! str_contains( $out, '0501234567' ) && ! str_contains( $out, 'd@example.test' ) && ! str_contains( $out, '2029' ), 'no token, name, phone, email or expiry value in the output' );
 	T::check( str_contains( $out, 'full_name: [מוסתר' ) && str_contains( $out, 'tranmode: A' ), 'field names are listed, identifying values hidden' );
+	T::check( str_contains( $out, 'user_defined_5 (phone, טלפון): [מוסתר, 10 תווים]' ) && ! str_contains( $out, '0501234567' ) && ! str_contains( $out, '012345678' ), 'user-defined fields show their configured name, never their value' );
+	T::check( ! str_contains( $out, 'AFrSMNGb' ) && str_contains( $out, 'card_description: ויזה רגיל' ) && str_contains( $out, 'broker: APPLE_PAY' ), 'the 3DS cryptogram is hidden, the card network and wallet are shown' );
 	T::check( str_contains( $run( 'tranzila_txn' ), '&index=' ), 'without parameters the tool explains how to use it' );
 	T::check( str_contains( $run( 'tranzila_samples' ), 'עדיין לא התקבלה' ), 'before the first notification the samples tool says so' );
 	T::tranzila( array( 'index' => '77002', 'sto_external_id' => '6001', 'sum' => '490.00', 'Response' => '051', 'TranzilaTK' => 'SECRETTOKEN9876', 'expdate' => '1229', 'contact' => 'דנה כהן' ) );
@@ -1747,6 +1749,10 @@ $tests['X12'] = array( 'טרנזילה לפי התיעוד: בקשת תשלום 
 	T::eq( 80, strlen( $h['X-tranzila-api-nonce'] ), 'nonce of 80 hex characters, as in the docs' );
 	T::eq( hash_hmac( 'sha256', $h['X-tranzila-api-app-key'], \Insiders\Collections\Support\Settings::secret( 'tranzila_secret' ) . $h['X-tranzila-api-request-time'] . $h['X-tranzila-api-nonce'] ), $h['X-tranzila-api-access-token'], 'access token: HMAC of the app key with secret + time + nonce' );
 	T::eq( 'expired_card', \Insiders\Collections\Integrations\Tranzila\ResponseCodes::classify( '015' ), '015 is an expired card' );
+	T::eq( 10000, \Insiders\Collections\Integrations\Tranzila\Client::normalize_report_row( array( 'index' => '537', 'amount' => 10000, 'currency' => '1' ) )['amount_minor'], 'a report amount of 10000 is 100 ₪, as on the live terminal' );
+	\Insiders\Collections\Support\Settings::set( array( 'tranzila_report_amount_unit' => 'major' ) );
+	\Insiders\Collections\Schema::install();
+	T::eq( 'minor', \Insiders\Collections\Support\Settings::get( 'tranzila_report_amount_unit' ), 'upgrade: a saved "shekels" from the old form default becomes agorot' );
 	T::eq( array( 'phone_country_code' => '972', 'phone_area_code' => '050', 'phone_number' => '1234567' ), \Insiders\Collections\Integrations\Tranzila\Client::phone_parts( '+972501234567' ), 'mobile split into the three client fields' );
 	T::eq( array( 'phone_country_code' => '972', 'phone_area_code' => '03', 'phone_number' => '6123456' ), \Insiders\Collections\Integrations\Tranzila\Client::phone_parts( '+97236123456' ), 'landline split' );
 	T::eq( array(), \Insiders\Collections\Integrations\Tranzila\Client::phone_parts( '+447700900123' ), 'a foreign number sends no phone fields' );

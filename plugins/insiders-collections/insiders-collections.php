@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
  * raises a notice when they drift — that drift cost a release in SPD.
  */
 define( 'ICOL_VERSION', '0.3.1' );
-define( 'ICOL_DB_VERSION', 4 );
+define( 'ICOL_DB_VERSION', 5 );
 define( 'ICOL_FILE', __FILE__ );
 define( 'ICOL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ICOL_URL', plugin_dir_url( __FILE__ ) );

@@ -174,7 +174,7 @@ final class T {
 			self::$tranzila_tx[ (string) $payload['index'] ] = array(
 				'terminal'                => $payload['supplier'],
 				'index'                   => $payload['index'],
-				'amount'                  => $payload['sum'],
+				'amount'                  => (int) round( (float) $payload['sum'] * 100 ), // the live report returns agorot
 				'currency'                => '1',
 				'processor_response_code' => $payload['Response'],
 				'tranmode'                => $payload['tranmode'],
@@ -264,6 +264,9 @@ add_filter(
 		}
 		$json = static fn( $data, int $code = 200 ) => array( 'response' => array( 'code' => $code, 'message' => 'OK' ), 'body' => wp_json_encode( $data ), 'headers' => new \WpOrg\Requests\Utility\CaseInsensitiveDictionary( array( 'content-type' => 'application/json' ) ) );
 		$body = json_decode( (string) ( $args['body'] ?? '' ), true ) ?: array();
+		if ( false !== strpos( $url, 'report.tranzila.com/v1/terminals/settings/fields/list' ) ) {
+			return $json( array( array( 'terminal_id' => 'insiders', 'field_id' => 2, 'api_parameter_name' => 'myid', 'caption' => 'תעודת זהות' ), array( 'terminal_id' => 'insiders', 'field_id' => 5, 'api_parameter_name' => 'phone', 'caption' => 'טלפון' ) ) );
+		}
 		if ( false !== strpos( $url, 'report.tranzila.com/v1/transaction' ) ) {
 			if ( isset( $body['transaction_index'] ) ) {
 				$row = T::$tranzila_tx[ (string) $body['transaction_index'] ] ?? null;

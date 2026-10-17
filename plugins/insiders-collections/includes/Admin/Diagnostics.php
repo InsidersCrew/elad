@@ -227,6 +227,15 @@ final class Diagnostics {
 			return;
 		}
 		echo 'מסוף: ' . $terminal . ' · עסקאות שהוחזרו: ' . count( $r['rows'] ) . ( $r['total'] ? ' מתוך ' . $r['total'] : '' ) . "\n";
+		$fields = Tranzila::terminal_fields( $terminal );
+		$labels = array();
+		if ( $fields ) {
+			echo "\nשדות שהמסוף מגדיר לעסקה (שם בדוח, כותרת):\n";
+			foreach ( $fields as $id => $f ) {
+				$labels[ 'user_defined_' . $id ] = trim( $f['name'] . ', ' . $f['caption'], ', ' );
+				echo '  user_defined_' . $id . ': ' . $labels[ 'user_defined_' . $id ] . "\n";
+			}
+		}
 		foreach ( $r['rows'] as $i => $row ) {
 			$n   = Tranzila::normalize_report_row( (array) $row );
 			$exp = (string) $n['expiry'];
@@ -240,7 +249,7 @@ final class Diagnostics {
 			echo 'טוקן לשימוש חוזר: ' . ( '' !== $n['token'] ? 'יש (' . strlen( $n['token'] ) . ' תווים, מסתיים ב-' . substr( $n['token'], -4 ) . ')' : 'אין' ) . "\n";
 			echo 'תוקף הכרטיס: ' . ( '' !== $valid ? $valid : 'לא הוחזר' ) . "\n";
 			echo "שדות שהדוח מחזיר (ערכים מזהים מוסתרים):\n";
-			self::print_fields( (array) $row, '  ' );
+			self::print_fields( (array) $row, '  ', 0, $labels );
 		}
 	}
 
@@ -264,7 +273,9 @@ final class Diagnostics {
 	}
 
 	/** Field names with their values, hiding anything that identifies a person or a card. */
-	private static function print_fields( array $data, string $pad, int $depth = 0 ): void {
+	private static function print_fields( array $data, string $pad, int $depth = 0, array $labels = array() ): void {
+		// Card type is not identifying and tells which network the token belongs to.
+		$plain = array( 'card_brand', 'card_issuer', 'card_description', 'card_type', 'card_type_name' );
 		foreach ( $data as $k => $v ) {
 			if ( is_array( $v ) ) {
 				echo $pad . $k . ":\n";
@@ -276,12 +287,14 @@ final class Diagnostics {
 			$val = (string) ( is_bool( $v ) ? ( $v ? 'true' : 'false' ) : $v );
 			if ( '' === $val ) {
 				$show = '(ריק)';
-			} elseif ( preg_match( '/(^|_)(tk|cc|cvv)|tranzilatk|token|card|expir|exp(date|month|year|mon)|name|mail|phone|mobile|contact|myid|id_?num|holder|address|ssn|^tz$|remarks|comment/i', (string) $k ) || preg_match( '/^user_defined_/i', (string) $k ) || preg_match( '/\d{9,}|@/', $val ) || '[redacted]' === $val ) {
+			} elseif ( in_array( (string) $k, $plain, true ) ) {
+				$show = mb_substr( $val, 0, 60 );
+			} elseif ( preg_match( '/(^|_)(tk|cc|cvv)|cavv|xid|tranzilatk|token|card|expir|exp(date|month|year|mon)|name|mail|phone|mobile|contact|myid|id_?num|holder|address|ssn|^tz$|remarks|comment/i', (string) $k ) || preg_match( '/^user_defined_/i', (string) $k ) || preg_match( '/\d{9,}|@/', $val ) || '[redacted]' === $val ) {
 				$show = '[מוסתר, ' . mb_strlen( $val ) . ' תווים]';
 			} else {
 				$show = mb_substr( $val, 0, 60 );
 			}
-			echo $pad . $k . ': ' . $show . "\n";
+			echo $pad . $k . ( isset( $labels[ (string) $k ] ) ? ' (' . $labels[ (string) $k ] . ')' : '' ) . ': ' . $show . "\n";
 		}
 	}
 

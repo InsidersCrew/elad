@@ -1119,7 +1119,7 @@
 		var keys = [
 			['tranzila_terminals', 'מסופי טרנזילה מוכרים (פסיקים)'], ['tranzila_my_billing_terminal', 'מסוף My Billing'], ['tranzila_pr_terminal', 'מסוף לבקשות תשלום'],
 			['tranzila_cycle_strategy', 'זיהוי מחזור', [['manual', 'ידני (בטוח)'], ['schedule', 'לפי לוח החיובים של ההוראה'], ['field', 'לפי שדה שאושר']]], ['tranzila_cycle_field', 'שדה מחזור (אם אושר)'],
-			['tranzila_charge_tranmodes', 'קידומות tranmode של חיוב'], ['tranzila_pr_match_field', 'שדה pr_id ב-Notify'], ['tranzila_hmac_order', 'סדר HMAC', [['secret_time_nonce', 'secret+time+nonce'], ['time_nonce_secret', 'time+nonce+secret']]], ['tranzila_report_amount_unit', 'יחידת סכום בדוחות', [['major', 'שקלים'], ['minor', 'אגורות']]],
+			['tranzila_charge_tranmodes', 'קידומות tranmode של חיוב'], ['tranzila_pr_match_field', 'שדה pr_id ב-Notify'], ['tranzila_hmac_order', 'סדר HMAC', [['secret_time_nonce', 'secret+time+nonce'], ['time_nonce_secret', 'time+nonce+secret']]], ['tranzila_report_amount_unit', 'יחידת סכום בדוחות', [['minor', 'אגורות (כך הדוח של טרנזילה מחזיר)'], ['major', 'שקלים']]],
 			['wati_api_base', 'כתובת API של WATI'], ['wati_channel_number', 'channel_number ב-WATI'], ['wati_conversation_attr', 'שם מאפיין בעלות השיחה'],
 			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['pay_theme', 'מראה דף התשלום', [['dark', 'כהה (מומלץ)'], ['light', 'בהיר']]], ['accessibility_url', 'קישור להצהרת הנגישות באתר'], ['fallback_owner_id', 'מזהה בעלים חלופי'],
 			['ai_model', 'מודל AI'], ['ai_effort', 'עומק חשיבה', [['low', 'low'], ['medium', 'medium'], ['high', 'high']]],

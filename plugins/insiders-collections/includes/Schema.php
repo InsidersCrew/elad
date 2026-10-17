@@ -642,6 +642,12 @@ final class Schema {
 		$out['program_candidates.person_index'] = self::ensure_index( 'program_candidates', 'person', '(pipedrive_person_id)' );
 		// v4: the money variables carry the ₪ sign; stored bodies lose the sign they used to add after it.
 		$out['templates.currency_sign'] = Templates::strip_currency_sign();
+		// v5: the transaction report returns agorot. 'major' was the form's first option, never a verified choice.
+		if ( 'major' === ( \Insiders\Collections\Support\Settings::all()['tranzila_report_amount_unit'] ?? null ) ) {
+			\Insiders\Collections\Support\Settings::set( array( 'tranzila_report_amount_unit' => 'minor' ) );
+			\Insiders\Collections\Support\Audit::log( 'settings.report_amount_unit', 'system', 0, array( 'unit' => 'major' ), array( 'unit' => 'minor' ), 'שדרוג: דוח העסקאות של טרנזילה מחזיר אגורות (100 ₪ = 10000)' );
+		}
+		$out['settings.report_amount_unit'] = true;
 		return $out;
 	}
 

@@ -84,6 +84,22 @@ final class Client {
 		return array( 'ok' => true, 'rows' => is_array( $rows ) ? $rows : array(), 'total' => (int) ( $r['json']['total'] ?? 0 ) );
 	}
 
+	/** The terminal's user-defined fields: field_id => {name, caption}. Configuration only, no customer data. */
+	public static function terminal_fields( string $terminal ): array {
+		$r = self::post( 'tranzila_report_base', '/v1/terminals/settings/fields/list', array( 'terminal_name' => $terminal ), false );
+		if ( Http::OK !== $r['outcome'] || ! is_array( $r['json'] ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( $r['json'] as $f ) {
+			if ( is_array( $f ) && isset( $f['field_id'] ) ) {
+				$out[ (int) $f['field_id'] ] = array( 'name' => (string) ( $f['api_parameter_name'] ?? '' ), 'caption' => (string) ( $f['caption'] ?? '' ) );
+			}
+		}
+		ksort( $out );
+		return $out;
+	}
+
 	public static function transaction( string $terminal, string $index ): array {
 		$r = self::transactions( $terminal, array( 'transaction_index' => is_numeric( $index ) ? (int) $index : $index ), 1, 10 );
 		if ( ! $r['ok'] ) {
@@ -99,7 +115,8 @@ final class Client {
 
 	/** Report row -> the notification vocabulary used by the processor. Raw values kept beside normalized ones. */
 	public static function normalize_report_row( array $row ): array {
-		$unit   = (string) Settings::get( 'tranzila_report_amount_unit', 'major' );
+		// The report returns agorot: a live 100 ₪ transaction came back as amount 10000 (2026-10-17).
+		$unit   = (string) Settings::get( 'tranzila_report_amount_unit', 'minor' );
 		$amount = $row['amount'] ?? $row['sum'] ?? null;
 		$minor  = null === $amount ? null : ( 'minor' === $unit ? (int) $amount : Money::from_provider( $amount ) );
 		return array(
