@@ -35,9 +35,18 @@ final class Processor {
 
 	public static function process( array $ev ): string {
 		$p        = Inbox::payload( $ev );
-		$kind     = 'pr' === $ev['integration_id'] ? 'pr' : 'sto';
 		$terminal = trim( (string) ( $p['supplier'] ?? $p['terminal_name'] ?? '' ) );
 		$index    = trim( (string) ( $p['index'] ?? $p['transaction_index'] ?? '' ) );
+		// Tranzila has one Notify address per terminal (My Billing settings, answer of 2026-10-18), so a payment-request
+		// payment can arrive at the standing-order URL: the payload decides. pr_id marks a payment request.
+		$pr_field = (string) Settings::get( 'tranzila_pr_match_field' ) ?: 'pr_id';
+		$has_pr   = '' !== trim( (string) ( $p[ $pr_field ] ?? '' ) );
+		$has_sto  = '' !== trim( (string) ( $p['sto_external_id'] ?? $p['sto_id'] ?? '' ) );
+		$kind     = ( 'pr' === $ev['integration_id'] || ( $has_pr && ! $has_sto ) ) ? 'pr' : 'sto';
+		if ( 'sto' === $kind && ! $has_sto ) {
+			// An ordinary sale on the terminal (a registration fee, a course): not a standing order and not our request.
+			return 'ignored';
+		}
 		if ( ! in_array( $terminal, self::terminals(), true ) ) {
 			// AT28: an event for an unknown terminal changes nothing.
 			Exceptions::open( 'unknown_terminal:' . $ev['id'], 'unverified_event', 'medium', 'אירוע ממסוף לא מוכר: ' . mb_substr( $terminal, 0, 40 ), array( 'inbox_event_id' => (int) $ev['id'] ) );

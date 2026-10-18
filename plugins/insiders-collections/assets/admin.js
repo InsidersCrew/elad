@@ -904,7 +904,7 @@
 					var s = 0; p.forEach(function (r) { s += Number(r.amount_minor || 0); });
 					modal({ title: 'אישור ' + p.length + ' חיובים', lead: 'סך הכול ' + money(s) + '. כל חיוב נרשם עם שמך ועם בסיס החיוב. הודעות התשלום יוצאות לפי מדיניות הפנייה, לא מיד.', actions: [{ label: 'אישור', kind: 'primary', onClick: function () {
 						return api.post('/program/approve', { case_ids: p.map(function (r) { return r.case_id; }), basis: val(basis) }).then(function (res) {
-							toast('אושרו ' + res.approved + ' חיובים', 'ok');
+							toast('אושרו ' + res.approved + ' חיובים' + (res.by_card ? ', מתוכם ' + res.by_card + ' יחויבו מהכרטיס השמור אחרי הודעה מקדימה' : ''), 'ok');
 							if (res.skipped && res.skipped.length) { modal({ title: res.skipped.length + ' לא אושרו', lead: 'אלה השתנו מאז שהרשימה נטענה:', body: h('ul', {}, res.skipped.map(function (x) { return h('li', { text: '#' + x.case_id + ': ' + x.reason }); })), actions: [], cancelLabel: 'סגירה' }); }
 							programQueue(body);
 						});
@@ -1084,6 +1084,7 @@
 			['display_only', 'מצב תצוגה בלבד', 'המערכת מחשבת ומתעדת מה הייתה שולחת, בלי לשלוח. להשאיר פעיל עד סיום שלב המדידה.'],
 			['cap_customer_sends', 'משלוחים ללקוחות ב-WATI', 'דורש תבניות מאושרות, מדיניות מאושרת וחיבור WATI.'],
 			['cap_payment_links', 'קישורי תשלום', 'רק אחרי בדיקת pr/create בסביבת בדיקה של טרנזילה.'],
+			['cap_card_charge', 'חיוב התוכנית מהכרטיס ששימש לדמי הרישום', 'אחרי אישור החיוב ברשימה היומית, התלמיד מקבל הודעה עם התאריך, ארבע הספרות האחרונות של הכרטיס והסכום, והחיוב רץ כמה ימי עבודה אחר כך במסוף הטוקנים. תגובה, טענה לפתיחת חשבון או תשלום בינתיים עוצרים את החיוב. כרטיס שנדחה עובר לקישור תשלום. דורש תבנית card_charge_notice מאושרת.'],
 			['cap_separate_payment_recurring', 'תשלום נפרד לפריט של הוראת קבע', 'מסוכן: עלול לגרום לחיוב כפול. להפעיל רק אחרי שטרנזילה אישרה איך מסמנים פריט כמוסדר ומונעים ניסיון חוזר.'],
 			['tranzila_inbound_verified', 'אמון בהודעות טרנזילה ללא קריאת אימות', 'כבוי = כל הודעה נבדקת מול דוח העסקאות. להפעיל רק אם טרנזילה סיפקה מנגנון אימות נכנס.'],
 			['tranzila_card_fix_email', 'מייל תיקון כרטיס של טרנזילה פעיל במסוף', 'אם פעיל, הודעת כשל כרטיס מפנה ללקוח למייל של טרנזילה במקום לקישור.'],
@@ -1103,6 +1104,7 @@
 			journey_min_gap_days: field('journey_min_gap_days', 'מרווח מינימלי בין הודעות למי שנכנס באמצע (ימים)', 'number', { value: st.journey_min_gap_days }),
 			late_grace_days: field('late_grace_days', 'המתנה לתגובה לפני אישור, למי שהמועד שלו עבר (ימים)', 'number', { value: st.late_grace_days }),
 			credit_window_days: field('credit_window_days', 'חלון זיכוי אחרי תשלום (ימים)', 'number', { value: st.credit_window_days }),
+			card_charge_notice_days: field('card_charge_notice_days', 'חיוב מהכרטיס השמור: ימי עבודה בין ההודעה לחיוב', 'number', { value: st.card_charge_notice_days }),
 			journey_batch: field('journey_batch', 'תלמידים חדשים בכל ריצה', 'number', { value: st.journey_batch, help: 'כל תלמיד הוא קריאה לפייפדרייב. הריצה היא פעם בשעה.' }),
 			program_auto_charge_on_pay_request: field('program_auto_charge_on_pay_request', 'כשתלמיד לוחץ "אני רוצה לשלם": לאשר את החיוב ולשלוח את הקישור מיד', 'checkbox', { value: Number(st.program_auto_charge_on_pay_request) === 1, wide: true, help: 'כבוי: אחראי הגבייה מאשר ברשימה, והקישור יוצא ברגע האישור. פעיל: המערכת מאשרת לבד לפי המחירון, אחרי אותן בדיקות מול הדשבורד, והתלמיד מקבל את הקישור בתוך דקה.' }),
 			program_price_table: field('program_price_table', 'מחירון לפי תאריך ההסכם', 'textarea', { value: st.program_price_table, rows: 3, wide: true, help: 'שורה לכל מחירון: תאריך תחולה, מחיר מלא, דמי רישום. לדוגמה: 2026-08-01 980 100. תלמיד משלם את המחיר שהיה בתוקף בתאריך ההסכם שלו, פחות דמי הרישום.' }),

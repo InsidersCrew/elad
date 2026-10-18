@@ -1772,6 +1772,100 @@ $tests['X12'] = array( 'טרנזילה לפי התיעוד: בקשת תשלום 
 	T::check( ! isset( $b['send_sms'] ) && ! isset( $b['send_email'] ), 'Tranzila sends nothing itself: the link goes out in WhatsApp' );
 } );
 
+$tests['X13'] = array( 'כתובת Notify אחת למסוף: תשלום מקישור שמגיע לכתובת של הוראות הקבע נקלט לפי pr_id, ומכירה רגילה במסוף לא פותחת חריג', function () {
+	[ $c, $case ] = program_case();
+	\Insiders\Collections\Support\Settings::set( array( 'cap_payment_links' => 1 ) );
+	$res = PaymentRequests::checkout( basename( PaymentRequests::local_link( $case ) ) );
+	$pr  = Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . ' WHERE case_id = %d', $case );
+	T::tranzila( array( 'supplier' => 'insiders', 'index' => '7101', 'sum' => '980.00', 'Response' => '000', 'pr_id' => $pr['provider_pr_id'] ), 'sto' );
+	T::tranzila( array( 'supplier' => 'insiders', 'index' => '7102', 'sum' => '100.00', 'Response' => '000', 'contact' => 'תלמיד חדש' ), 'sto' );
+	T::tick();
+	T::eq( 'closed', Workflow::get( $case )['workflow_state'], 'the payment-request payment closed the case, although it came to the standing-order URL' );
+	T::eq( 1, T::count( 'payments' ), 'one payment: the ordinary sale is not recorded' );
+	T::eq( 0, T::count( 'exceptions', "type IN ('event_without_customer','unverified_event')" ), 'no exception for an ordinary sale on the terminal' );
+} );
+
+$tests['P13'] = array( 'חיוב מהכרטיס של דמי הרישום: הודעה מקדימה, חיוב במסוף הטוקנים, Apple Pay ישן לקישור, כרטיס שנדחה לקישור, תגובה עוצרת, סימולציה לא מחייבת', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	$reg = static function ( int $person, string $token, string $broker = '' ): void {
+		T::$tranzila_tx[ 'reg' . $person ] = array( 'terminal' => 'insiders', 'index' => 'reg' . $person, 'amount' => 10000, 'currency' => '1', 'processor_response_code' => '000', 'txn_type' => 'DEBIT', 'tranmode' => 'A', 'transaction_date' => '2026-08-01', 'transaction_time' => '12:00:00', 'credit_card_token' => $token, 'expiration_month' => '12', 'expiration_year' => '29', 'broker' => $broker, 'user_defined_5' => student_phone( $person ) );
+	};
+	foreach ( array( 651, 652, 653, 654, 655 ) as $p ) {
+		ifd_student( $p, 9000 + $p, '2026-08-01' );
+	}
+	$reg( 651, 'Zt1a2b3c4d5e6f71234' );
+	$reg( 652, 'Ap1a2b3c4d5e6f75555', 'APPLE_PAY' );
+	$reg( 653, 'DECLINEc4d5e6f79999' );
+	$reg( 654, 'Zt9a2b3c4d5e6f76543' );
+	$reg( 655, 'Zt8a2b3c4d5e6f78888' );
+	Journey::sync();
+	T::tick();
+	pday( '2026-11-01', '09:30' );
+	T::tick();
+	Settings::set( array( 'cap_card_charge' => 1 ) );
+	$q   = ProgramCharges::queue();
+	$ids = array_map( static fn( $p ) => (int) student_case( $p )['id'], array( 651, 652, 653, 654 ) );
+	T::as( 'collector' );
+	$res = ProgramCharges::approve( $ids, $q['basis'] );
+	T::as_admin();
+	T::eq( array( 4, 3 ), array( $res['approved'], $res['by_card'] ), 'four approved, three go by card: the old Apple Pay token goes by link' );
+	$c1     = student_case( 651 );
+	$notice = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'card_charge_notice'", (int) $c1['id'] );
+	T::check( $notice && str_contains( $notice['body'], '1234' ) && str_contains( $notice['body'], 'דמי הרישום' ) && str_contains( $notice['body'], '880 ₪' ) && str_contains( $notice['body'], '04/11/2026' ) && ! str_contains( $notice['body'], '{{' ), 'the notice names the card, the amount and the date three business days later' );
+	T::eq( 'commitment', $c1['phase'], 'no payment link while the charge waits' );
+	$c2 = student_case( 652 );
+	T::eq( 'charge', $c2['phase'], 'Apple Pay registration from August: straight to the payment link' );
+	T::inbound( 'רגע, לפני שאתם מחייבים יש לי שאלה', '972500000654' );
+	T::tick();
+	// 655: approved while display-only is on, so its notice is only simulated.
+	Settings::set( array( 'display_only' => 1 ) );
+	T::as( 'collector' );
+	ProgramCharges::approve( array( (int) student_case( 655 )['id'] ), $q['basis'] );
+	T::as_admin();
+	Settings::set( array( 'display_only' => 0 ) );
+
+	pday( '2026-11-04', '10:05' );
+	T::settle( 3 );
+	$tokens = array_column( T::$charges, 'card_number' );
+	sort( $tokens );
+	T::eq( array( 'DECLINEc4d5e6f79999', 'Zt1a2b3c4d5e6f71234' ), $tokens, 'charged: 651 and the declined 653; not 654 who replied, not 655 whose notice was simulated' );
+	T::check( 'insiderstok' === ( T::$charges[0]['terminal_name'] ?? '' ) && ! isset( T::$charges[0]['cvv'] ) && 880 == ( T::$charges[0]['items'][0]['unit_price'] ?? 0 ), 'on the token terminal, without CVV, for the computed amount' );
+	T::eq( 'closed', Workflow::get( (int) $c1['id'] )['workflow_state'], 'the charged student is closed' );
+	T::eq( 1, T::count( 'payments', "origin = 'card_charge'" ), 'one payment recorded from the card' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'program_paid'", (int) $c1['id'] ), 'the payment confirmation went out' );
+	T::eq( 'charge', Workflow::get( (int) student_case( 653 )['id'] )['phase'], 'the declined card falls back to the payment link' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'tasks' ) . " WHERE task_key = %s AND status = 'open'", 'card_charge_hold:' . (int) student_case( 654 )['id'] ), 'the reply stopped the charge and opened a task' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'audit_log' ) . " WHERE entity_type = 'case' AND entity_id = %d AND reason LIKE %s", (int) student_case( 655 )['id'], '%סימולציה%' ), 'a simulated notice is recorded as a simulated charge, never a real one' );
+} );
+
+$tests['P14'] = array( 'חיוב מהכרטיס בלי תשובה מטרנזילה: לא חוזרים על החיוב ולא שולחים קישור, חריג לבדיקה', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 661, 9661, '2026-08-01' );
+	T::$tranzila_tx['reg661'] = array( 'terminal' => 'insiders', 'index' => 'reg661', 'amount' => 10000, 'currency' => '1', 'processor_response_code' => '000', 'txn_type' => 'DEBIT', 'tranmode' => 'A', 'transaction_date' => '2026-08-01', 'transaction_time' => '12:00:00', 'credit_card_token' => 'Zt7a2b3c4d5e6f74444', 'expiration_month' => '12', 'expiration_year' => '29', 'broker' => '', 'user_defined_5' => student_phone( 661 ) );
+	Journey::sync();
+	T::tick();
+	pday( '2026-11-01', '09:30' );
+	T::tick();
+	Settings::set( array( 'cap_card_charge' => 1 ) );
+	$id = (int) student_case( 661 )['id'];
+	T::as( 'collector' );
+	ProgramCharges::approve( array( $id ), ProgramCharges::queue()['basis'] );
+	T::as_admin();
+	T::$fail_next['credit_card/create'] = 'timeout';
+	pday( '2026-11-04', '10:05' );
+	T::settle( 3 );
+	T::eq( 0, T::count( 'payments' ), 'nothing recorded without an answer' );
+	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'exceptions' ) . ' WHERE exception_key = %s', 'card_charge_unknown:' . $id ), 'an exception asks a person to check Tranzila' );
+	T::eq( 0, T::count( 'messages', "case_id = %d AND template_key IN ('program_charge_link','program_charge_reply','d_link','d_link_reply')", $id ), 'no payment link: the card may have been charged' );
+	T::eq( 1, count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'credit_card/create' ) ) ), 'the charge call was made once and never repeated' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";

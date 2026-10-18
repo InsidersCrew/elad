@@ -26,6 +26,13 @@ final class Settings {
 		'cap_payment_links'           => 0,
 		'cap_separate_payment_recurring' => 0, // §8: never on before Tranzila confirms retry suppression
 		'cap_card_auto_update'        => 0,   // no verified API exists
+		'cap_card_charge'             => 0,   // program charge from the registration-fee card (notice first, then charge)
+		'card_charge_notice_days'     => 3,   // business days between the notice and the charge
+		'tranzila_registration_terminal' => 'insiders',    // where registration fees are paid
+		'tranzila_token_charge_terminal' => 'insiderstok', // Tranzila: charge saved tokens here (no ID or CVV)
+		'tranzila_phone_field'        => 'phone',         // the terminal's user-defined field that holds the phone
+		'tranzila_dcdisable'          => 0,   // field 20 defined as DCdisable on the token terminal
+		'apple_pay_token_days'        => 14,  // Apple resets its tokens about every two weeks
 		'cap_pipedrive_tasks'         => 0,
 		'cap_email_alerts'            => 0,
 		'tranzila_terminals'          => 'insiders,insiderstok',

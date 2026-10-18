@@ -129,8 +129,9 @@ final class ProgramCharges {
 		}
 		FinanceDashboard::flush();
 		$queue = array_column( self::queue()['rows'], null, 'case_id' );
-		$done  = array();
-		$skip  = array();
+		$done    = array();
+		$skip    = array();
+		$by_card = array();
 		foreach ( array_unique( array_map( 'intval', $case_ids ) ) as $id ) {
 			$q = $queue[ $id ] ?? null;
 			if ( ! $q ) {
@@ -163,7 +164,10 @@ final class ProgramCharges {
 					}
 				);
 				Tasks::close_by_key( 'pay_request:' . $id, 'החיוב אושר' );
-				if ( $q['pay_requested'] && Journey::send_now( $id, 'd_link' ) ) {
+				$item_id = (int) Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d AND approved_at IS NOT NULL ORDER BY id DESC LIMIT 1', $id );
+				if ( ! $q['pay_requested'] && CardCharge::plan( $id, $item_id ) ) {
+					$by_card[] = $id; // notice sent, the charge runs in a few business days
+				} elseif ( $q['pay_requested'] && Journey::send_now( $id, 'd_link' ) ) {
 					// The student asked to pay: the details go now, as a reply, whatever the day.
 				} elseif ( $q['before_deadline'] ) {
 					Journey::plan_next( $id ); // the payment details, then the deadline day
@@ -177,7 +181,7 @@ final class ProgramCharges {
 			}
 			$done[] = $id;
 		}
-		return array( 'approved' => count( $done ), 'case_ids' => $done, 'skipped' => $skip );
+		return array( 'approved' => count( $done ), 'case_ids' => $done, 'by_card' => count( $by_card ), 'skipped' => $skip );
 	}
 
 	/**

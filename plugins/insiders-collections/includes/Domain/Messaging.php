@@ -29,6 +29,9 @@ final class Messaging {
 		if ( ! $case || ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			return null;
 		}
+		if ( CardCharge::pending( $case_id ) ) {
+			return null;
+		}
 		if ( 'commitment' === ( $case['phase'] ?? 'charge' ) ) {
 			return Journey::plan_next( $case_id ); // before the deadline the steps follow the date, not a cadence
 		}

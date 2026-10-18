@@ -84,6 +84,78 @@ final class Client {
 		return array( 'ok' => true, 'rows' => is_array( $rows ) ? $rows : array(), 'total' => (int) ( $r['json']['total'] ?? 0 ) );
 	}
 
+	/**
+	 * Successful card payments by a phone number, from the transaction report (date range + the
+	 * terminal's phone field, docs: reports/.../gettransactions). Used to find the card a student
+	 * paid the registration fee with. Rows come back normalized, newest first.
+	 */
+	public static function card_payments_by_phone( string $terminal, string $phone_e164, string $from, string $to ): array {
+		$digits = preg_replace( '/\D/', '', $phone_e164 );
+		if ( strlen( $digits ) < 9 || $from > $to ) {
+			return array( 'ok' => false, 'error' => 'no phone or no dates', 'rows' => array() );
+		}
+		$filter = array(
+			'transaction_start_date' => $from,
+			'transaction_end_date'   => $to,
+			'order_direction'        => 'desc',
+			// The terminal keeps the phone as typed ("0501234567"); the last nine digits match any prefix.
+			'ufields'                => array( array( 'name' => (string) Settings::get( 'tranzila_phone_field', 'phone' ), 'operator' => 'ends_with', 'value' => substr( $digits, -9 ) ) ),
+		);
+		$r = self::transactions( $terminal, $filter, 1, 50 );
+		if ( ! $r['ok'] ) {
+			return $r;
+		}
+		$out = array();
+		foreach ( $r['rows'] as $row ) {
+			$n = self::normalize_report_row( (array) $row );
+			if ( ResponseCodes::is_success( $n['response'] ) && '' !== $n['token'] && 'DEBIT' === strtoupper( (string) ( $row['txn_type'] ?? 'DEBIT' ) ) ) {
+				$n['broker'] = strtoupper( (string) ( $row['broker'] ?? '' ) );
+				$out[]       = $n;
+			}
+		}
+		return array( 'ok' => true, 'rows' => $out );
+	}
+
+	/**
+	 * One-time charge of a saved token (docs: tranzila-transactions-api-1/create-a-credit-card-transaction).
+	 * Tranzila (2026-10-18): tokens are shared between the terminals and are charged on the token terminal,
+	 * which needs no ID number or CVV. Outcome: approved | declined | unknown (no answer: never retried).
+	 */
+	public static function charge_token( string $terminal, string $token, int $month, int $year, int $amount_minor, string $description, string $dedupe ): array {
+		$body = array(
+			'terminal_name'     => $terminal,
+			'txn_type'          => 'debit',
+			'txn_currency_code' => 'ILS',
+			'card_number'       => $token,
+			'expire_month'      => $month,
+			'expire_year'       => $year < 100 ? 2000 + $year : $year,
+			'payment_plan'      => 1,
+			'items'             => array( array( 'name' => mb_substr( $description, 0, 100 ), 'type' => 'I', 'unit_price' => round( $amount_minor / 100, 2 ), 'units_number' => 1, 'price_type' => 'G' ) ),
+			'created_by_system' => 'insiders-collections',
+			'remarks'           => $dedupe,
+		);
+		if ( Settings::on( 'tranzila_dcdisable' ) ) {
+			// Field 20 defined as DCdisable on the terminal: Tranzila refuses a second success with the same value for 24 hours.
+			$body['user_defined_fields'] = array( array( 'name' => 'DCdisable', 'value' => $dedupe ) );
+		}
+		$r = self::post( 'tranzila_api_base', '/v1/transaction/credit_card/create', $body, true );
+		if ( Http::OK !== $r['outcome'] ) {
+			// A timeout or a 5xx may have charged the card: the result is unknown, never retried blindly.
+			$known_refusal = in_array( (int) $r['status'], array( 400, 401, 403, 404 ), true );
+			return array( 'outcome' => $known_refusal ? 'declined' : 'unknown', 'response' => '', 'error' => $r['error'] ?: ( 'HTTP ' . $r['status'] ) );
+		}
+		$j   = (array) $r['json'];
+		$res = (array) ( $j['transaction_result'] ?? array() );
+		if ( 0 !== (int) ( $j['error_code'] ?? 0 ) ) {
+			return array( 'outcome' => 'declined', 'response' => (string) ( $j['error_code'] ?? '' ), 'error' => (string) ( $j['message'] ?? 'error' ) );
+		}
+		$code = ResponseCodes::normalize( $res['processor_response_code'] ?? '' );
+		if ( ResponseCodes::is_success( $code ) && ! empty( $res['transaction_id'] ) ) {
+			return array( 'outcome' => 'approved', 'response' => $code, 'transaction_id' => (string) $res['transaction_id'], 'auth' => (string) ( $res['auth_number'] ?? '' ), 'last4' => (string) ( $res['last_4'] ?? '' ), 'error' => '' );
+		}
+		return array( 'outcome' => '' === $code ? 'unknown' : 'declined', 'response' => $code, 'error' => (string) ( $j['message'] ?? '' ) );
+	}
+
 	/** The terminal's user-defined fields: field_id => {name, caption}. Configuration only, no customer data. */
 	public static function terminal_fields( string $terminal ): array {
 		$r = self::post( 'tranzila_report_base', '/v1/terminals/settings/fields/list', array( 'terminal_name' => $terminal ), false );

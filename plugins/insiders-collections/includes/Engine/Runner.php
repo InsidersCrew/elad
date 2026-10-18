@@ -170,6 +170,10 @@ final class Runner {
 					return $res;
 				}
 				break;
+			case 'card_charge':
+				// Never replayed after an outage the way messages are: it runs once, re-checking everything first.
+				$res = \Insiders\Collections\Domain\CardCharge::execute( $a );
+				break;
 			case 'escalate_no_reply':
 				$res = self::escalate( $a );
 				break;

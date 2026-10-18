@@ -24,6 +24,7 @@ final class T {
 	public static array $http_log = array();
 	public static array $tranzila_tx = array();  // index => report row
 	public static array $tranzila_stos = array(); // sto_id => sto
+	public static array $charges = array();       // bodies sent to transaction/credit_card/create
 	public static array $fail_next = array();    // url-substring => 'timeout'|'500'|'401'
 	public static int $wati_seq = 0;
 	public static ?string $ai_reply = null;
@@ -43,6 +44,7 @@ final class T {
 		Settings::flush();
 		self::$http_log = array();
 		self::$tranzila_tx = array();
+		self::$charges     = array();
 		self::$tranzila_stos = array();
 		self::$fail_next = array();
 		self::$pd_persons = array();
@@ -276,6 +278,15 @@ add_filter(
 				return $json( array( 'transactions' => $row ? array( $row ) : array(), 'total' => $row ? 1 : 0 ) );
 			}
 			$rows = array_values( array_filter( T::$tranzila_tx, static fn( $r ) => ( $r['terminal'] ?? 'insiderstok' ) === ( $body['terminal_name'] ?? '' ) ) );
+			// Like the live report: the date range and a phone filter on the terminal's phone field (user_defined_5).
+			if ( isset( $body['transaction_start_date'] ) ) {
+				$rows = array_values( array_filter( $rows, static fn( $r ) => ! isset( $r['transaction_date'] ) || ( $r['transaction_date'] >= $body['transaction_start_date'] && $r['transaction_date'] <= $body['transaction_end_date'] ) ) );
+			}
+			foreach ( (array) ( $body['ufields'] ?? array() ) as $uf ) {
+				if ( 'phone' === $uf['name'] && 'ends_with' === $uf['operator'] ) {
+					$rows = array_values( array_filter( $rows, static fn( $r ) => str_ends_with( (string) ( $r['user_defined_5'] ?? '' ), (string) $uf['value'] ) ) );
+				}
+			}
 			$size = (int) ( $body['page_results'] ?? 500 );
 			$page = (int) ( $body['page'] ?? 1 );
 			return $json( array( 'transactions' => array_slice( $rows, ( $page - 1 ) * $size, $size ), 'total' => count( $rows ) ) );
@@ -283,6 +294,13 @@ add_filter(
 		if ( false !== strpos( $url, '/v1/stos/get' ) ) {
 			$sto = T::$tranzila_stos[ (string) ( $body['sto_id'] ?? '' ) ] ?? null;
 			return $json( array( 'stos' => $sto ? array( $sto ) : array() ) );
+		}
+		if ( false !== strpos( $url, '/v1/transaction/credit_card/create' ) ) {
+			T::$charges[] = $body;
+			if ( str_starts_with( (string) ( $body['card_number'] ?? '' ), 'DECLINE' ) ) {
+				return $json( array( 'error_code' => 0, 'message' => 'success', 'transaction_result' => array( 'processor_response_code' => '004', 'transaction_id' => 0 ) ) );
+			}
+			return $json( array( 'error_code' => 0, 'message' => 'success', 'transaction_result' => array( 'processor_response_code' => '000', 'transaction_id' => 880000 + count( T::$charges ), 'auth_number' => '0587923', 'last_4' => substr( (string) $body['card_number'], -4 ), 'amount' => $body['items'][0]['unit_price'] ?? 0 ) ) );
 		}
 		if ( false !== strpos( $url, '/v1/pr/create' ) ) {
 			return $json( array( 'error_code' => 0, 'message' => 'ok', 'pr_id' => 'PR' . wp_rand( 1000, 9999 ), 'pr_link' => 'https://direct.tranzila.com/pr/' . wp_generate_password( 12, false ) ) );

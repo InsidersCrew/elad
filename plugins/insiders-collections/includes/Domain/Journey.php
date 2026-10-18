@@ -566,6 +566,9 @@ final class Journey {
 		if ( ! $case || 'commitment' !== $case['phase'] || ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			return null;
 		}
+		if ( CardCharge::pending( $case_id ) ) {
+			return null; // the student was told the card will be charged on a date: no payment link meanwhile
+		}
 		if ( ! self::enabled() ) {
 			Db::update( 'cases', array( 'next_action_type' => 'journey_off', 'next_action_at' => null ), array( 'id' => $case_id ) );
 			return null; // nothing is planned while the journey is switched off; sync() plans once it is on
