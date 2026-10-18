@@ -1904,6 +1904,33 @@ $tests['P15'] = array( 'חיוב מהכרטיס: הודעה שלא נמסרה ב
 	T::eq( array( 1, 2 ), array( $s['apple_pay']['approved'], $s['card']['approved'] ), 'the statistics tell Apple Pay apart from ordinary cards' );
 } );
 
+$tests['P16'] = array( 'דיל שסומן lost עם סיבה אחרת: ההודעות נעצרות, התיק אצל נציג עם משימה, ואחרי חידוש לא נעצר שוב', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 661, 9661, '2026-08-01' );
+	ifd_student( 662, 9662, '2026-08-02' );
+	Journey::sync();
+	$c = student_case( 661 );
+	T::check( (bool) T::count( 'scheduled_actions', "case_id = " . (int) $c['id'] . " AND state = 'pending'" ), 'the journey planned a message' );
+	T::$pd_deals[9661]['status']      = 'lost';
+	T::$pd_deals[9661]['lost_reason'] = 'ביטול עסקה';
+	$r = Journey::refresh_deals();
+	$c = student_case( 661 );
+	T::eq( array( 1, 0, 'human_review', 'reach' ), array( $r['lost'], $r['declined'], $c['workflow_state'], $c['track'] ), 'another lost reason holds the case for a person' );
+	T::eq( 0, T::count( 'scheduled_actions', "case_id = " . (int) $c['id'] . " AND state = 'pending' AND type = 'send_journey'" ), 'no message goes out' );
+	T::eq( 1, T::count( 'tasks', "type = 'deal_lost' AND status = 'open' AND case_id = " . (int) $c['id'] ), 'a task explains what to decide' );
+	T::check( 'human_review' !== student_case( 662 )['workflow_state'], 'an open deal is untouched' );
+	T::eq( 0, Journey::refresh_deals()['lost'], 'the next read does not hold it again' );
+	Cases::resume( (int) $c['id'], (int) Workflow::get( (int) $c['id'] )['version'], 'עדיין בתהליך פתיחה' );
+	Journey::refresh_deals();
+	T::eq( 'active', student_case( 661 )['workflow_state'], 'a rep who resumed the case is not overruled' );
+	T::$pd_deals[9661]['lost_reason'] = 'לא מעוניין לפתוח חשבון';
+	Journey::refresh_deals();
+	T::eq( 'declined', student_case( 661 )['track'], 'changing the reason to the dedicated one still moves it to the declined track' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";

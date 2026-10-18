@@ -1109,7 +1109,7 @@
 			program_auto_charge_on_pay_request: field('program_auto_charge_on_pay_request', 'כשתלמיד לוחץ "אני רוצה לשלם": לאשר את החיוב ולשלוח את הקישור מיד', 'checkbox', { value: Number(st.program_auto_charge_on_pay_request) === 1, wide: true, help: 'כבוי: אחראי הגבייה מאשר ברשימה, והקישור יוצא ברגע האישור. פעיל: המערכת מאשרת לבד לפי המחירון, אחרי אותן בדיקות מול הדשבורד, והתלמיד מקבל את הקישור בתוך דקה.' }),
 			program_price_table: field('program_price_table', 'מחירון לפי תאריך ההסכם', 'textarea', { value: st.program_price_table, rows: 3, wide: true, help: 'שורה לכל מחירון: תאריך תחולה, מחיר מלא, דמי רישום. לדוגמה: 2026-08-01 980 100. תלמיד משלם את המחיר שהיה בתוקף בתאריך ההסכם שלו, פחות דמי הרישום.' }),
 			no_registration_label: field('no_registration_label', 'תווית בדיל לתלמיד שלא שילם דמי רישום', 'text', { value: st.no_registration_label, help: 'השם המדויק של התווית בפייפדרייב. לתלמיד עם התווית לא מפחיתים את דמי הרישום.' }),
-			declined_lost_reasons: field('declined_lost_reasons', 'סיבות lost שמעבירות למסלול "לא יפתח חשבון"', 'textarea', { value: st.declined_lost_reasons, rows: 2, help: 'שורה לכל סיבה, בדיוק כמו בפייפדרייב.' })
+			declined_lost_reasons: field('declined_lost_reasons', 'סיבות lost שמעבירות למסלול "לא יפתח חשבון"', 'textarea', { value: st.declined_lost_reasons, rows: 2, help: 'שורה לכל סיבה, בדיוק כמו בפייפדרייב. lost עם כל סיבה אחרת עוצר את ההודעות, מעביר את התיק לנציג ופותח משימה להחליט מה לעשות.' })
 		};
 		f.program_price_table.input.setAttribute('dir', 'ltr');
 		add(body, h('div', { class: 'icol-card' }, h('div', { class: 'icol-form' }, on.el), h('div', { class: 'icol-fields', style: 'margin-top:10px' }, Object.keys(f).map(function (k) { return f[k].el; })),

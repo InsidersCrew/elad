@@ -351,6 +351,7 @@ final class Journey {
 		$label   = Pipedrive::label_id( (string) Settings::get( 'no_registration_label' ) );
 		$reasons = self::declined_reasons();
 		$declined = 0;
+		$lost     = 0;
 		foreach ( $rows as $r ) {
 			$d = $res['deals'][ (int) $r['pipedrive_deal_id'] ] ?? null;
 			if ( ! $d ) {
@@ -381,9 +382,42 @@ final class Journey {
 			if ( 'lost' === $d['status'] && 'declined' !== $r['track'] && in_array( self::norm( $d['lost_reason'] ), $reasons, true ) ) {
 				self::decline( (int) $r['case_id'], 'pipedrive', 'הדיל סומן lost בפייפדרייב: ' . $d['lost_reason'] );
 				++$declined;
+			} elseif ( 'lost' === $d['status'] && 'declined' !== $r['track'] && self::lost_other( (int) $r['case_id'], (string) $d['lost_reason'] ) ) {
+				++$lost;
 			}
 		}
-		return array( 'deals' => count( $res['deals'] ), 'declined' => $declined, 'label_id' => $label );
+		return array( 'deals' => count( $res['deals'] ), 'declined' => $declined, 'lost' => $lost, 'label_id' => $label );
+	}
+
+	/**
+	 * Lost for any other reason (a cancellation, a refund, a duplicate deal): the
+	 * messages stop and a person decides. Once per case, so a rep who resumed the
+	 * case is not overruled by the next hourly read.
+	 */
+	private static function lost_other( int $case_id, string $reason ): bool {
+		$case = Workflow::get( $case_id );
+		$key  = 'deal_lost:' . $case_id;
+		if ( ! $case || 'closed' === $case['workflow_state'] || Db::value( 'SELECT id FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', $key ) ) {
+			return false;
+		}
+		$why = 'הדיל סומן lost בפייפדרייב' . ( '' !== trim( $reason ) ? ' עם הסיבה "' . trim( $reason ) . '"' : ' בלי סיבה' );
+		Scheduler::cancel_for_case( $case_id, 'deal_lost' );
+		if ( 'human_review' !== $case['workflow_state'] && Workflow::can( $case['workflow_state'], 'human_review' ) ) {
+			Workflow::transition( $case_id, 'human_review', $why, null, array(), 'journey' );
+		} else {
+			Workflow::touch( $case_id, array(), 'case.deal_lost', $why );
+		}
+		$first = preg_split( '/\R/', (string) Settings::get( 'declined_lost_reasons' ) )[0] ?? '';
+		Tasks::open(
+			$key,
+			'deal_lost',
+			array(
+				'case_id'     => $case_id,
+				'customer_id' => (int) $case['customer_id'],
+				'reason'      => $why . '. ההודעות לתלמיד נעצרו. אם התלמיד עזב, לסגור את התיק. אם הוא לא יפתח חשבון וצריך לשלם, לשנות בפייפדרייב את הסיבה ל"' . $first . '" ולחדש את התיק. אם הוא עדיין בתהליך פתיחה, לחדש את התיק.',
+			)
+		);
+		return true;
 	}
 
 	private static function norm( string $s ): string {
