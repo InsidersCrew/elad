@@ -1904,13 +1904,14 @@ $tests['P15'] = array( 'חיוב מהכרטיס: הודעה שלא נמסרה ב
 	T::eq( array( 1, 2 ), array( $s['apple_pay']['approved'], $s['card']['approved'] ), 'the statistics tell Apple Pay apart from ordinary cards' );
 } );
 
-$tests['P16'] = array( 'דיל שסומן lost עם סיבה אחרת: ההודעות נעצרות, התיק אצל נציג עם משימה, ואחרי חידוש לא נעצר שוב', function () {
+$tests['P16'] = array( 'דיל שסומן lost עם סיבה אחרת: ההודעות נעצרות, התיק אצל נציג עם משימה, ואחרי חידוש לא נעצר שוב; "אין מענה" ממשיך כרגיל', function () {
 	if ( $e = program_env() ) {
 		T::check( false, $e );
 		return;
 	}
 	ifd_student( 661, 9661, '2026-08-01' );
 	ifd_student( 662, 9662, '2026-08-02' );
+	ifd_student( 663, 9663, '2026-08-03', array( 'status' => 'lost', 'lost_reason' => 'אין  מענה' ) );
 	Journey::sync();
 	$c = student_case( 661 );
 	T::check( (bool) T::count( 'scheduled_actions', "case_id = " . (int) $c['id'] . " AND state = 'pending'" ), 'the journey planned a message' );
@@ -1922,6 +1923,9 @@ $tests['P16'] = array( 'דיל שסומן lost עם סיבה אחרת: ההוד�
 	T::eq( 0, T::count( 'scheduled_actions', "case_id = " . (int) $c['id'] . " AND state = 'pending' AND type = 'send_journey'" ), 'no message goes out' );
 	T::eq( 1, T::count( 'tasks', "type = 'deal_lost' AND status = 'open' AND case_id = " . (int) $c['id'] ), 'a task explains what to decide' );
 	T::check( 'human_review' !== student_case( 662 )['workflow_state'], 'an open deal is untouched' );
+	$c3 = student_case( 663 );
+	T::eq( array( false, 'reach', 0 ), array( 'human_review' === $c3['workflow_state'], $c3['track'], T::count( 'tasks', "type = 'deal_lost' AND case_id = " . (int) $c3['id'] ) ), 'lost with "no answer" goes on as usual' );
+	T::check( (bool) T::count( 'scheduled_actions', "case_id = " . (int) $c3['id'] . " AND state = 'pending'" ), 'and still has its next message planned' );
 	T::eq( 0, Journey::refresh_deals()['lost'], 'the next read does not hold it again' );
 	Cases::resume( (int) $c['id'], (int) Workflow::get( (int) $c['id'] )['version'], 'עדיין בתהליך פתיחה' );
 	Journey::refresh_deals();

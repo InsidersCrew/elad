@@ -350,6 +350,7 @@ final class Journey {
 		}
 		$label   = Pipedrive::label_id( (string) Settings::get( 'no_registration_label' ) );
 		$reasons = self::declined_reasons();
+		$keep    = self::reasons( 'journey_keep_lost_reasons' );
 		$declined = 0;
 		$lost     = 0;
 		foreach ( $rows as $r ) {
@@ -382,7 +383,7 @@ final class Journey {
 			if ( 'lost' === $d['status'] && 'declined' !== $r['track'] && in_array( self::norm( $d['lost_reason'] ), $reasons, true ) ) {
 				self::decline( (int) $r['case_id'], 'pipedrive', 'הדיל סומן lost בפייפדרייב: ' . $d['lost_reason'] );
 				++$declined;
-			} elseif ( 'lost' === $d['status'] && 'declined' !== $r['track'] && self::lost_other( (int) $r['case_id'], (string) $d['lost_reason'] ) ) {
+			} elseif ( 'lost' === $d['status'] && 'declined' !== $r['track'] && ! in_array( self::norm( $d['lost_reason'] ), $keep, true ) && self::lost_other( (int) $r['case_id'], (string) $d['lost_reason'] ) ) {
 				++$lost;
 			}
 		}
@@ -390,7 +391,8 @@ final class Journey {
 	}
 
 	/**
-	 * Lost for any other reason (a cancellation, a refund, a duplicate deal): the
+	 * Lost for any other reason (a cancellation, a refund, a duplicate deal; "no
+	 * answer" and the other reasons in journey_keep_lost_reasons go on as usual): the
 	 * messages stop and a person decides. Once per case, so a rep who resumed the
 	 * case is not overruled by the next hourly read.
 	 */
@@ -425,7 +427,12 @@ final class Journey {
 	}
 
 	public static function declined_reasons(): array {
-		return array_values( array_filter( array_map( array( self::class, 'norm' ), preg_split( '/\R/', (string) Settings::get( 'declined_lost_reasons' ) ) ) ) );
+		return self::reasons( 'declined_lost_reasons' );
+	}
+
+	/** A one-reason-per-line setting, normalized like the deal's lost reason. */
+	private static function reasons( string $setting ): array {
+		return array_values( array_filter( array_map( array( self::class, 'norm' ), preg_split( '/\R/', (string) Settings::get( $setting ) ) ) ) );
 	}
 
 	/**
