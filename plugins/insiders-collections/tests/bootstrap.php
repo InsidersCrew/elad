@@ -25,6 +25,7 @@ final class T {
 	public static array $tranzila_tx = array();  // index => report row
 	public static array $tranzila_stos = array(); // sto_id => sto
 	public static array $charges = array();       // bodies sent to transaction/credit_card/create
+	public static array $mails = array();         // wp_mail calls (captured, never sent)
 	public static array $fail_next = array();    // url-substring => 'timeout'|'500'|'401'
 	public static int $wati_seq = 0;
 	public static ?string $ai_reply = null;
@@ -45,6 +46,7 @@ final class T {
 		self::$http_log = array();
 		self::$tranzila_tx = array();
 		self::$charges     = array();
+		self::$mails       = array();
 		self::$tranzila_stos = array();
 		self::$fail_next = array();
 		self::$pd_persons = array();
@@ -249,6 +251,16 @@ final class T {
 		return $fail;
 	}
 }
+
+add_filter(
+	'pre_wp_mail',
+	static function ( $null, $atts ) {
+		T::$mails[] = $atts;
+		return true;
+	},
+	10,
+	2
+);
 
 /** HTTP mock: Tranzila reports/stos/pr, WATI sends. Every call is logged. */
 add_filter(

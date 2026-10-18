@@ -22,7 +22,9 @@ defined( 'ABSPATH' ) || exit;
  * falls back to the payment link. An unanswered call is never retried: a person checks Tranzila.
  *
  * Tranzila (2026-10-18): tokens are shared between the terminals and charged on the token terminal
- * (no ID or CVV). Apple Pay tokens are reset by Apple about every two weeks, so an older one is not used.
+ * (no ID or CVV). Apple Pay tokens are reset by Apple about every two weeks (Tranzila): by default they are
+ * still tried, a decline falls back to the link, and card_charge_stats shows how Apple Pay tokens fare.
+ * If WhatsApp cannot deliver the notice, it goes by email and the charge still runs (decision of 2026-10-18).
  */
 final class CardCharge {
 
@@ -63,7 +65,7 @@ final class CardCharge {
 			return array( 'card' => null, 'reason' => 'דוח העסקאות לא זמין: ' . $res['error'] );
 		}
 		$fee        = (int) ( Pricing::row_for( $signed )['registration'] ?? 0 );
-		$apple_days = max( 0, (int) Settings::get( 'apple_pay_token_days', 14 ) );
+		$apple_days = max( 0, (int) Settings::get( 'apple_pay_token_days' ) ); // 0 (the default) = no age limit
 		$why        = 'לא נמצא תשלום בכרטיס סביב תאריך ההסכם';
 		$best       = null;
 		foreach ( $res['rows'] as $r ) {
@@ -73,11 +75,11 @@ final class CardCharge {
 				continue;
 			}
 			$paid_on = substr( (string) $r['date'], 0, 10 );
-			if ( 'APPLE_PAY' === $r['broker'] && strtotime( $charge_date . ' UTC' ) - strtotime( $paid_on . ' UTC' ) > $apple_days * DAY_IN_SECONDS ) {
+			if ( $apple_days > 0 && 'APPLE_PAY' === $r['broker'] && strtotime( $charge_date . ' UTC' ) - strtotime( $paid_on . ' UTC' ) > $apple_days * DAY_IN_SECONDS ) {
 				$why = 'דמי הרישום שולמו ב-Apple Pay, והטוקן של אפל מתאפס בערך כל שבועיים';
 				continue;
 			}
-			$card = array( 'token' => $r['token'], 'month' => $mm, 'year' => $yy, 'last4' => substr( $r['token'], -4 ), 'index' => $r['index'], 'paid_on' => $paid_on, 'amount_minor' => (int) $r['amount_minor'] );
+			$card = array( 'token' => $r['token'], 'month' => $mm, 'year' => $yy, 'last4' => substr( $r['token'], -4 ), 'index' => $r['index'], 'paid_on' => $paid_on, 'amount_minor' => (int) $r['amount_minor'], 'broker' => (string) $r['broker'] );
 			if ( $fee && (int) $r['amount_minor'] === $fee ) {
 				return array( 'card' => $card, 'reason' => '' ); // the registration fee itself
 			}
@@ -117,9 +119,10 @@ final class CardCharge {
 		$guard = SendGuard::check( $case_id, array( 'template' => $tpl, 'is_reminder' => false ) );
 		// Same hard blocks as a reply with payment details; setup gaps block only a live send (display-only records a simulation).
 		$hard  = array_filter( $guard['blocking'], static fn( $b ) => in_array( $b['code'], array( 'opted_out', 'identity', 'shared_phone', 'no_phone', 'conversation_owner', 'delivery_unknown', 'no_permission' ), true ) || ( 'setup' === $b['scope'] && 'live' === $guard['mode'] ) );
-		if ( $missing || $hard ) {
-			// No notice, no charge: the card is never charged without telling the student first.
-			self::note( $case_id, 'הודעת החיוב מהכרטיס לא יכולה לצאת (' . implode( ', ', $missing ?: array_column( $hard, 'message' ) ) . '). ממשיכים בקישור תשלום.' );
+		$wa_ok = ! $missing && ! $hard;
+		if ( ! $wa_ok && ! self::email_address( $case ) ) {
+			// No notice by any channel, no charge: the card is never charged without telling the student first.
+			self::note( $case_id, 'הודעת החיוב מהכרטיס לא יכולה לצאת בוואטסאפ ואין מייל (' . implode( ', ', $missing ?: array_column( $hard, 'message' ) ) . '). ממשיכים בקישור תשלום.' );
 			return false;
 		}
 		$cred = Db::insert(
@@ -136,14 +139,24 @@ final class CardCharge {
 			)
 		);
 		Scheduler::cancel_for_case( $case_id, 'card_charge_planned' );
-		$message_id = Messaging::record_outbound( $case, $tpl, $text, $guard['mode'], 'system', null, $vars );
+		$message_id = null;
+		$email      = null;
+		if ( $wa_ok ) {
+			$message_id = Messaging::record_outbound( $case, $tpl, $text, $guard['mode'], 'system', null, $vars );
+		} else {
+			$email = self::email_notice( $case, $vars );
+			if ( ! $email['ok'] ) {
+				self::note( $case_id, 'הודעת החיוב לא יצאה בוואטסאפ וגם המייל נכשל. ממשיכים בקישור תשלום.' );
+				return false;
+			}
+		}
 		Scheduler::schedule(
 			self::ACTION,
 			Clock::local_to_ts( $date, '10:00' ),
 			'card_charge:' . $case_id . ':' . $item_id,
 			$case_id,
 			(int) $case['customer_id'],
-			array( 'item_id' => $item_id, 'credential_id' => $cred, 'notice_message_id' => $message_id, 'notice_mode' => $guard['mode'], 'notice_at' => Clock::utc(), 'source_index' => $card['index'] ),
+			array( 'item_id' => $item_id, 'credential_id' => $cred, 'notice_message_id' => $message_id, 'notice_mode' => $wa_ok ? $guard['mode'] : null, 'email_message_id' => $email['message_id'] ?? null, 'email_mode' => $email['mode'] ?? null, 'vars' => $vars, 'notice_at' => Clock::utc(), 'source_index' => $card['index'], 'broker' => $card['broker'] ),
 			null
 		);
 		Db::update( 'cases', array( 'next_action_type' => self::ACTION, 'next_action_at' => Clock::utc( Clock::local_to_ts( $date, '10:00' ) ) ), array( 'id' => $case_id ) );
@@ -174,9 +187,20 @@ final class CardCharge {
 		if ( $replied ) {
 			$stop[] = 'התלמיד הגיב אחרי הודעת החיוב';
 		}
-		$notice = Db::value( 'SELECT delivery_state FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', (int) ( $p['notice_message_id'] ?? 0 ) );
-		if ( in_array( $notice, array( 'failed', 'cancelled' ), true ) ) {
-			$stop[] = 'הודעת החיוב לא הגיעה לתלמיד';
+		$wa_failed = ! empty( $p['notice_message_id'] ) && in_array( Db::value( 'SELECT delivery_state FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', (int) $p['notice_message_id'] ), array( 'failed', 'cancelled' ), true );
+		if ( ( $wa_failed || empty( $p['notice_message_id'] ) ) && empty( $p['email_message_id'] ) && ! $stop ) {
+			// WhatsApp did not deliver and no email went yet (no status webhook in time): email now, charge a notice period later.
+			$email = self::email_notice( $case, (array) ( $p['vars'] ?? array() ) );
+			if ( ! $email['ok'] ) {
+				$stop[] = 'הודעת החיוב לא הגיעה בוואטסאפ, ואין מייל או שהמייל נכשל';
+			} else {
+				$p['email_message_id'] = $email['message_id'];
+				$p['email_mode']       = $email['mode'];
+				$date = Calendar::add_business_days( Clock::today(), max( 1, (int) Settings::get( 'card_charge_notice_days', 3 ) ), Policy::effective_or_draft() );
+				Scheduler::schedule( self::ACTION, Clock::local_to_ts( $date, '10:00' ), 'card_charge:' . $case_id . ':' . (int) $item['id'] . ':email', $case_id, (int) $case['customer_id'], $p, null );
+				self::note( $case_id, 'הודעת החיוב לא נמסרה בוואטסאפ ונשלחה במייל. החיוב נדחה ל-' . Journey::date_he( $date ) . '.' );
+				return 'done:postponed_for_email';
+			}
 		}
 		$agr  = Journey::agreement( $case );
 		$cust = Customers::get( (int) $case['customer_id'] );
@@ -198,14 +222,15 @@ final class CardCharge {
 			return 'done:no_token';
 		}
 		// A notice that was only simulated never leads to a real charge, even if the switches changed since.
-		if ( Settings::on( 'kill_switch' ) || Settings::on( 'display_only' ) || 'live' !== ( $p['notice_mode'] ?? '' ) ) {
+		$told = ( 'live' === ( $p['notice_mode'] ?? '' ) && ! $wa_failed ) || 'live' === ( $p['email_mode'] ?? '' );
+		if ( Settings::on( 'kill_switch' ) || Settings::on( 'display_only' ) || ! $told ) {
 			self::note( $case_id, 'סימולציה: היה מחויב הכרטיס שמסתיים ב-' . $cred['last4'] . ' בסך ' . Money::ils( $amount ) . ' (מצב תצוגה בלבד או מתג עצירה)' );
 			return 'done:simulated';
 		}
 		$terminal = (string) Settings::get( 'tranzila_token_charge_terminal', 'insiderstok' );
 		$dedupe   = 'icol-case-' . $case_id . '-item-' . (int) $item['id'];
 		$r        = Tranzila::charge_token( $terminal, $token, (int) $cred['expiry_month'], (int) $cred['expiry_year'], $amount, (string) $item['description'], $dedupe );
-		Audit::log( 'card_charge.result', 'case', $case_id, null, array( 'outcome' => $r['outcome'], 'response' => $r['response'], 'amount' => $amount, 'last4' => $cred['last4'] ), $r['error'] );
+		Audit::log( 'card_charge.result', 'case', $case_id, null, array( 'outcome' => $r['outcome'], 'response' => $r['response'], 'amount' => $amount, 'last4' => $cred['last4'], 'broker' => (string) ( $p['broker'] ?? '' ) ), $r['error'] );
 		if ( 'approved' === $r['outcome'] ) {
 			$pid = Db::transaction(
 				function () use ( $case, $terminal, $r, $amount, $cred, $item ) {
@@ -253,6 +278,76 @@ final class CardCharge {
 		$case = Workflow::get( $case_id );
 		if ( $case && 'human_review' !== $case['workflow_state'] && 'closed' !== $case['workflow_state'] ) {
 			Workflow::transition( $case_id, 'human_review', $reason, null, array(), 'card_charge' );
+		}
+	}
+
+	/** The student's email, when there is one and email contact was not refused. */
+	private static function email_address( array $case ): string {
+		$cust = Customers::get( (int) $case['customer_id'] );
+		$mail = trim( (string) ( $cust['email'] ?? '' ) );
+		return ( is_email( $mail ) && false !== Customers::permission( (int) $case['customer_id'], 'email' ) ) ? $mail : '';
+	}
+
+	/**
+	 * The same notice by email (wp_mail), recorded as a message on the case.
+	 *
+	 * @return array{ok:bool,message_id:?int,mode:string}
+	 */
+	private static function email_notice( array $case, array $vars ): array {
+		$to = self::email_address( $case );
+		if ( '' === $to || ! $vars ) {
+			return array( 'ok' => false, 'message_id' => null, 'mode' => '' );
+		}
+		[ $text ] = Templates::render( Templates::get( 'card_charge_notice' ), $vars );
+		$text     = preg_replace( '/אפשר לכתוב לנו כאן/u', 'אפשר להשיב למייל הזה או לכתוב לנו בוואטסאפ', $text );
+		$subject  = 'INSIDERS: חיוב על תוכנית הליווי ב-' . (string) ( $vars['charge_date'] ?? '' );
+		$live     = ! Settings::on( 'kill_switch' ) && ! Settings::on( 'display_only' );
+		$sent     = false;
+		if ( $live ) {
+			$html = '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">' . nl2br( esc_html( $text ) ) . '</div>';
+			$sent = (bool) wp_mail( $to, $subject, $html, array( 'Content-Type: text/html; charset=UTF-8' ) );
+		}
+		$id = Db::insert(
+			'messages',
+			array(
+				'customer_id'         => (int) $case['customer_id'],
+				'case_id'             => (int) $case['id'],
+				'provider'            => 'wp_mail',
+				'local_id'            => \Insiders\Collections\Support\Ids::uuid(),
+				'direction'           => 'out',
+				'channel'             => 'email',
+				'kind'                => 'commitment_reminder',
+				'template_key'        => 'card_charge_notice',
+				'body'                => $text,
+				'author_type'         => 'system',
+				'delivery_state'      => $live ? ( $sent ? 'accepted' : 'failed' ) : 'simulated',
+				'counts_toward_quota' => 0,
+				'occurred_at'         => Clock::utc(),
+				'created_at'          => Clock::utc(),
+				'updated_at'          => Clock::utc(),
+			)
+		);
+		return array( 'ok' => ! $live || $sent, 'message_id' => $id, 'mode' => $live ? 'live' : 'simulate' );
+	}
+
+	/** WATI reported the WhatsApp notice failed: the email goes now, so the charge date can stay. */
+	public static function on_notice_failed( int $message_id ): void {
+		$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE id = %d AND template_key = 'card_charge_notice' AND channel = 'whatsapp'", $message_id );
+		if ( ! $m ) {
+			return;
+		}
+		$a = Db::row( 'SELECT * FROM ' . Db::t( 'scheduled_actions' ) . " WHERE case_id = %d AND type = %s AND state = 'pending' ORDER BY id DESC LIMIT 1", (int) $m['case_id'], self::ACTION );
+		$p = $a ? (array) json_decode( (string) $a['payload'], true ) : array();
+		if ( ! $a || (int) ( $p['notice_message_id'] ?? 0 ) !== $message_id || ! empty( $p['email_message_id'] ) ) {
+			return;
+		}
+		$case  = Workflow::get( (int) $m['case_id'] );
+		$email = $case ? self::email_notice( $case, (array) ( $p['vars'] ?? array() ) ) : array( 'ok' => false );
+		if ( $email['ok'] ) {
+			$p['email_message_id'] = $email['message_id'];
+			$p['email_mode']       = $email['mode'];
+			Db::update( 'scheduled_actions', array( 'payload' => wp_json_encode( $p ), 'updated_at' => Clock::utc() ), array( 'id' => (int) $a['id'] ) );
+			self::note( (int) $m['case_id'], 'הודעת החיוב לא נמסרה בוואטסאפ ונשלחה במייל. מועד החיוב לא השתנה.' );
 		}
 	}
 

@@ -1805,7 +1805,7 @@ $tests['P13'] = array( 'חיוב מהכרטיס של דמי הרישום: הוד
 	T::tick();
 	pday( '2026-11-01', '09:30' );
 	T::tick();
-	Settings::set( array( 'cap_card_charge' => 1 ) );
+	Settings::set( array( 'cap_card_charge' => 1, 'apple_pay_token_days' => 14 ) ); // the age limit, on for this test
 	$q   = ProgramCharges::queue();
 	$ids = array_map( static fn( $p ) => (int) student_case( $p )['id'], array( 651, 652, 653, 654 ) );
 	T::as( 'collector' );
@@ -1864,6 +1864,44 @@ $tests['P14'] = array( 'חיוב מהכרטיס בלי תשובה מטרנזיל
 	T::check( (bool) Db::value( 'SELECT id FROM ' . Db::t( 'exceptions' ) . ' WHERE exception_key = %s', 'card_charge_unknown:' . $id ), 'an exception asks a person to check Tranzila' );
 	T::eq( 0, T::count( 'messages', "case_id = %d AND template_key IN ('program_charge_link','program_charge_reply','d_link','d_link_reply')", $id ), 'no payment link: the card may have been charged' );
 	T::eq( 1, count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'credit_card/create' ) ) ), 'the charge call was made once and never repeated' );
+} );
+
+$tests['P15'] = array( 'חיוב מהכרטיס: הודעה שלא נמסרה בוואטסאפ יוצאת במייל והחיוב מתבצע, Apple Pay נוסה כברירת מחדל, בלי וואטסאפ ההודעה יוצאת במייל', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	foreach ( array( 671 => 'Zt6a2b3c4d5e6f71111', 672 => 'Ap6a2b3c4d5e6f72222', 673 => 'Zt6a2b3c4d5e6f73333' ) as $p => $tok ) {
+		ifd_student( $p, 9000 + $p, '2026-08-01' );
+		T::$tranzila_tx[ 'reg' . $p ] = array( 'terminal' => 'insiders', 'index' => 'reg' . $p, 'amount' => 10000, 'currency' => '1', 'processor_response_code' => '000', 'txn_type' => 'DEBIT', 'tranmode' => 'A', 'transaction_date' => '2026-08-01', 'transaction_time' => '12:00:00', 'credit_card_token' => $tok, 'expiration_month' => '12', 'expiration_year' => '29', 'broker' => 672 === $p ? 'APPLE_PAY' : '', 'user_defined_5' => student_phone( $p ) );
+	}
+	Journey::sync();
+	T::tick();
+	pday( '2026-11-01', '09:30' );
+	T::tick();
+	Settings::set( array( 'cap_card_charge' => 1 ) );
+	// 673 refused WhatsApp: the notice goes by email.
+	$c3 = student_case( 673 );
+	\Insiders\Collections\Domain\Customers::set_permission( (int) $c3['customer_id'], 'whatsapp', false, 'test: asked to stop WhatsApp' );
+	T::as( 'collector' );
+	$res = ProgramCharges::approve( array_map( static fn( $p ) => (int) student_case( $p )['id'], array( 671, 672, 673 ) ), ProgramCharges::queue()['basis'] );
+	T::as_admin();
+	T::eq( 3, $res['by_card'], 'all three by card: Apple Pay is tried, and the student without WhatsApp is told by email' );
+	T::check( 1 === count( T::$mails ) && str_contains( (string) T::$mails[0]['subject'], '04/11/2026' ) && str_contains( (string) T::$mails[0]['message'], '3333' ), 'the WhatsApp-less student got the notice by email' );
+	T::tick();
+	// WATI reports that 671's WhatsApp notice failed: the email goes out now and the date stays.
+	$n1 = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'card_charge_notice' AND channel = 'whatsapp'", (int) student_case( 671 )['id'] );
+	T::wati( array( 'eventType' => 'templateMessageFailed', 'id' => 'st-' . $n1['id'], 'localMessageId' => $n1['provider_id'], 'failedDetail' => 'not a WhatsApp user' ) );
+	T::tick();
+	T::eq( 2, count( T::$mails ), 'the failed WhatsApp notice went out again by email' );
+	pday( '2026-11-04', '10:05' );
+	T::settle( 3 );
+	$tokens = array_column( T::$charges, 'card_number' );
+	sort( $tokens );
+	T::eq( array( 'Ap6a2b3c4d5e6f72222', 'Zt6a2b3c4d5e6f71111', 'Zt6a2b3c4d5e6f73333' ), $tokens, 'all three charged on the date in the notice' );
+	$m = new \ReflectionMethod( \Insiders\Collections\Admin\Diagnostics::class, 'card_charge_stats' );
+	$s = $m->invoke( null );
+	T::eq( array( 1, 2 ), array( $s['apple_pay']['approved'], $s['card']['approved'] ), 'the statistics tell Apple Pay apart from ordinary cards' );
 } );
 
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {

@@ -38,6 +38,9 @@ final class Processor {
 				$r = self::status( $p, 'failed' );
 				if ( $r ) {
 					$mid = self::find_message( $p );
+					if ( $mid ) {
+						\Insiders\Collections\Domain\CardCharge::on_notice_failed( (int) $mid );
+					}
 					Exceptions::open( 'delivery_failed:' . $mid, 'integration_failure', 'medium', 'WATI דיווח על כשל מסירה: ' . mb_substr( (string) ( $p['failedDetail'] ?? $p['failedCode'] ?? '' ), 0, 200 ), array( 'entity_type' => 'message', 'entity_id' => (int) $mid ) );
 				}
 				return $r ?? 'ignored';

@@ -32,7 +32,7 @@ final class Settings {
 		'tranzila_token_charge_terminal' => 'insiderstok', // Tranzila: charge saved tokens here (no ID or CVV)
 		'tranzila_phone_field'        => 'phone',         // the terminal's user-defined field that holds the phone
 		'tranzila_dcdisable'          => 0,   // field 20 defined as DCdisable on the token terminal
-		'apple_pay_token_days'        => 14,  // Apple resets its tokens about every two weeks
+		'apple_pay_token_days'        => 0,   // 0 = try Apple Pay tokens too (Tranzila: Apple resets them about every two weeks; a decline falls back to the link)
 		'cap_pipedrive_tasks'         => 0,
 		'cap_email_alerts'            => 0,
 		'tranzila_terminals'          => 'insiders,insiderstok',

@@ -63,6 +63,9 @@ final class Diagnostics {
 			case 'tranzila_txn':
 				self::tranzila_txn();
 				break;
+			case 'card_charge_stats':
+				self::dump( self::card_charge_stats() );
+				break;
 			case 'tranzila_samples':
 				self::tranzila_samples();
 				break;
@@ -101,7 +104,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}
@@ -251,6 +254,23 @@ final class Diagnostics {
 			echo "שדות שהדוח מחזיר (ערכים מזהים מוסתרים):\n";
 			self::print_fields( (array) $row, '  ', 0, $labels );
 		}
+	}
+
+	/** How saved-card charges fared, Apple Pay against ordinary cards: the real answer to "does an old Apple Pay token still charge". */
+	private static function card_charge_stats(): array {
+		$rows = \Insiders\Collections\Support\Db::rows( 'SELECT after_json FROM ' . \Insiders\Collections\Support\Db::t( 'audit_log' ) . " WHERE action = 'card_charge.result' ORDER BY id" );
+		$out  = array( 'apple_pay' => array( 'approved' => 0, 'declined' => 0, 'unknown' => 0, 'codes' => array() ), 'card' => array( 'approved' => 0, 'declined' => 0, 'unknown' => 0, 'codes' => array() ) );
+		foreach ( $rows as $r ) {
+			$a   = (array) json_decode( (string) $r['after_json'], true );
+			$k   = 'APPLE_PAY' === ( $a['broker'] ?? '' ) ? 'apple_pay' : 'card';
+			$o   = in_array( $a['outcome'] ?? '', array( 'approved', 'declined', 'unknown' ), true ) ? $a['outcome'] : 'unknown';
+			++$out[ $k ][ $o ];
+			if ( 'declined' === $o && '' !== (string) ( $a['response'] ?? '' ) ) {
+				$out[ $k ]['codes'][ (string) $a['response'] ] = ( $out[ $k ]['codes'][ (string) $a['response'] ] ?? 0 ) + 1;
+			}
+		}
+		$out['skipped_apple_pay_by_age'] = (int) \Insiders\Collections\Support\Db::value( 'SELECT COUNT(*) FROM ' . \Insiders\Collections\Support\Db::t( 'audit_log' ) . " WHERE action = 'card_charge.skip' AND reason LIKE %s", '%Apple Pay%' );
+		return $out;
 	}
 
 	/** The last notifications Tranzila sent, as stored (card material already removed), for mapping the cycle and pr_id fields. */
