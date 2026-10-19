@@ -118,6 +118,7 @@ final class Schema {
 				next_charge_date DATE NULL,
 				last_charge_date DATE NULL,
 				card_expiry CHAR(7) NULL,
+				token_hash CHAR(64) NULL,
 				seen_at DATETIME NULL,
 				PRIMARY KEY (terminal, sto_id),
 				KEY status (status)",
@@ -666,6 +667,8 @@ final class Schema {
 			\Insiders\Collections\Support\Audit::log( 'settings.report_amount_unit', 'system', 0, array( 'unit' => 'major' ), array( 'unit' => 'minor' ), 'שדרוג: דוח העסקאות של טרנזילה מחזיר אגורות (100 ₪ = 10000)' );
 		}
 		$out['settings.report_amount_unit'] = true;
+		// v7: a declined charge in the report finds its standing order by the token's hash.
+		$out['sto_book.token_hash'] = self::ensure_column( 'sto_book', 'token_hash', 'CHAR(64) NULL AFTER card_expiry' );
 		return $out;
 	}
 

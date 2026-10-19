@@ -38,7 +38,7 @@ final class T {
 		foreach ( array_keys( Schema::tables() ) as $t ) {
 			$wpdb->query( 'TRUNCATE TABLE ' . Db::t( $t ) );
 		}
-		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner', 'icol_pd_label', 'icol_cashflow_sync', 'icol_terminal_history' ) as $o ) {
+		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner', 'icol_pd_label', 'icol_cashflow_sync', 'icol_terminal_history', 'icol_sto_failing' ) as $o ) {
 			delete_option( $o );
 		}
 		delete_option( 'icol_settings' );

@@ -29,6 +29,7 @@ final class Cashflow {
 	public const CONTRACT   = 1;
 	private const SYNC      = 'icol_cashflow_sync';
 	private const HISTORY   = 'icol_terminal_history';
+	private const FAILING   = 'icol_sto_failing';
 	private const STALE     = 36 * HOUR_IN_SECONDS;
 	private const BACK      = 6;  // complete months of history kept per terminal
 	private const PER_RUN   = 3;  // months fetched per terminal in one run, so a first backfill stays short
@@ -90,6 +91,8 @@ final class Cashflow {
 				'next_charge_date'    => self::date( $s['next_charge_date'] ?? $s['next_charge_date_time'] ?? null ),
 				'last_charge_date'    => self::date( $s['last_charge_date'] ?? $s['last_charge_date_time'] ?? null ),
 				'card_expiry'         => $exp,
+				// The token itself is never kept: its hash matches a declined charge in the report to this order.
+				'token_hash'          => '' !== (string) ( $card['token'] ?? '' ) ? self::token_hash( (string) $card['token'] ) : null,
 				'seen_at'             => $now,
 			);
 			// insert/update, not a prepared upsert: prepare() turns a NULL date into '', which strict MySQL refuses.
@@ -125,19 +128,32 @@ final class Cashflow {
 		for ( $i = 0; $i <= self::BACK; $i++ ) {
 			$months[] = self::shift( $cur, -$i );
 		}
-		$done = 0;
+		$done        = 0;
+		$book        = (string) Settings::get( 'tranzila_my_billing_terminal' );
+		$last        = array();
+		$seen_recent = false;
 		foreach ( Processor::terminals() as $terminal ) {
 			$n = 0;
 			foreach ( $months as $i => $m ) {
 				$have = $hist[ $terminal ][ $m ] ?? null;
-				// A month cached before declines were counted is fetched once more.
-				if ( $i > 1 && $have && ! empty( $have['complete'] ) && isset( $have['failed_minor'] ) ) {
+				// A month cached before declines were followed per order is fetched once more.
+				if ( $i > 1 && $have && ! empty( $have['complete'] ) && isset( $have['failed_attempts'] ) ) {
 					continue;
 				}
 				if ( $n >= self::PER_RUN ) {
 					break;
 				}
-				$hist[ $terminal ][ $m ] = self::month_totals( $terminal, $m, $m === $cur );
+				$t = self::month_totals( $terminal, $m, $m === $cur );
+				if ( $i <= 1 && $terminal === $book ) {
+					foreach ( $t['_last'] as $key => $l ) {
+						if ( ! isset( $last[ $key ] ) || $l['at'] >= $last[ $key ]['at'] ) {
+							$last[ $key ] = $l;
+						}
+					}
+					$seen_recent = true;
+				}
+				unset( $t['_last'] );
+				$hist[ $terminal ][ $m ] = $t;
 				++$n;
 				++$done;
 			}
@@ -146,21 +162,32 @@ final class Cashflow {
 			ksort( $hist[ $terminal ] );
 		}
 		update_option( self::HISTORY, $hist, false );
+		if ( $seen_recent ) {
+			// Orders whose latest charge in this month and the last one was declined.
+			update_option( self::FAILING, array_keys( array_filter( $last, static fn( $l ) => ! $l['ok'] ) ), false );
+		}
 		$state = self::state();
 		$state['history'] = array( 'attempt_at' => $state['history']['attempt_at'] ?? Clock::utc(), 'ok_at' => Clock::utc(), 'error' => null, 'months_fetched' => $done );
 		update_option( self::SYNC, $state, false );
 		return array( 'months_fetched' => $done );
 	}
 
+	/**
+	 * One month of one terminal. A charge is followed per order (the STO id when the report
+	 * has it, else the card token): declines before a success the same month were retries,
+	 * not lost money. 'failed' counts the orders that never went through that month;
+	 * 'failed_attempts' counts every decline. In September 2026 insiderstok had 51 declines
+	 * for about 100 orders, so declines are not one per order and cycle.
+	 */
 	private static function month_totals( string $terminal, string $month, bool $current ): array {
-		$from  = $month . '-01';
-		$to    = $current ? Clock::today() : gmdate( 'Y-m-t', strtotime( $from ) );
-		$debit = 0;
-		$credit = 0;
-		$count = 0;
-		$failed = 0;
-		$failed_count = 0;
-		$other = array();
+		$from     = $month . '-01';
+		$to       = $current ? Clock::today() : gmdate( 'Y-m-t', strtotime( $from ) );
+		$debit    = 0;
+		$credit   = 0;
+		$count    = 0;
+		$attempts = array( 'minor' => 0, 'count' => 0 );
+		$keys     = array();
+		$other    = array();
 		for ( $page = 1; $page <= self::MAX_PAGES; $page++ ) {
 			$r = Tranzila::transactions( $terminal, array( 'transaction_start_date' => $from, 'transaction_end_date' => $to ), $page, 500 );
 			if ( ! $r['ok'] ) {
@@ -173,13 +200,23 @@ final class Cashflow {
 					continue;
 				}
 				$type = strtoupper( (string) ( $row['txn_type'] ?? 'DEBIT' ) );
-				if ( ! ResponseCodes::is_success( $n['response'] ) ) {
-					// A declined charge: on the standing-order terminal one per order and cycle (no retry,
-					// Tranzila 2026-10-18); on the sales terminal a buyer may decline and then pay.
-					if ( in_array( $type, array( 'DEBIT', 'FORCE' ), true ) && '' !== $n['response'] ) {
-						$failed += abs( (int) $n['amount_minor'] );
-						++$failed_count;
+				$ok   = ResponseCodes::is_success( $n['response'] );
+				if ( in_array( $type, array( 'DEBIT', 'FORCE' ), true ) && ( $ok || '' !== $n['response'] ) ) {
+					$key = '' !== $n['sto_id'] ? 's:' . $n['sto_id'] : ( '' !== $n['token'] ? 't:' . self::token_hash( $n['token'] ) : 'i:' . $n['index'] );
+					$k   = $keys[ $key ] ?? array( 'ok' => false, 'at' => '', 'last_ok' => false, 'fail_minor' => 0 );
+					$k['ok'] = $k['ok'] || $ok;
+					if ( ! $ok ) {
+						$k['fail_minor'] = abs( (int) $n['amount_minor'] );
+						$attempts['minor'] += abs( (int) $n['amount_minor'] );
+						++$attempts['count'];
 					}
+					if ( $n['date'] >= $k['at'] ) {
+						$k['at']      = $n['date'];
+						$k['last_ok'] = $ok;
+					}
+					$keys[ $key ] = $k;
+				}
+				if ( ! $ok ) {
 					continue;
 				}
 				if ( in_array( $type, array( 'DEBIT', 'FORCE' ), true ) ) {
@@ -189,23 +226,32 @@ final class Cashflow {
 					$credit += abs( (int) $n['amount_minor'] );
 					++$count;
 				} else {
-					$other[ $type ] = ( $other[ $type ] ?? 0 ) + 1; // a verification or a void moves no money we can count
+					$other[ $type ] = ( $other[ $type ] ?? 0 ) + 1; // a verification (J2) or a void moves no money we can count
 				}
 			}
 			if ( count( $r['rows'] ) < 500 ) {
 				break;
 			}
 		}
+		$lost = array_filter( $keys, static fn( $k ) => ! $k['ok'] );
 		return array(
-			'debit_minor'  => $debit,
-			'credit_minor' => $credit,
-			'count'        => $count,
-			'failed_minor' => $failed,
-			'failed_count' => $failed_count,
-			'other_types'  => $other,
-			'complete'     => ! $current && Clock::today() > gmdate( 'Y-m-d', strtotime( $to . ' +5 days' ) ),
-			'fetched_at'   => Clock::utc(),
+			'debit_minor'           => $debit,
+			'credit_minor'          => $credit,
+			'count'                 => $count,
+			'failed_minor'          => array_sum( array_column( $lost, 'fail_minor' ) ),
+			'failed_count'          => count( $lost ),
+			'failed_attempts_minor' => $attempts['minor'],
+			'failed_attempts'       => $attempts['count'],
+			'other_types'           => $other,
+			'complete'              => ! $current && Clock::today() > gmdate( 'Y-m-d', strtotime( $to . ' +5 days' ) ),
+			'fetched_at'            => Clock::utc(),
+			// Not stored: the last result per order, for the at-risk check of the forecast.
+			'_last'                 => array_map( static fn( $k ) => array( 'at' => $k['at'], 'ok' => $k['last_ok'] ), $keys ),
 		);
+	}
+
+	public static function token_hash( string $token ): string {
+		return hash( 'sha256', 'icol-sto|' . $token );
 	}
 
 	/* -------------------------------------------------------------- forecast */
@@ -238,6 +284,7 @@ final class Cashflow {
 		}
 		$unsupported = 0;
 		$failing     = self::failing_stos();
+		$declined    = array_flip( (array) get_option( self::FAILING, array() ) );
 		$today       = Clock::today();
 		foreach ( Db::rows( 'SELECT * FROM ' . Db::t( 'sto_book' ) . " WHERE status = 'active'" ) as $s ) {
 			$charges = self::charges( $s, end( $range ) );
@@ -253,7 +300,7 @@ final class Cashflow {
 				$reason = null;
 				if ( $s['card_expiry'] && $m > $s['card_expiry'] ) {
 					$reason = 'card_expired';
-				} elseif ( isset( $failing[ $s['terminal'] . ':' . $s['sto_id'] ] ) ) {
+				} elseif ( isset( $failing[ $s['terminal'] . ':' . $s['sto_id'] ] ) || isset( $declined[ 's:' . $s['sto_id'] ] ) || ( $s['token_hash'] && isset( $declined[ 't:' . $s['token_hash'] ] ) ) ) {
 					$reason = 'recent_failure';
 				} elseif ( $s['next_charge_date'] && $s['next_charge_date'] < gmdate( 'Y-m-d', strtotime( $today . ' -3 days' ) ) ) {
 					$reason = 'overdue'; // Tranzila did not move the date on: the order is stuck
@@ -294,7 +341,7 @@ final class Cashflow {
 						'debit'       => round( $h['debit_minor'] / 100, 2 ),
 						'credit'      => round( $h['credit_minor'] / 100, 2 ),
 						'count'       => (int) $h['count'],
-						'failed'      => array( 'gross' => round( (int) ( $h['failed_minor'] ?? 0 ) / 100, 2 ), 'count' => (int) ( $h['failed_count'] ?? 0 ) ),
+						'failed'      => array( 'gross' => round( (int) ( $h['failed_minor'] ?? 0 ) / 100, 2 ), 'count' => (int) ( $h['failed_count'] ?? 0 ), 'attempts' => (int) ( $h['failed_attempts'] ?? 0 ), 'attempts_gross' => round( (int) ( $h['failed_attempts_minor'] ?? 0 ) / 100, 2 ) ),
 						'complete'    => (bool) $h['complete'],
 						'fetched_at'  => $h['fetched_at'],
 						'other_types' => $h['other_types'],
@@ -306,7 +353,7 @@ final class Cashflow {
 		$history = array();
 		foreach ( $hist as $terminal => $by_month ) {
 			foreach ( $by_month as $m => $h ) {
-				$history[ $terminal ][ $m ] = array( 'gross' => round( ( $h['debit_minor'] - $h['credit_minor'] ) / 100, 2 ), 'count' => (int) $h['count'], 'failed' => round( (int) ( $h['failed_minor'] ?? 0 ) / 100, 2 ), 'failed_count' => (int) ( $h['failed_count'] ?? 0 ), 'complete' => (bool) $h['complete'] );
+				$history[ $terminal ][ $m ] = array( 'gross' => round( ( $h['debit_minor'] - $h['credit_minor'] ) / 100, 2 ), 'count' => (int) $h['count'], 'failed' => round( (int) ( $h['failed_minor'] ?? 0 ) / 100, 2 ), 'failed_count' => (int) ( $h['failed_count'] ?? 0 ), 'failed_attempts' => (int) ( $h['failed_attempts'] ?? 0 ), 'complete' => (bool) $h['complete'] );
 			}
 		}
 		$stale = static fn( ?string $at ) => ! $at || Clock::now() - (int) Clock::ts( $at ) > self::STALE;
