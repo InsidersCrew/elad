@@ -716,18 +716,23 @@ $tests['AT44'] = array( 'תשלום של החודש הבא', function () {
 	T::eq( 1, T::count( 'exceptions', "type = 'payment_without_debt'" ), 'sent to manual allocation' );
 } );
 
-$tests['AT45'] = array( 'כרטיס עודכן במסוף אחר', function () {
+$tests['AT45'] = array( 'כרטיס עודכן במסוף אחר: לא הוכחה, חוץ משני המסופים שחולקים טוקנים', function () {
 	Settings::set( array( 'tranzila_pr_match_field' => 'pr_id' ) );
 	[ $c, $o, $case ] = failed_charge( '1001', '036' );
 	T::as( 'collector' );
 	$item = (int) Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) );
 	$r = Payments::manual_verification( array( 'customer_id' => $c, 'amount' => '490', 'method' => 'card_other', 'evidence_ref' => 'X2', 'allocations' => array( array( 'debt_item_id' => $item, 'amount' => '490' ) ) ) );
-	CardTasks::store_credential( (int) $r['payment_id'], 'insiders', 'tok-other-terminal', '0428' );
+	$cred = CardTasks::store_credential( (int) $r['payment_id'], 'shop2', 'tok-other-terminal', '0428' );
 	T::$tranzila_stos['5001'] = array( 'sto_id' => 5001, 'card' => array( 'token' => 'tok-other-terminal' ) );
 	$t   = (int) Db::value( 'SELECT id FROM ' . Db::t( 'card_update_tasks' ) );
 	$res = CardTasks::verify_with_provider( $t );
 	T::eq( false, $res['verified'], 'token from another terminal is not proof' );
 	T::eq( 'update_required', Db::value( 'SELECT card_status FROM ' . Db::t( 'recurring_orders' ) ), 'order not marked updated' );
+	// insiders and insiderstok share tokens (Tranzila 2026-10-18): a token from a payment link is proof there.
+	Db::exec( 'DELETE FROM ' . Db::t( 'card_credentials' ) . ' WHERE id = %d', (int) $cred );
+	CardTasks::store_credential( (int) $r['payment_id'], 'insiders', 'tok-other-terminal', '0428' );
+	$res = CardTasks::verify_with_provider( $t );
+	T::eq( array( true, 'verified' ), array( $res['verified'], Db::value( 'SELECT card_status FROM ' . Db::t( 'recurring_orders' ) ) ), 'a token from the sales terminal verifies the standing order on the token terminal' );
 } );
 
 // ---- Additions beyond the spec's list (improvements in spec v1.1) ----

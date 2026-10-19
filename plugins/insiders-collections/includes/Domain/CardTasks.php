@@ -170,7 +170,9 @@ final class CardTasks {
 
 	/**
 	 * Upgrade to "verified" only when Tranzila shows this standing order now uses the
-	 * token from the source payment, on the same terminal (AT45: another terminal is not proof).
+	 * token from the source payment. A token is bound to its terminal (AT45), except
+	 * between the terminals Tranzila shares tokens across (insiders and insiderstok,
+	 * answer of 2026-10-18): a payment-link token is then valid for the standing order.
 	 */
 	public static function verify_with_provider( int $task_id ): array {
 		$t    = Db::row( 'SELECT * FROM ' . Db::t( 'card_update_tasks' ) . ' WHERE id = %d', $task_id );
@@ -179,7 +181,8 @@ final class CardTasks {
 		if ( ! $cred ) {
 			return array( 'verified' => false, 'reason' => 'אין טוקן שמור מהתשלום, לא ניתן להשוות' );
 		}
-		if ( $cred['terminal'] !== $o['terminal'] ) {
+		$shared = array_filter( array_map( 'trim', explode( ',', (string) \Insiders\Collections\Support\Settings::get( 'tranzila_shared_token_terminals' ) ) ) );
+		if ( $cred['terminal'] !== $o['terminal'] && ! ( in_array( $cred['terminal'], $shared, true ) && in_array( $o['terminal'], $shared, true ) ) ) {
 			return array( 'verified' => false, 'reason' => 'הטוקן נוצר במסוף ' . $cred['terminal'] . ' וההוראה במסוף ' . $o['terminal'] . ', טוקן קשור למסוף' );
 		}
 		$sto = TranzilaClient::get_sto( $o['terminal'], $o['sto_id'] );
@@ -190,7 +193,8 @@ final class CardTasks {
 		if ( '' === $token ) {
 			return array( 'verified' => false, 'reason' => 'טרנזילה לא החזירה טוקן להוראה' );
 		}
-		if ( ! hash_equals( $cred['fingerprint'], Crypto::fingerprint( $o['terminal'] . '|' . $token ) ) ) {
+		// The fingerprint is keyed by the terminal the token came from.
+		if ( ! hash_equals( $cred['fingerprint'], Crypto::fingerprint( $cred['terminal'] . '|' . $token ) ) ) {
 			return array( 'verified' => false, 'reason' => 'הטוקן בהוראה שונה מהטוקן של התשלום' );
 		}
 		Db::update( 'card_update_tasks', array( 'state' => 'verified', 'confirmation_type' => 'verified', 'confirmed_at' => Clock::utc(), 'updated_at' => Clock::utc() ), array( 'id' => $task_id ) );

@@ -37,6 +37,7 @@ final class Settings {
 		'cap_email_alerts'            => 0,
 		'tranzila_terminals'          => 'insiders,insiderstok',
 		'tranzila_my_billing_terminal' => 'insiderstok',
+		'tranzila_shared_token_terminals' => 'insiders,insiderstok', // Tranzila 2026-10-18: a token from one works on the other
 		// My Billing notifications carry no cycle/installment id (verified 2026-10). Strategies:
 		// manual   = every event needs a person to map it (safe default, AT05)
 		// schedule = derive the cycle from the STO schedule (first_charge_date/charge_dom); ambiguity -> manual
