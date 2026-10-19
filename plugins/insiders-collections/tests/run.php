@@ -1963,8 +1963,9 @@ $tests['C01'] = array( 'תזרים צפוי לדשבורד ההכנסות: ספ�
 	$c4 = $case();
 	$item( $c4, 45000 );
 	// The sales terminal: September has a sale, a refund, a decline and a verification; October one sale so far.
-	foreach ( array( array( 'S1', '2026-09-10', 10000, '000', 'DEBIT' ), array( 'S2', '2026-09-20', 2000, '000', 'CREDIT' ), array( 'S3', '2026-09-21', 9000, '004', 'DEBIT' ), array( 'S4', '2026-09-22', 100, '000', 'VERIFY' ), array( 'S5', '2026-10-02', 5000, '000', 'DEBIT' ) ) as [ $ix, $d, $amt, $code, $type ] ) {
-		T::$tranzila_tx[ $ix ] = array( 'terminal' => 'insiders', 'index' => $ix, 'transaction_date' => $d, 'amount' => $amt, 'processor_response_code' => $code, 'txn_type' => $type );
+	foreach ( array( array( 'S1', '2026-09-10', 10000, '000', 'DEBIT' ), array( 'S2', '2026-09-20', 2000, '000', 'CREDIT' ), array( 'S3', '2026-09-21', 9000, '004', 'DEBIT' ), array( 'S4', '2026-09-22', 100, '000', 'VERIFY' ), array( 'S5', '2026-10-02', 5000, '000', 'DEBIT' ), array( 'K1', '2026-09-02', 24722, '000', 'DEBIT', 'insiderstok' ), array( 'K2', '2026-09-25', 8000, '051', 'DEBIT', 'insiderstok' ) ) as $tx ) {
+		[ $ix, $d, $amt, $code, $type ] = $tx;
+		T::$tranzila_tx[ $ix ] = array( 'terminal' => $tx[5] ?? 'insiders', 'index' => $ix, 'transaction_date' => $d, 'amount' => $amt, 'processor_response_code' => $code, 'txn_type' => $type );
 	}
 	T::tick();
 	$f = apply_filters( 'ifd_cashflow_forecast', null, array( 'from' => '2026-10', 'months' => 6 ) );
@@ -1976,6 +1977,8 @@ $tests['C01'] = array( 'תזרים צפוי לדשבורד ההכנסות: ספ�
 	T::eq( array( 530.0, 2, 1 ), array( $f['open_unscheduled']['gross'], $f['open_unscheduled']['count'], $f['unsupported_stos'] ), 'open balances with no date (the failed charge too) are one figure, a yearly order is counted as unknown' );
 	T::eq( array( 80.0, 2, true, array( 'VERIFY' => 1 ) ), array( $m['2026-10']['actual'] ? $f['history']['insiders']['2026-09']['gross'] : null, $f['history']['insiders']['2026-09']['count'], $f['history']['insiders']['2026-09']['complete'], get_option( 'icol_terminal_history' )['insiders']['2026-09']['other_types'] ), 'September on the sales terminal: sale minus refund, the decline and the verification left out' );
 	T::eq( array( 50.0, false ), array( $m['2026-10']['actual']['insiders']['gross'], $m['2026-10']['actual']['insiders']['complete'] ), 'October so far, marked incomplete' );
+	T::eq( array( 90.0, 1 ), array( $f['history']['insiders']['2026-09']['failed'], $f['history']['insiders']['2026-09']['failed_count'] ), 'a declined sale is counted apart, never as income' );
+	T::eq( array( 247.22, 80.0, 1 ), array( $f['history']['insiderstok']['2026-09']['gross'], $f['history']['insiderstok']['2026-09']['failed'], $f['history']['insiderstok']['2026-09']['failed_count'] ), 'the standing-order terminal: charged and failed in the same month' );
 	$book = Db::row( 'SELECT * FROM ' . Db::t( 'sto_book' ) . " WHERE sto_id = '7001'" );
 	T::check( ! preg_grep( '/tok7001|שם פרטי|5551234/u', array_map( 'strval', $book ) ), 'the book keeps no token, name or phone' );
 	unset( T::$tranzila_stos['7002'] );

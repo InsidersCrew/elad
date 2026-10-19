@@ -2,7 +2,7 @@
 
 תוסף התשלומים (insiders-collections) כבר מחובר לטרנזילה. הוא מושך את ספר הוראות הקבע ואת הסיכומים החודשיים של שני המסופים, ומגיש אותם לדשבורד ההכנסות דרך מסנן. הדשבורד לא צריך מפתחות של טרנזילה ולא צריך לפנות אליה בעצמו.
 
-נבנה בגרסה 0.3.4 של תוסף התשלומים, מול insiders-finance-dashboard 0.63.5.
+נבנה בגרסה 0.3.5 של תוסף התשלומים, מול insiders-finance-dashboard 0.63.5.
 
 ## איך קוראים
 
@@ -40,7 +40,7 @@ array(
 			'at_risk'     => array( 'gross' => 1236.10, 'count' => 5, 'reasons' => array( 'card_expired' => 2, 'recent_failure' => 3 ) ),
 			'collections' => array( 'gross' => 2640.00, 'count' => 3, 'kinds' => array( 'card_charge' => 2, 'promise' => 1 ) ),
 			'actual'      => array( // רק בחודש הנוכחי ובחודשים שעברו
-				'insiders'    => array( 'gross' => 15300.00, 'debit' => 15600.00, 'credit' => 300.00, 'count' => 160, 'complete' => false, 'fetched_at' => '…', 'other_types' => array( 'VERIFY' => 4 ) ),
+				'insiders'    => array( 'gross' => 15300.00, 'debit' => 15600.00, 'credit' => 300.00, 'count' => 160, 'failed' => array( 'gross' => 900.00, 'count' => 6 ), 'complete' => false, 'fetched_at' => '…', 'other_types' => array( 'VERIFY' => 4 ) ),
 				'insiderstok' => array( /* אותו מבנה */ ),
 			),
 		),
@@ -49,7 +49,7 @@ array(
 	'open_unscheduled' => array( 'gross' => 5300.00, 'count' => 7 ),
 	'unsupported_stos' => 0,
 	'history' => array(
-		'insiders' => array( '2026-04' => array( 'gross' => 14200.00, 'count' => 150, 'complete' => true ), /* … עד החודש הנוכחי */ ),
+		'insiders' => array( '2026-04' => array( 'gross' => 14200.00, 'count' => 150, 'failed' => 700.00, 'failed_count' => 5, 'complete' => true ), /* … עד החודש הנוכחי */ ),
 		'insiderstok' => array( /* … */ ),
 	),
 )
@@ -64,6 +64,7 @@ array(
 | `collections` | מה שתוסף התשלומים צפוי לגבות בתאריך ידוע: חיוב מהכרטיס השמור שכבר תוזמן (`card_charge`), והבטחת תשלום שאושרה (`promise`) | הערכה. חיוב יכול להידחות ותלמיד יכול לא לעמוד בהבטחה |
 | `open_unscheduled` | יתרות פתוחות שאושרו לגבייה ואין להן תאריך. סכום אחד, בלי חלוקה לחודשים | לא לפזר על חודשים כאילו התאריך ידוע |
 | `actual` | דוח העסקאות של טרנזילה לכל מסוף: עסקאות שאושרו (קוד 000). `debit` הוא סכום עסקאות DEBIT ו-FORCE, `credit` הוא סכום הזיכויים (CREDIT), ו-`gross` הוא ההפרש. סוגים אחרים, כמו בדיקת כרטיס, לא נספרים ומופיעים ב-`other_types` | `complete: false` אומר שהחודש עוד רץ, או שעברו פחות מחמישה ימים מסופו (זיכויים מאוחרים). להציג כ-estimated עד שהוא נעשה true |
+| `actual.*.failed` | חיובים שנדחו באותו חודש (קוד שאינו 000), בסכום שניסו לחייב. אף פעם לא נספרים כהכנסה | במסוף insiderstok כל דחייה היא חיוב של הוראה במחזור אחד, כי My Billing לא מנסה שוב (טרנזילה, 18.10.2026). לכן הסכום שתוכנן לחודש שעבר הוא `debit` ועוד `failed`. במסוף insiders דחייה היא ניסיון של קונה, שאולי שילם מיד אחר כך, ולכן היא לא הכנסה שהלכה לאיבוד |
 | `unsupported_stos` | הוראות שאינן חודשיות או שאין להן תאריך חיוב | לא נכללות באף סכום. אם המספר גדול מ-0, צריך לציין שהתחזית חסרה |
 
 ## מסוף insiders (מיני חנות)

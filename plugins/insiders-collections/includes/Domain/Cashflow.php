@@ -130,7 +130,8 @@ final class Cashflow {
 			$n = 0;
 			foreach ( $months as $i => $m ) {
 				$have = $hist[ $terminal ][ $m ] ?? null;
-				if ( $i > 1 && $have && ! empty( $have['complete'] ) ) {
+				// A month cached before declines were counted is fetched once more.
+				if ( $i > 1 && $have && ! empty( $have['complete'] ) && isset( $have['failed_minor'] ) ) {
 					continue;
 				}
 				if ( $n >= self::PER_RUN ) {
@@ -157,6 +158,8 @@ final class Cashflow {
 		$debit = 0;
 		$credit = 0;
 		$count = 0;
+		$failed = 0;
+		$failed_count = 0;
 		$other = array();
 		for ( $page = 1; $page <= self::MAX_PAGES; $page++ ) {
 			$r = Tranzila::transactions( $terminal, array( 'transaction_start_date' => $from, 'transaction_end_date' => $to ), $page, 500 );
@@ -166,10 +169,19 @@ final class Cashflow {
 			foreach ( $r['rows'] as $row ) {
 				$row = (array) $row;
 				$n   = Tranzila::normalize_report_row( $row );
-				if ( ! ResponseCodes::is_success( $n['response'] ) || null === $n['amount_minor'] ) {
+				if ( null === $n['amount_minor'] ) {
 					continue;
 				}
 				$type = strtoupper( (string) ( $row['txn_type'] ?? 'DEBIT' ) );
+				if ( ! ResponseCodes::is_success( $n['response'] ) ) {
+					// A declined charge: on the standing-order terminal one per order and cycle (no retry,
+					// Tranzila 2026-10-18); on the sales terminal a buyer may decline and then pay.
+					if ( in_array( $type, array( 'DEBIT', 'FORCE' ), true ) && '' !== $n['response'] ) {
+						$failed += abs( (int) $n['amount_minor'] );
+						++$failed_count;
+					}
+					continue;
+				}
 				if ( in_array( $type, array( 'DEBIT', 'FORCE' ), true ) ) {
 					$debit += abs( (int) $n['amount_minor'] );
 					++$count;
@@ -188,6 +200,8 @@ final class Cashflow {
 			'debit_minor'  => $debit,
 			'credit_minor' => $credit,
 			'count'        => $count,
+			'failed_minor' => $failed,
+			'failed_count' => $failed_count,
 			'other_types'  => $other,
 			'complete'     => ! $current && Clock::today() > gmdate( 'Y-m-d', strtotime( $to . ' +5 days' ) ),
 			'fetched_at'   => Clock::utc(),
@@ -280,6 +294,7 @@ final class Cashflow {
 						'debit'       => round( $h['debit_minor'] / 100, 2 ),
 						'credit'      => round( $h['credit_minor'] / 100, 2 ),
 						'count'       => (int) $h['count'],
+						'failed'      => array( 'gross' => round( (int) ( $h['failed_minor'] ?? 0 ) / 100, 2 ), 'count' => (int) ( $h['failed_count'] ?? 0 ) ),
 						'complete'    => (bool) $h['complete'],
 						'fetched_at'  => $h['fetched_at'],
 						'other_types' => $h['other_types'],
@@ -291,7 +306,7 @@ final class Cashflow {
 		$history = array();
 		foreach ( $hist as $terminal => $by_month ) {
 			foreach ( $by_month as $m => $h ) {
-				$history[ $terminal ][ $m ] = array( 'gross' => round( ( $h['debit_minor'] - $h['credit_minor'] ) / 100, 2 ), 'count' => (int) $h['count'], 'complete' => (bool) $h['complete'] );
+				$history[ $terminal ][ $m ] = array( 'gross' => round( ( $h['debit_minor'] - $h['credit_minor'] ) / 100, 2 ), 'count' => (int) $h['count'], 'failed' => round( (int) ( $h['failed_minor'] ?? 0 ) / 100, 2 ), 'failed_count' => (int) ( $h['failed_count'] ?? 0 ), 'complete' => (bool) $h['complete'] );
 			}
 		}
 		$stale = static fn( ?string $at ) => ! $at || Clock::now() - (int) Clock::ts( $at ) > self::STALE;
