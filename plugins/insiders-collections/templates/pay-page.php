@@ -34,16 +34,16 @@ $icons = array(
 
 // Copy and icon per state, as delivered. 'icon' => [tone, glyph]; no red anywhere.
 $screens = array(
-	'ready'     => array( 'title' => '' !== $name ? 'היי ' . $name : 'היי', 'text' => 'זה פירוט התשלום שמופיע אצלנו כפתוח.' ),
-	'changed'   => array( 'title' => 'הסכום עודכן', 'text' => 'מאז שנשלח הקישור הסכום השתנה. זה הסכום העדכני לתשלום.' ),
-	'returned'  => array( 'title' => 'קיבלנו את התשלום בטרנזילה', 'text' => 'אין צורך לשלם שוב.', 'icon' => array( 'ok', 'check' ) ),
-	'paid'      => array( 'title' => 'התשלום כבר התקבל', 'text' => 'לא נדרשת פעולה נוספת. תודה.', 'icon' => array( 'ok', 'check' ) ),
-	'checking'  => array( 'title' => 'בודקים את מצב התשלום', 'text' => 'זה לוקח רגע. כדי לא לחייב פעמיים, אפשר לנסות שוב בעוד כמה דקות.', 'icon' => array( 'wait', 'clock' ), 'wa' => true ),
-	'on_hold'   => array( 'title' => 'נציג מטפל בנושא', 'text' => 'כרגע התשלום בבדיקה אצל הצוות שלנו. נחזור אליך בוואטסאפ.', 'icon' => array( 'wait', 'person' ), 'wa' => true ),
-	'expired'   => array( 'title' => 'הקישור כבר לא בתוקף', 'text' => 'אפשר לכתוב לנו בוואטסאפ ונשלח קישור עדכני.', 'icon' => array( 'info', 'link' ), 'wa' => true ),
-	'not_found' => array( 'title' => 'לא מצאנו את הקישור', 'text' => 'ייתכן שהקישור הועתק חלקית. אפשר לכתוב לנו בוואטסאפ ונשלח קישור חדש.', 'icon' => array( 'info', 'search' ), 'wa' => true ),
-	'paused'    => array( 'title' => 'הדף לא זמין כרגע', 'text' => 'אפשר לנסות שוב בעוד כמה דקות, או לכתוב לנו בוואטסאפ.', 'icon' => array( 'info', 'pause' ), 'wa' => true ),
-	'error'     => array( 'title' => 'משהו השתבש בדרך', 'text' => 'לא בוצע חיוב. אפשר לכתוב לנו בוואטסאפ ונעזור להשלים את התשלום.', 'icon' => array( 'info', 'info' ), 'wa' => true ),
+	'ready'     => array( 'title' => '' !== $name ? 'היי ' . $name : 'היי', 'text' => 'זה הסכום שנשאר לשלם.' ),
+	'changed'   => array( 'title' => 'הסכום עודכן', 'text' => 'הסכום השתנה מאז שנשלח הקישור. זה הסכום לתשלום עכשיו.' ),
+	'returned'  => array( 'title' => 'התשלום התקבל בטרנזילה', 'text' => 'אין צורך לשלם שוב.', 'icon' => array( 'ok', 'check' ) ),
+	'paid'      => array( 'title' => 'התשלום כבר התקבל', 'text' => 'לא צריך לעשות שום דבר נוסף. תודה.', 'icon' => array( 'ok', 'check' ) ),
+	'checking'  => array( 'title' => 'בודקים את התשלום', 'text' => 'זה לוקח כמה דקות. כדי למנוע חיוב כפול, כדאי לחזור לדף הזה בעוד כמה דקות ולא לשלם שוב בינתיים.', 'icon' => array( 'wait', 'clock' ), 'wa' => true ),
+	'on_hold'   => array( 'title' => 'התשלום בבדיקה', 'text' => 'מישהו מהצוות שלנו בודק את התשלום ויחזור בוואטסאפ.', 'icon' => array( 'wait', 'person' ), 'wa' => true ),
+	'expired'   => array( 'title' => 'הקישור כבר לא בתוקף', 'text' => 'אפשר לבקש קישור חדש בוואטסאפ.', 'icon' => array( 'info', 'link' ), 'wa' => true ),
+	'not_found' => array( 'title' => 'הקישור לא נמצא', 'text' => 'ייתכן שהקישור לא הועתק במלואו. אפשר לבקש קישור חדש בוואטסאפ.', 'icon' => array( 'info', 'search' ), 'wa' => true ),
+	'paused'    => array( 'title' => 'הדף לא זמין כרגע', 'text' => 'כדאי לנסות שוב בעוד כמה דקות, או לפנות אלינו בוואטסאפ.', 'icon' => array( 'info', 'pause' ), 'wa' => true ),
+	'error'     => array( 'title' => 'התשלום לא הושלם', 'text' => 'לא בוצע חיוב. אפשר לפנות אלינו בוואטסאפ ונעזור להשלים את התשלום.', 'icon' => array( 'info', 'info' ), 'wa' => true ),
 );
 $sc      = $screens[ $state ] ?? $screens['error'];
 $payable = in_array( $state, array( 'ready', 'changed' ), true );
@@ -55,9 +55,9 @@ $fmt     = static fn( int $minor ) => Money::format( $minor );
 $row     = static fn( array $it ) => '<li><span>' . esc_html( $it['description'] ) . '</span><span>' . esc_html( $fmt( (int) $it['amount_minor'] ) . ' ' . $cur ) . '</span></li>';
 $wa_btn  = static function () use ( $wa_url, $icons ) {
 	if ( '' === $wa_url ) {
-		return '<p class="note">אפשר להשיב להודעה שקיבלת מאיתנו בוואטסאפ.</p>';
+		return '<p class="note">אפשר להשיב להודעה ששלחנו בוואטסאפ.</p>';
 	}
-	return '<div class="actions"><a class="btn2" href="' . esc_url( $wa_url ) . '">' . $icons['chat'] . 'לכתוב לנו בוואטסאפ</a></div>';
+	return '<div class="actions"><a class="btn2" href="' . esc_url( $wa_url ) . '">' . $icons['chat'] . 'פנייה בוואטסאפ</a></div>';
 };
 ?><!doctype html>
 <html lang="he" dir="rtl">
@@ -166,7 +166,7 @@ html:has(.scr.light){background:#F4F7FB}
 		<?php if ( 'returned' === $state ) : ?>
 		<ul class="steps">
 			<li class="done"><i aria-hidden="true"><?php echo $icons['check']; // phpcs:ignore ?></i>התשלום נקלט בטרנזילה</li>
-			<li class="next"><i aria-hidden="true"></i>אישור סופי יישלח אליך בוואטסאפ</li>
+			<li class="next"><i aria-hidden="true"></i>אישור סופי יישלח בוואטסאפ</li>
 		</ul>
 		<?php endif; ?>
 
@@ -177,7 +177,7 @@ html:has(.scr.light){background:#F4F7FB}
 			<?php if ( 1 === count( $items ) ) : ?><div class="prod"><?php echo esc_html( $items[0]['description'] ); ?></div><?php endif; ?>
 		</div>
 		<?php if ( 'changed' === $state && $sent > 0 && $sent !== $amount ) : ?>
-		<div class="was"><?php echo $icons['info']; // phpcs:ignore ?><span><?php echo esc_html( 'בהודעה שקיבלת הופיע סכום של ' . $fmt( $sent ) . ' ' . $cur . '. ' . ( $sent > $amount ? 'חלק מהתשלום כבר התקבל.' : 'מאז נוסף תשלום שהגיע מועדו.' ) ); ?></span></div>
+		<div class="was"><?php echo $icons['info']; // phpcs:ignore ?><span><?php echo esc_html( 'בהודעה ששלחנו הופיע סכום של ' . $fmt( $sent ) . ' ' . $cur . '. ' . ( $sent > $amount ? 'חלק מהתשלום כבר התקבל.' : 'מאז הגיע מועד של תשלום נוסף.' ) ); ?></span></div>
 		<?php endif; ?>
 		<?php if ( count( $items ) > 1 ) : ?>
 		<ul class="items">
@@ -200,23 +200,23 @@ html:has(.scr.light){background:#F4F7FB}
 		<?php if ( $can_pay ) : ?>
 		<form class="actions" method="post" action="<?php echo esc_url( $action ); ?>" id="pay-form">
 			<input type="hidden" name="t" value="<?php echo esc_attr( $form_token ); ?>">
-			<button class="btn" type="submit" id="pay-go">להמשך לתשלום מאובטח<?php echo $icons['arrow']; // phpcs:ignore ?></button>
+			<button class="btn" type="submit" id="pay-go">מעבר לתשלום מאובטח<?php echo $icons['arrow']; // phpcs:ignore ?></button>
 			<div class="trust"><?php echo $icons['lock']; // phpcs:ignore ?><span>התשלום מתבצע בעמוד המאובטח של טרנזילה. פרטי הכרטיס לא נשמרים אצלנו.</span></div>
 		</form>
 		<div class="leaving" aria-hidden="true">
 			<div class="spin"></div>
-			<h1 class="ttl">מעבירים לעמוד התשלום המאובטח</h1>
-			<p class="txt">של טרנזילה, חברת הסליקה שלנו. זה לוקח כמה שניות.</p>
+			<h1 class="ttl">מעבירים לעמוד התשלום של טרנזילה</h1>
+			<p class="txt">טרנזילה היא חברת הסליקה שלנו. זה לוקח כמה שניות.</p>
 		</div>
 		<?php elseif ( $payable ) : ?>
-			<p class="note">כרגע אין תשלום מקוון לפריט הזה. נשמח לסדר את זה איתך בוואטסאפ.</p>
+			<p class="note">את התשלום הזה אי אפשר להשלים כאן. אפשר לפנות אלינו בוואטסאפ ונסדר אותו יחד.</p>
 			<?php echo $wa_btn(); // phpcs:ignore -- escaped inside ?>
 		<?php elseif ( ! empty( $sc['wa'] ) ) : ?>
 			<?php echo $wa_btn(); // phpcs:ignore -- escaped inside ?>
 		<?php endif; ?>
 	</main>
 	<?php if ( $can_pay && '' !== $wa_url ) : ?>
-	<div class="help">שאלה על התשלום? <a href="<?php echo esc_url( $wa_url ); ?>">לכתוב לנו בוואטסאפ</a></div>
+	<div class="help">שאלות על התשלום? <a href="<?php echo esc_url( $wa_url ); ?>">אפשר לפנות אלינו בוואטסאפ</a></div>
 	<?php endif; ?>
 	<?php if ( '' !== $a11y_url ) : ?>
 	<div class="foot"><a href="<?php echo esc_url( $a11y_url ); ?>">הצהרת נגישות</a></div>
