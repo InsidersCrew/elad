@@ -36,6 +36,7 @@ final class Tasks {
 		'deal_lost'          => array( 'label' => 'הדיל סומן lost בפייפדרייב: להחליט על התיק', 'due_days' => 1 ),
 		'program_credit'     => array( 'label' => 'זיכוי לפי תנאי התוכנית', 'due_days' => 2 ),
 		'approve_charge'     => array( 'label' => 'אישור חיוב: התלמיד ביקש לשלם', 'due_days' => 0 ),
+		'mb_mark_handled'    => array( 'label' => 'סימון עסקה שטופלה ב-My Billing', 'due_days' => 0 ),
 	);
 
 	public static function open( string $task_key, string $type, array $opts = array() ): int {

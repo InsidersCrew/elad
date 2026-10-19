@@ -2010,6 +2010,17 @@ $tests['C01'] = array( 'תזרים צפוי לדשבורד ההכנסות: ספ�
 	T::check( str_contains( (string) Cashflow::state()['stos']['error'], 'ריקה' ), 'and the error is kept for the dashboard' );
 } );
 
+$tests['X14'] = array( 'חיוב של הוראת קבע ששולם בנפרד: משימה לסמן את העסקה שנכשלה כ"טופלה" ב-My Billing', function () {
+	[ $c, $o, $case ] = failed_charge( '1001', '004' );
+	T::eq( 0, T::count( 'tasks', "type = 'mb_mark_handled'" ), 'nothing to mark while the charge is unpaid' );
+	T::as( 'collector' );
+	$item = (int) Db::value( 'SELECT id FROM ' . Db::t( 'debt_items' ) );
+	Payments::manual_verification( array( 'customer_id' => $c, 'amount' => '490', 'method' => 'card_other', 'evidence_ref' => 'X3', 'allocations' => array( array( 'debt_item_id' => $item, 'amount' => '490' ) ) ) );
+	$reason = (string) Db::value( 'SELECT reason FROM ' . Db::t( 'tasks' ) . " WHERE type = 'mb_mark_handled'" );
+	T::check( str_contains( $reason, '5001' ) && str_contains( $reason, '1001' ) && str_contains( $reason, 'סימון עסקה שטופלה' ), 'the task names the order, the failed transaction and the button' );
+	T::eq( 1, T::count( 'tasks', "type = 'mb_mark_handled' AND status = 'open'" ), 'one task per item' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";

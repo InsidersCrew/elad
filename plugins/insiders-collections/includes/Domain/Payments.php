@@ -181,7 +181,39 @@ final class Payments {
 				array( 'entity_type' => 'payment', 'entity_id' => $payment_id, 'customer_id' => $p['customer_id'] ? (int) $p['customer_id'] : null )
 			);
 		}
+		self::mark_handled_tasks( $payment_id );
 		CardTasks::maybe_create( $payment_id );
+	}
+
+	/**
+	 * A failed standing-order charge paid some other way (a link, by phone) must be marked
+	 * in My Billing, or Tranzila may charge it again after a card update. Tranzila's answer
+	 * (2026-10-19): My Billing → the failed charge → "טיפול ידני" → "סימון עסקה שטופלה".
+	 * There is no API for it, so a person does it, one task per item.
+	 */
+	private static function mark_handled_tasks( int $payment_id ): void {
+		$p = Ledger::payment( $payment_id );
+		if ( ! $p || 'sto' === $p['origin'] || 'verified' !== $p['status'] ) {
+			return;
+		}
+		$items = Db::rows(
+			'SELECT d.id, d.case_id, d.due_at, o.sto_id, o.terminal FROM ' . Db::t( 'allocations' ) . ' a JOIN ' . Db::t( 'debt_items' ) . ' d ON d.id = a.debt_item_id JOIN ' . Db::t( 'cases' ) . ' c ON c.id = d.case_id LEFT JOIN ' . Db::t( 'recurring_orders' ) . " o ON o.id = c.recurring_order_id
+			 WHERE a.payment_id = %d AND a.amount_minor > 0 AND d.collection_owner = 'my_billing'",
+			$payment_id
+		);
+		foreach ( $items as $it ) {
+			$tx = array_column( Db::rows( 'SELECT transaction_index FROM ' . Db::t( 'charge_attempts' ) . " WHERE debt_item_id = %d AND transaction_index <> '' ORDER BY occurred_at", (int) $it['id'] ), 'transaction_index' );
+			Tasks::open(
+				'mb_handled:' . (int) $it['id'],
+				'mb_mark_handled',
+				array(
+					'case_id'     => (int) $it['case_id'],
+					'customer_id' => $p['customer_id'] ? (int) $p['customer_id'] : null,
+					'priority'    => 'high',
+					'reason'      => 'החיוב של ' . gmdate( 'm/Y', strtotime( $it['due_at'] ) ) . ' שולם בנפרד. בממשק My Billing של ' . ( $it['terminal'] ?: 'מסוף הוראות הקבע' ) . ( $it['sto_id'] ? ', הוראה ' . $it['sto_id'] : '' ) . ( $tx ? ', עסקה ' . implode( ', ', $tx ) : '' ) . ': ללחוץ "טיפול ידני" ואז "סימון עסקה שטופלה". בלי הסימון טרנזילה עלולים לחייב את החודש הזה שוב.',
+				)
+			);
+		}
 	}
 
 	/** Refund / chargeback (AT37): linked reversal rows, review state, no automatic outreach. */
