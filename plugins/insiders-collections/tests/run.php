@@ -1163,6 +1163,7 @@ $tests['G05'] = array( 'הגדרה ראשונה בלי wp-config: בעלים מ�
 use Insiders\Collections\Domain\Journey;
 use Insiders\Collections\Domain\Pricing;
 use Insiders\Collections\Domain\ProgramCharges;
+use Insiders\Collections\Domain\Cashflow;
 use Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard;
 
 /** IFD fixtures, Pipedrive and the journey switched on. Returns an error text when IFD is missing. */
@@ -1933,6 +1934,67 @@ $tests['P16'] = array( 'דיל שסומן lost עם סיבה אחרת: ההוד�
 	T::$pd_deals[9661]['lost_reason'] = 'לא מעוניין לפתוח חשבון';
 	Journey::refresh_deals();
 	T::eq( 'declined', student_case( 661 )['track'], 'changing the reason to the dedicated one still moves it to the declined track' );
+} );
+
+$tests['C01'] = array( 'תזרים צפוי לדשבורד ההכנסות: ספר הוראות הקבע, סיכון לפי תוקף כרטיס וכשל, גבייה מתוכננת, היסטוריה לפי מסוף', function () {
+	T::eq( null, apply_filters( 'ifd_cashflow_forecast', null, array() ), 'nothing before the first sync: the dashboard shows "missing", not zero' );
+	Settings::set( array( 'cashflow_sync' => 1 ) );
+	$sto = static fn( int $id, string $amount, int $n, string $first, int $dom, string $next, int $em, int $ey, string $freq = 'monthly' ) => array( 'sto_id' => $id, 'terminal_name' => 'insiderstok', 'sto_status' => 'active', 'sto_payments_number' => $n, 'charge_frequency' => $freq, 'first_charge_date' => $first, 'charge_dom' => $dom, 'next_charge_date' => $next . ' 00:00:00', 'charge_amount' => $amount, 'card' => array( 'token' => 'tok' . $id, 'expire_month' => $em, 'expire_year' => $ey ), 'client' => array( 'name' => 'שם פרטי', 'phone_number' => '5551234' ), 'item' => array( 'price_currency' => 'ILS', 'vat_percent' => 18 ) );
+	T::$tranzila_stos = array(
+		'7001' => $sto( 7001, '247.2200', 36, '2025-12-02', 2, '2026-11-02', 12, 27 ),
+		'7002' => $sto( 7002, '100.00', 12, '2026-01-15', 15, '2026-10-15', 12, 2026 ),
+		'7003' => $sto( 7003, '50', 0, '2026-05-20', 20, '2026-11-20', 12, 2026 ),
+		'7004' => $sto( 7004, '1200', 0, '2026-01-01', 1, '2027-01-01', 1, 2030, 'yearly' ),
+		'7005' => $sto( 7005, '80', 0, '2026-03-25', 25, '2026-10-25', 1, 2030 ),
+	);
+	// 7005 failed last month and is being collected here.
+	$cust = T::customer();
+	$ro   = Db::insert( 'recurring_orders', array( 'customer_id' => $cust, 'terminal' => 'insiderstok', 'sto_id' => '7005', 'created_at' => Clock::utc() ) );
+	$case = static fn( array $o = array() ) => Db::insert( 'cases', $o + array( 'customer_id' => $cust, 'case_key' => 'cf-' . wp_generate_password( 8, false ), 'source_type' => 'other', 'workflow_state' => 'active', 'created_at' => Clock::utc() ) );
+	$item = static fn( int $c, int $minor, string $owner = 'manual' ) => Db::insert( 'debt_items', array( 'case_id' => $c, 'due_at' => '2026-09-25', 'original_amount_minor' => $minor, 'finance_state' => 'open', 'collection_owner' => $owner, 'approved_at' => Clock::utc(), 'cached_balance_minor' => $minor, 'created_at' => Clock::utc() ) );
+	$c1 = $case( array( 'recurring_order_id' => $ro ) );
+	$item( $c1, 8000, 'my_billing' );
+	$c2 = $case();
+	$i2 = $item( $c2, 88000 );
+	Db::insert( 'scheduled_actions', array( 'case_id' => $c2, 'type' => 'card_charge', 'run_at' => '2026-10-14 07:00:00', 'state' => 'pending', 'idempotency_key' => 'cf-charge', 'payload' => wp_json_encode( array( 'item_id' => $i2 ) ), 'created_at' => Clock::utc() ) );
+	$c3 = $case();
+	$item( $c3, 30000 );
+	Db::insert( 'promises', array( 'case_id' => $c3, 'promised_at' => '2026-11-05', 'state' => 'approved', 'created_at' => Clock::utc() ) );
+	$c4 = $case();
+	$item( $c4, 45000 );
+	// The sales terminal: September has a sale, a refund, a decline and a verification; October one sale so far.
+	foreach ( array( array( 'S1', '2026-09-10', 10000, '000', 'DEBIT' ), array( 'S2', '2026-09-20', 2000, '000', 'CREDIT' ), array( 'S3', '2026-09-21', 9000, '004', 'DEBIT' ), array( 'S4', '2026-09-22', 100, '000', 'VERIFY' ), array( 'S5', '2026-10-02', 5000, '000', 'DEBIT' ) ) as [ $ix, $d, $amt, $code, $type ] ) {
+		T::$tranzila_tx[ $ix ] = array( 'terminal' => 'insiders', 'index' => $ix, 'transaction_date' => $d, 'amount' => $amt, 'processor_response_code' => $code, 'txn_type' => $type );
+	}
+	T::tick();
+	$f = apply_filters( 'ifd_cashflow_forecast', null, array( 'from' => '2026-10', 'months' => 6 ) );
+	T::check( is_array( $f ) && 1 === $f['contract'] && false === $f['sources']['stos']['stale'] && 5 === $f['sources']['stos']['count'], 'the forecast is served after the sync' );
+	$m = array_column( $f['months'], null, 'month' );
+	T::eq( array( 100.0, 1, 80.0, 880.0, true ), array( $m['2026-10']['scheduled']['gross'], $m['2026-10']['scheduled']['count'], $m['2026-10']['at_risk']['gross'], $m['2026-10']['collections']['gross'], $m['2026-10']['partial'] ), 'October: the order still ahead of today, the failing one at risk, the scheduled card charge' );
+	T::eq( array( 397.22, 80.0, array( 'recent_failure' => 1 ), 300.0, array( 'promise' => 1 ) ), array( $m['2026-11']['scheduled']['gross'], $m['2026-11']['at_risk']['gross'], $m['2026-11']['at_risk']['reasons'], $m['2026-11']['collections']['gross'], $m['2026-11']['collections']['kinds'] ), 'November: three orders, the approved promise on its date' );
+	T::eq( array( 247.22, 130.0, array( 'card_expired' => 1, 'recent_failure' => 1 ) ), array( $m['2027-01']['scheduled']['gross'], $m['2027-01']['at_risk']['gross'], $m['2027-01']['at_risk']['reasons'] ), 'January: the twelve payments of 7002 are over, the card of 7003 has expired' );
+	T::eq( array( 530.0, 2, 1 ), array( $f['open_unscheduled']['gross'], $f['open_unscheduled']['count'], $f['unsupported_stos'] ), 'open balances with no date (the failed charge too) are one figure, a yearly order is counted as unknown' );
+	T::eq( array( 80.0, 2, true, array( 'VERIFY' => 1 ) ), array( $m['2026-10']['actual'] ? $f['history']['insiders']['2026-09']['gross'] : null, $f['history']['insiders']['2026-09']['count'], $f['history']['insiders']['2026-09']['complete'], get_option( 'icol_terminal_history' )['insiders']['2026-09']['other_types'] ), 'September on the sales terminal: sale minus refund, the decline and the verification left out' );
+	T::eq( array( 50.0, false ), array( $m['2026-10']['actual']['insiders']['gross'], $m['2026-10']['actual']['insiders']['complete'] ), 'October so far, marked incomplete' );
+	$book = Db::row( 'SELECT * FROM ' . Db::t( 'sto_book' ) . " WHERE sto_id = '7001'" );
+	T::check( ! preg_grep( '/tok7001|שם פרטי|5551234/u', array_map( 'strval', $book ) ), 'the book keeps no token, name or phone' );
+	unset( T::$tranzila_stos['7002'] );
+	Cashflow::sync_stos();
+	$m = array_column( apply_filters( 'ifd_cashflow_forecast', null, array( 'from' => '2026-11', 'months' => 1 ) )['months'], null, 'month' );
+	T::eq( array( 297.22, 'inactive' ), array( $m['2026-11']['scheduled']['gross'], Db::value( 'SELECT status FROM ' . Db::t( 'sto_book' ) . " WHERE sto_id = '7002'" ) ), 'an order that left the active list stops counting' );
+	T::$tranzila_stos = array();
+	Db::exec( 'UPDATE ' . Db::t( 'sto_book' ) . " SET status = 'active'" );
+	for ( $i = 0; $i < 12; $i++ ) {
+		Db::insert( 'sto_book', array( 'terminal' => 'insiderstok', 'sto_id' => 'x' . $i, 'status' => 'active', 'frequency' => 'monthly', 'seen_at' => Clock::utc() ) );
+	}
+	$err = '';
+	try {
+		Cashflow::sync_stos();
+	} catch ( \RuntimeException $e ) {
+		$err = $e->getMessage();
+	}
+	T::check( str_contains( $err, 'ריקה' ) && 0 === (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'sto_book' ) . " WHERE status = 'inactive'" ), 'an empty answer for a large book is an error, nothing is marked cancelled' );
+	T::check( str_contains( (string) Cashflow::state()['stos']['error'], 'ריקה' ), 'and the error is kept for the dashboard' );
 } );
 
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {

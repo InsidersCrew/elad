@@ -66,6 +66,17 @@ final class Diagnostics {
 			case 'card_charge_stats':
 				self::dump( self::card_charge_stats() );
 				break;
+			case 'cashflow':
+				if ( ! empty( $_GET['sync'] ) ) {
+					try {
+						self::dump( array( 'sync' => \Insiders\Collections\Domain\Cashflow::sync() ) );
+					} catch ( \Throwable $e ) {
+						echo 'sync failed: ' . $e->getMessage() . "\n";
+					}
+				}
+				// Exactly what the finance dashboard receives from the filter.
+				self::dump( apply_filters( 'ifd_cashflow_forecast', null, array( 'months' => 6 ) ) ?? 'אין עדיין נתונים: הסנכרון לא הצליח אף פעם. להריץ עם &sync=1' );
+				break;
 			case 'tranzila_samples':
 				self::tranzila_samples();
 				break;
@@ -104,7 +115,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}

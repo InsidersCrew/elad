@@ -70,6 +70,23 @@ final class Client {
 	}
 
 	/**
+	 * Every standing order of a terminal in one status (docs: sto-api-for-my-billing/getstos; the live
+	 * answer of 2026-10-17 returned 103 active orders in one list, no paging). A 200 can still carry an
+	 * application error (20302).
+	 */
+	public static function stos( string $terminal, string $status ): array {
+		$r = self::post( 'tranzila_api_base', '/v1/stos/get', array( 'terminal_name' => $terminal, 'sto_status' => $status ), false );
+		if ( Http::OK !== $r['outcome'] ) {
+			return array( 'ok' => false, 'error' => $r['error'] ?: ( 'HTTP ' . $r['status'] ), 'stos' => array() );
+		}
+		if ( (int) ( $r['json']['error_code'] ?? 0 ) !== 0 ) {
+			return array( 'ok' => false, 'error' => 'error_code ' . (int) $r['json']['error_code'] . ': ' . mb_substr( (string) ( $r['json']['message'] ?? '' ), 0, 120 ), 'stos' => array() );
+		}
+		$stos = $r['json']['stos'] ?? array();
+		return array( 'ok' => true, 'stos' => is_array( $stos ) ? $stos : array() );
+	}
+
+	/**
 	 * UNVERIFIED shape: {terminal_name, transaction_start_date, transaction_end_date | transaction_index, page, page_results}.
 	 * Response: {transactions:[...], total, rows}. Field names differ from the notification
 	 * (amount / processor_response_code / credit_card_token vs sum / Response / TranzilaTK).

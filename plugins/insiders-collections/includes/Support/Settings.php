@@ -81,6 +81,7 @@ final class Settings {
 		'no_registration_label'          => 'ללא דמי רישום',
 		'declined_lost_reasons'          => 'לא מעוניין לפתוח חשבון',
 		'journey_keep_lost_reasons'      => 'אין מענה', // lost for these reasons: the messages go on as if the deal were open
+		'cashflow_sync'                  => 1,   // read-only: the STO book and monthly totals for the finance dashboard's forecast
 		'program_auto_charge_on_pay_request' => 0, // "אני רוצה לשלם": approve and send the link at once, without a person
 		'gate_idle_minutes'              => 30,  // scan again after 30 minutes without activity
 		'gate_session_hours'             => 8,   // and at most once per working day

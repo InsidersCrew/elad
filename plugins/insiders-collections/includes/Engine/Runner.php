@@ -54,6 +54,9 @@ final class Runner {
 			if ( TranzilaClient::configured() && self::due( 'reconcile', 15 * MINUTE_IN_SECONDS ) ) {
 				$r['reconcile'] = self::job( 'reconcile', static fn() => Reconciler::incremental() );
 			}
+			if ( TranzilaClient::configured() && Settings::on( 'cashflow_sync' ) && self::due( 'cashflow', 6 * HOUR_IN_SECONDS ) ) {
+				$r['cashflow'] = self::job( 'cashflow', static fn() => \Insiders\Collections\Domain\Cashflow::sync() );
+			}
 			if ( self::daily_due() ) {
 				$r['daily'] = self::job( 'daily', static fn() => self::daily() );
 			}

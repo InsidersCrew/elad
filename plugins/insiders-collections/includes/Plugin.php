@@ -55,6 +55,8 @@ final class Plugin {
 			}
 		);
 		add_action( 'icol_tick', static fn() => Runner::tick( 'wp-cron' ) );
+		// The finance dashboard reads the cash forecast through this filter (docs/cashflow-contract.md).
+		add_filter( 'ifd_cashflow_forecast', array( Domain\Cashflow::class, 'filter' ), 10, 2 );
 		add_action( 'icol_case_transitioned', array( Integrations\RevenueDashboard\Adapter::class, 'on_transition' ), 10, 3 );
 		add_action( 'rest_api_init', array( Rest\Api::class, 'register' ) );
 		add_action( 'rest_api_init', array( Rest\GateApi::class, 'register' ) );

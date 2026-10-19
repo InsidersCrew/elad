@@ -38,7 +38,7 @@ final class T {
 		foreach ( array_keys( Schema::tables() ) as $t ) {
 			$wpdb->query( 'TRUNCATE TABLE ' . Db::t( $t ) );
 		}
-		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner', 'icol_pd_label' ) as $o ) {
+		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner', 'icol_pd_label', 'icol_cashflow_sync', 'icol_terminal_history' ) as $o ) {
 			delete_option( $o );
 		}
 		delete_option( 'icol_settings' );
@@ -61,6 +61,7 @@ final class T {
 				'cap_payment_links'  => 1,
 				'wati_api_base'      => 'https://wati.test/123',
 				'tranzila_cycle_strategy' => 'schedule',
+				'cashflow_sync'      => 0, // its own test turns it on: every tick would otherwise scan the report
 			)
 		);
 		Settings::set_secret( 'wati_token', 'wati-test-token' );
@@ -302,6 +303,10 @@ add_filter(
 			$size = (int) ( $body['page_results'] ?? 500 );
 			$page = (int) ( $body['page'] ?? 1 );
 			return $json( array( 'transactions' => array_slice( $rows, ( $page - 1 ) * $size, $size ), 'total' => count( $rows ) ) );
+		}
+		if ( false !== strpos( $url, '/v1/stos/get' ) && ! isset( $body['sto_id'] ) ) {
+			// The whole book in one status, like the live answer (no paging).
+			return $json( array( 'error_code' => 0, 'stos' => array_values( array_filter( T::$tranzila_stos, static fn( $s ) => ( $s['sto_status'] ?? 'active' ) === ( $body['sto_status'] ?? 'active' ) && ( $s['terminal_name'] ?? 'insiderstok' ) === ( $body['terminal_name'] ?? '' ) ) ) ) );
 		}
 		if ( false !== strpos( $url, '/v1/stos/get' ) ) {
 			$sto = T::$tranzila_stos[ (string) ( $body['sto_id'] ?? '' ) ] ?? null;
