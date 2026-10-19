@@ -25,6 +25,8 @@ final class ResponseCodes {
 		'033' => 'card_invalid',     // כרטיס לא תקין
 		'036' => 'expired_card',     // פג תוקף
 		'039' => 'card_invalid',     // ספרת ביקורת לא תקינה
+		'061' => 'technical',        // חסר קובץ וקטור 41: הגדרה במסוף או בשב"א, לא הכרטיס
+		'447' => 'card_invalid',     // מספר כרטיס שגוי
 	);
 
 	public const LABELS = array(
