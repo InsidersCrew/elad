@@ -60,9 +60,13 @@ final class Client {
 			$void = 'kill_switch';
 		} elseif ( false === Customers::permission( (int) $m['customer_id'], 'whatsapp' ) ) {
 			$void = 'opted_out';
+		} elseif ( 'commitment_reminder' === $m['kind'] && ( Clock::ts( $m['created_at'] ) ?? 0 ) < Clock::now() - 3 * HOUR_IN_SECONDS ) {
+			$void = 'stale'; // queued hours ago (WATI was down): planned again from the current date and window
 		} elseif ( in_array( $m['kind'], array( 'collection_reminder', 'commitment_reminder' ), true ) && $case && ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			$void = 'state:' . $case['workflow_state'];
-		} elseif ( in_array( $m['kind'], array( 'collection_reminder', 'commitment_reminder' ), true ) && ( ! $case || 'commitment' !== ( $case['phase'] ?? 'charge' ) || \Insiders\Collections\Domain\Messaging::reached( (int) $case['id'] ) ) && (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $m['customer_id'], $m['created_at'] ) ) {
+		} elseif ( in_array( $m['kind'], array( 'collection_reminder', 'commitment_reminder' ), true ) && ( $case && 'commitment' === ( $case['phase'] ?? 'charge' )
+			? ( ! empty( $case['last_inbound_at'] ) && $case['last_inbound_at'] > $m['created_at'] ) // a reply the case took as one
+			: (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $m['customer_id'], $m['created_at'] ) ) ) {
 			$void = 'customer_replied'; // AT12
 		}
 		if ( '' !== $void ) {

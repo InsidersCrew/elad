@@ -72,7 +72,8 @@ final class Exceptions {
 		return $id;
 	}
 
-	public static function resolve( int $id, string $resolution ): void {
+	/** @param bool $by_person a person resolved it from the screen (then a checked unknown send is released) */
+	public static function resolve( int $id, string $resolution, bool $by_person = false ): void {
 		if ( '' === trim( $resolution ) ) {
 			throw new DomainError( 'resolution_required', 'יש לתעד את הפתרון והאסמכתה', 400, array( 'resolution' => 'חובה' ) );
 		}
@@ -88,7 +89,7 @@ final class Exceptions {
 		);
 		Audit::log( 'exception.resolve', 'exception', $id, null, null, $resolution );
 		$ex = Db::row( 'SELECT type, entity_type, entity_id, customer_id FROM ' . Db::t( 'exceptions' ) . ' WHERE id = %d', $id );
-		if ( $ex && 'send_unknown' === $ex['type'] && get_current_user_id() ) {
+		if ( $ex && 'send_unknown' === $ex['type'] && $by_person ) {
 			// Only a person's resolution: an automatic one (a WATI status event) confirms its own message only.
 			// A person checked the conversation in WATI: the message counts as sent (quota, gap) and stops
 			// blocking the customer. Never resent: if it did not arrive, the next planned message goes.

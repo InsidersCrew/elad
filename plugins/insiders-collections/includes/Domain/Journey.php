@@ -1050,19 +1050,23 @@ final class Journey {
 		if ( ! in_array( $step, $steps, true ) || (string) $case['track_step'] !== $step ) {
 			return; // not a journey step (a card-charge notice), a later step already went, or given back before
 		}
-		$later = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND id > %d AND direction = 'out' AND kind = 'commitment_reminder' AND delivery_state <> 'failed'", $case_id, $message_id );
-		if ( $later ) {
-			return; // a late or second failure report of a message that was already sent again
-		}
 		$keys = array();
 		foreach ( $steps as $k ) {
 			$keys[] = "'" . $k . "','" . $k . "_reply'";
+		}
+		$later = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND id > %d AND direction = 'out' AND template_key IN (" . implode( ',', $keys ) . ") AND delivery_state NOT IN ('failed','cancelled')", $case_id, $message_id );
+		if ( $later ) {
+			return; // a late or second failure report of a message that was already sent again
+		}
+		if ( ! $strike ) {
+			// Not this student's failure: kept apart from real ones, so it never counts as a strike later.
+			Db::exec( 'UPDATE ' . Db::t( 'messages' ) . " SET delivery_state = 'cancelled', updated_at = %s WHERE id = %d AND delivery_state = 'failed'", Clock::utc(), $message_id );
 		}
 		$prev  = Db::value( 'SELECT template_key FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND id < %d AND direction = 'out' AND channel = 'whatsapp' AND template_key IN (" . implode( ',', $keys ) . ") AND delivery_state IN ('accepted','sent','delivered','read','unknown') ORDER BY id DESC LIMIT 1", $case_id, $message_id );
 		$fails = $strike ? (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND kind = 'commitment_reminder' AND delivery_state = 'failed' AND template_key IN (%s, %s)", $case_id, $step, $step . '_reply' ) : 0;
 		if ( $strike ) {
 			// Several students failing within the hour is WATI's problem (a template, the account), not theirs.
-			$others = (int) Db::value( 'SELECT COUNT(DISTINCT customer_id) FROM ' . Db::t( 'messages' ) . " WHERE direction = 'out' AND kind = 'commitment_reminder' AND delivery_state = 'failed' AND customer_id <> %d AND updated_at >= %s", (int) $m['customer_id'], Clock::utc( Clock::now() - HOUR_IN_SECONDS ) );
+			$others = (int) Db::value( 'SELECT COUNT(DISTINCT customer_id) FROM ' . Db::t( 'messages' ) . " WHERE direction = 'out' AND kind = 'commitment_reminder' AND delivery_state = 'failed' AND customer_id <> %d AND updated_at >= %s", (int) $m['customer_id'], Clock::utc( Clock::now() - 3 * HOUR_IN_SECONDS ) );
 			if ( $others >= 2 ) {
 				$fails = 0;
 				Exceptions::open( 'wati_mass_failure:' . Clock::today(), 'integration_failure', 'high', 'כמה הודעות ליווי לתלמידים שונים נכשלו בשעה האחרונה. כנראה בעיה בתבנית או בחשבון WATI, לא במספרים. ההודעות יתוכננו שוב; כדאי לבדוק את WATI', array() );
@@ -1087,7 +1091,7 @@ final class Journey {
 		$aid  = self::plan_next( $case_id, Clock::now() + 2 * HOUR_IN_SECONDS ); // not straight back into the same failure
 		$next = self::next_step( Workflow::get( $case_id ) );
 		$run  = $aid ? Clock::local_date( (int) Clock::ts( Db::value( 'SELECT run_at FROM ' . Db::t( 'scheduled_actions' ) . ' WHERE id = %d', $aid ) ) ) : null;
-		$day  = in_array( $step, array( 'j_t0', 'd_t0', 'd_link' ), true );
+		$day  = in_array( $step, array( 'j_t0', 'd_t0' ), true );
 		if ( $day && ( ! $run || ! $next || $next['key'] !== $step || $run > $next['date'] ) ) {
 			// The deadline-day message (or the payment details a student asked for) would not make it in time.
 			Tasks::open( 'journey_send_failed:' . $case_id . ':' . $step, 'reply_review', array( 'case_id' => $case_id, 'customer_id' => (int) $case['customer_id'], 'priority' => 'high', 'reason' => 'הודעת הליווי (' . $label . ') לא נמסרה, ואין זמן לשלוח אותה שוב בזמן. לפנות לתלמיד/ה ישירות' ) );

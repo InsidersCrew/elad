@@ -2282,7 +2282,7 @@ $tests['P23'] = array( 'ריצה שנקטעה באמצע שליחה: לא נשא
 	\Insiders\Collections\Engine\Outbox::process( 5 );
 	T::eq( array( 'unknown', 'unknown', 1 ), array( Db::value( 'SELECT state FROM ' . Db::t( 'outbox_events' ) . ' WHERE id = %d', $ev ), Db::value( 'SELECT delivery_state FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', $mid ), T::count( 'exceptions', "exception_key = 'outbox_unknown:" . $ev . "'" ) ), 'unknown, for a person; the message blocks further sends until checked' );
 	T::eq( 0, count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'wati.test' ) ) ), 'nothing resent' );
-	\Insiders\Collections\Domain\Exceptions::resolve( (int) Db::value( 'SELECT id FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'outbox_unknown:" . $ev . "'" ), 'נבדק ב-WATI, ההודעה הגיעה' );
+	\Insiders\Collections\Domain\Exceptions::resolve( (int) Db::value( 'SELECT id FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'outbox_unknown:" . $ev . "'" ), 'נבדק ב-WATI, ההודעה הגיעה', true );
 	T::eq( 'accepted', Db::value( 'SELECT delivery_state FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', $mid ), 'closing the exception after a check releases the customer' );
 } );
 
@@ -2393,6 +2393,8 @@ $tests['P26'] = array( 'דאבל צ׳ק לדאבל צ׳ק: מועד שעבר ל�
 	$cu = Customers::get( (int) $c['customer_id'] );
 	Messaging::handle_inbound( (int) $c['customer_id'], array( 'provider_id' => 'in-766', 'text' => 'באיזו שעה השיעור ביום שלישי?', 'type' => 'text', 'occurred_at' => Clock::utc() ) );
 	T::check( in_array( student_case( 766 )['workflow_state'], Workflow::SENDABLE, true ), 'a lesson question a week after the intro does not stop the journey' );
+	$codes = array_column( \Insiders\Collections\Domain\SendGuard::check( (int) $c['id'], array( 'action_created_at' => Clock::utc( Clock::now() - DAY_IN_SECONDS ) ) )['blockers'], 'code' );
+	T::check( ! in_array( 'customer_replied', $codes, true ), 'and does not cancel the next message as "the customer replied"' );
 	Messaging::handle_inbound( (int) $c['customer_id'], array( 'provider_id' => 'in-766b', 'text' => 'כבר פתחתי חשבון', 'type' => 'text', 'occurred_at' => Clock::utc() ) );
 	T::eq( 'human_review', student_case( 766 )['workflow_state'], 'but "I already opened an account" does' );
 } );

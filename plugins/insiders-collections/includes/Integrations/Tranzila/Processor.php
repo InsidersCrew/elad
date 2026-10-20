@@ -362,8 +362,15 @@ final class Processor {
 		// charge on another day is a retry. The ±1 day matches Cycle::resolve (runs can cross midnight).
 		$dom       = (int) ( $order['charge_dom'] ?? 0 );
 		$local     = Clock::local( (int) $f['occurred_ts'] );
-		$scheduled = $dom >= 1 && $dom <= 31 ? \Insiders\Collections\Integrations\Tranzila\Cycle::scheduled_date( (int) $local->format( 'Y' ), (int) $local->format( 'n' ), $dom ) : null;
-		$off_day   = null === $scheduled || abs( strtotime( $local->format( 'Y-m-d' ) ) - strtotime( $scheduled ) ) > DAY_IN_SECONDS;
+		$off_day   = false;
+		if ( $dom >= 1 && $dom <= 31 ) {
+			$prev    = $local->modify( 'first day of last month' );
+			$day     = strtotime( $local->format( 'Y-m-d' ) );
+			$off_day = true;
+			foreach ( array( Cycle::scheduled_date( (int) $local->format( 'Y' ), (int) $local->format( 'n' ), $dom ), Cycle::scheduled_date( (int) $prev->format( 'Y' ), (int) $prev->format( 'n' ), $dom ) ) as $sch ) {
+				$off_day = $off_day && abs( $day - strtotime( $sch ) ) > DAY_IN_SECONDS;
+			}
+		}
 		if ( null === $cycle && $handled_open && $off_day ) {
 			return self::double_charge( $f, $pid, $order );
 		}

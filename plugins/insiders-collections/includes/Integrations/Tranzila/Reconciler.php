@@ -98,7 +98,7 @@ final class Reconciler {
 		$field    = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_match_field' ) ?: 'pr_id';
 		$open     = Db::rows(
 			'SELECT r.id, r.provider_pr_id, r.amount_minor, r.currency, r.status, r.created_at, r.expires_at, u.phone_e164 FROM ' . Db::t( 'payment_requests' ) . ' r JOIN ' . Db::t( 'cases' ) . ' c ON c.id = r.case_id JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id
-			 WHERE r.status IN ('active','superseded','expired','paid') AND r.provider_pr_id IS NOT NULL AND u.phone_e164 IS NOT NULL AND r.created_at >= %s",
+			 WHERE r.status IN ('active','superseded','expired','paid') AND r.provider_pr_id IS NOT NULL AND u.phone_e164 IS NOT NULL AND r.expires_at >= %s",
 			Clock::utc( Clock::now() - 30 * DAY_IN_SECONDS )
 		);
 		if ( ! $open ) {

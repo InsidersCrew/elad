@@ -394,15 +394,22 @@ final class Messaging {
 		// reacts to every message, as before ("paid", "stop", "a person").
 		$button = 'button' === ( $intent['source'] ?? '' );
 		$vague  = in_array( $intent['intent'], array( 'unclear', 'media', 'voice', 'link_request', 'bot_question', 'promise' ), true );
+		$money  = in_array( $intent['intent'], array( 'link_request', 'promise' ), true ); // about paying: never vague once a charge is on the table
 		$cases  = array_values(
 			array_filter(
 				$all,
-				static function ( $c ) use ( $button, $vague ) {
-					if ( 'commitment' !== ( $c['phase'] ?? 'charge' ) || $button ) {
+				static function ( $c ) use ( $button, $vague, $money ) {
+					if ( 'commitment' !== ( $c['phase'] ?? 'charge' ) ) {
 						return true;
 					}
 					$last = self::last_reach( (int) $c['id'] );
-					return null !== $last && ( ! $vague || Clock::now() - $last < 3 * DAY_IN_SECONDS );
+					if ( null === $last ) {
+						return false;
+					}
+					if ( $button || ( $money && 'declined' === ( $c['track'] ?? '' ) ) ) {
+						return true;
+					}
+					return ! $vague || Clock::now() - $last < 3 * DAY_IN_SECONDS;
 				}
 			)
 		);
@@ -428,7 +435,7 @@ final class Messaging {
 				// Worth a look, not an action: the words may be about anything. One task a day per student.
 				$labels = array( 'opened_account' => 'כתב/ה על פתיחת חשבון', 'declines_open' => 'כתב/ה שלא יפתח/תפתח חשבון', 'dispute' => 'אולי בקשת ביטול או מחלוקת', 'claims_paid' => 'כתב/ה על תשלום', 'wrong_number' => 'אולי מספר שגוי', 'human' => 'ביקש/ה נציג' );
 				$why    = $owner_ok ? 'הודעה מתלמיד/ה, אולי בנושא אחר' : 'הודעה בזמן שהשיחה בבעלות ' . $customer['conversation_owner'];
-				Tasks::open( 'unreached_reply:' . $customer_id . ':' . Clock::today(), 'reply_review', array( 'case_id' => (int) $about, 'customer_id' => $customer_id, 'priority' => $button ? 'high' : 'low', 'reason' => $why . ' (' . ( $button ? 'לחיצה על כפתור בהודעת הליווי' : ( $labels[ $intent['intent'] ] ?? $intent['intent'] ) ) . '): ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
+				Tasks::open( 'unreached_reply:' . $customer_id . ':' . $message_id, 'reply_review', array( 'case_id' => (int) $about, 'customer_id' => $customer_id, 'priority' => $button ? 'high' : 'low', 'reason' => $why . ' (' . ( $button ? 'לחיצה על כפתור בהודעת הליווי' : ( $labels[ $intent['intent'] ] ?? $intent['intent'] ) ) . '): ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
 			}
 			return array( 'message_id' => $message_id, 'intent' => $owner_ok ? $intent['intent'] : 'not_owner', 'cases' => count( $cases ), 'recorded_only' => true );
 		}
@@ -491,8 +498,9 @@ final class Messaging {
 			$ids = array_filter( array_map( static fn( $x ) => mb_strtolower( trim( $x ) ), explode( '|', $operator ) ) );
 			return ! array_intersect( $ids, $list );
 		}
-		// No list: only a debt case outside the program (a failed standing order) treats a typed message as ours.
-		return ! $case || 'commitment' === ( $case['phase'] ?? 'charge' ) || 'non_open_charge' === ( $case['source_type'] ?? '' );
+		// No list: before the deadline nothing of ours is in that conversation; after it, a person typing to a
+		// student with a debt is taken as collections (the safe side: automation steps aside). Fill the list.
+		return ! $case || 'commitment' === ( $case['phase'] ?? 'charge' );
 	}
 
 	/** Internal note in the timeline — flagged so it can never be sent by mistake. */

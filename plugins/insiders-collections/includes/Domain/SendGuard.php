@@ -133,7 +133,11 @@ final class SendGuard {
 		// A program student writing about a lesson before we ever reached them is not a reply to us.
 		$unreached = 'commitment' === ( $case['phase'] ?? 'charge' ) && ! Messaging::reached( $case_id );
 		if ( ! empty( $ctx['action_created_at'] ) && ! $unreached ) {
-			$inbound_after = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $customer['id'], $ctx['action_created_at'] );
+			// A program student's lesson question is not a reply to us: only what handle_inbound took as one
+			// (it sets the case's last_inbound_at). A debt case reacts to any message, as before.
+			$inbound_after = 'commitment' === ( $case['phase'] ?? 'charge' )
+				? (int) ( ! empty( $case['last_inbound_at'] ) && $case['last_inbound_at'] > $ctx['action_created_at'] )
+				: (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $customer['id'], $ctx['action_created_at'] );
 			if ( $inbound_after ) {
 				$add( 'customer_replied', 'case', 'הלקוח כתב אחרי שההודעה תוזמנה' );
 			}
