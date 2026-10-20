@@ -67,6 +67,7 @@ final class Client {
 		}
 		if ( '' !== $void ) {
 			Db::update( 'messages', array( 'delivery_state' => 'cancelled', 'updated_at' => Clock::utc() ), array( 'id' => $message_id ) );
+			\Insiders\Collections\Domain\Journey::on_send_failed( $message_id, false ); // a journey step that did not go is not taken
 			return array( 'outcome' => Http::OK, 'result' => array( 'voided' => $void ) );
 		}
 		$wa  = Phone::wa_id( (string) $customer['phone_e164'] );
@@ -116,7 +117,8 @@ final class Client {
 		);
 		if ( 'failed' === $state ) {
 			\Insiders\Collections\Domain\Exceptions::open( 'send_failed:' . $message_id, 'integration_failure', 'medium', 'שליחת הודעה נכשלה, אין שליחה חוזרת עיוורת', array( 'entity_type' => 'message', 'entity_id' => $message_id, 'customer_id' => (int) $m['customer_id'] ) );
-			\Insiders\Collections\Domain\Journey::on_send_failed( $message_id );
+			// A refused token is the account's problem, not this student's number: no strike.
+			\Insiders\Collections\Domain\Journey::on_send_failed( $message_id, Http::PERMANENT === $r['outcome'] );
 		}
 		return array( 'outcome' => $r['outcome'], 'error' => $r['error'] ?? '', 'retry_after' => $r['retry_after'] ?? null, 'result' => array( 'provider_id' => $provider_id ) );
 	}

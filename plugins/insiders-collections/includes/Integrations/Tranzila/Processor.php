@@ -330,8 +330,12 @@ final class Processor {
 		if ( null !== $cycle ) {
 			$key  = Cycle::source_key( $f['terminal'], $f['sto_id'], $cycle );
 			$item = Db::row( 'SELECT * FROM ' . Db::t( 'debt_items' ) . ' WHERE source_key = %s', $key );
-			if ( $item && ! in_array( $item['finance_state'], array( 'open', 'partially_paid', 'not_due' ), true ) && 'cancelled' !== $item['finance_state'] ) {
-				Exceptions::open( 'double_charge:' . $f['terminal'] . ':' . $f['index'], 'overpayment', 'high', 'הוראת הקבע חייבה (' . Money::format( (int) $f['amount_minor'] ) . ' ₪) מחזור ששולם כבר בדרך אחרת: ייתכן חיוב כפול. לבדוק ולהחזיר ללקוח אם צריך', array( 'entity_type' => 'payment', 'entity_id' => $pid, 'customer_id' => (int) $order['customer_id'] ) );
+			if ( $item && 'settled' === $item['finance_state'] ) {
+				return self::double_charge( $f, $pid, $order );
+			}
+			if ( $item && in_array( $item['finance_state'], array( 'review', 'cancelled' ), true ) ) {
+				// Under review (a refund or chargeback) or written off: the money is real, its place is a person's call.
+				Exceptions::open( 'unmatched_success:' . $f['terminal'] . ':' . $f['index'], 'payment_without_debt', 'review' === $item['finance_state'] ? 'high' : 'medium', 'חיוב חוזר הצליח (' . Money::format( (int) $f['amount_minor'] ) . ' ₪) למחזור ' . ( 'review' === $item['finance_state'] ? 'שנמצא בבירור (החזר או הכחשה)' : 'שבוטל או זוכה' ) . ', נדרש שיוך ידני', array( 'entity_type' => 'payment', 'entity_id' => $pid, 'customer_id' => (int) $order['customer_id'] ) );
 				return 'needs_match';
 			}
 			if ( $item && in_array( $item['finance_state'], array( 'open', 'partially_paid', 'not_due' ), true ) ) {
@@ -347,8 +351,23 @@ final class Processor {
 			Exceptions::open( 'unmatched_success:' . $f['terminal'] . ':' . $f['index'], 'payment_without_debt', 'high', 'חיוב חוזר הצליח (' . Money::format( (int) $f['amount_minor'] ) . ' ₪) ויש פריטים פתוחים בהוראה, נדרש שיוך ידני', array( 'entity_type' => 'payment', 'entity_id' => $pid, 'customer_id' => (int) $order['customer_id'] ) );
 			return 'needs_match';
 		}
+		// An off-schedule success with nothing open: a retry of a month that was paid another way and not yet
+		// marked "handled" in My Billing (its task is still open) is a second charge, not a routine installment.
+		$handled_open = (int) Db::value(
+			'SELECT COUNT(*) FROM ' . Db::t( 'debt_items' ) . ' d JOIN ' . Db::t( 'cases' ) . ' c ON c.id = d.case_id JOIN ' . Db::t( 'tasks' ) . " t ON t.task_key = CONCAT('mb_handled:', d.id) AND t.status = 'open'
+			 WHERE c.recurring_order_id = %d AND d.finance_state = 'settled'",
+			(int) $order['id']
+		);
+		if ( null === $cycle && $handled_open ) {
+			return self::double_charge( $f, $pid, $order );
+		}
 		Payments::after_payment( $pid, false ); // routine installment, nothing owed
 		return 'processed';
+	}
+
+	private static function double_charge( array $f, int $pid, array $order ): string {
+		Exceptions::open( 'double_charge:' . $f['terminal'] . ':' . $f['index'], 'overpayment', 'high', 'הוראת הקבע חייבה (' . Money::format( (int) $f['amount_minor'] ) . ' ₪) חודש ששולם כבר בדרך אחרת: ייתכן חיוב כפול. לבדוק ולהחזיר ללקוח אם צריך, ולסמן את העסקה כ"טופלה" ב-My Billing', array( 'entity_type' => 'payment', 'entity_id' => $pid, 'customer_id' => (int) $order['customer_id'] ) );
+		return 'needs_match';
 	}
 
 	/**
@@ -483,17 +502,18 @@ final class Processor {
 				'verification_source' => 'report',
 			)
 		);
-		if ( ! $created && ( (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'allocations' ) . ' WHERE payment_id = %d', $pid ) || 'paid' === $req['status'] ) ) {
-			return 'processed';
+		if ( ! $created && ( Ledger::payment_unallocated( $pid ) <= 0 || 'paid' === $req['status'] ) ) {
+			return 'processed'; // done before (a run that died after allocating everything leaves nothing to resume)
 		}
 		if ( $created && '' !== $f['token'] ) {
 			CardTasks::store_credential( $pid, $f['terminal'], $f['token'], $f['expdate'] );
 		}
-		$left  = (int) $f['amount_minor'];
+		$left  = Ledger::payment_unallocated( $pid );
 		$items = Db::rows( 'SELECT * FROM ' . Db::t( 'request_items' ) . ' WHERE payment_request_id = %d', (int) $req['id'] );
 		foreach ( $items as $ri ) {
 			$item = Ledger::item( (int) $ri['debt_item_id'] );
-			$amt  = min( $left, (int) $ri['requested_amount_minor'], (int) $item['cached_balance_minor'] );
+			$done = (int) Db::value( 'SELECT COALESCE(SUM(amount_minor),0) FROM ' . Db::t( 'allocations' ) . ' WHERE payment_id = %d AND debt_item_id = %d', $pid, (int) $ri['debt_item_id'] );
+			$amt  = min( $left, (int) $ri['requested_amount_minor'] - $done, (int) $item['cached_balance_minor'] );
 			if ( $amt > 0 ) {
 				Ledger::allocate( $pid, (int) $ri['debt_item_id'], $amt, 'תשלום דרך בקשת תשלום #' . $req['id'] );
 				$left -= $amt;
@@ -501,6 +521,7 @@ final class Processor {
 		}
 		PaymentRequests::mark_paid( (int) $req['id'] );
 		Payments::after_payment( $pid ); // leftover -> overpayment exception (AT19)
+		Exceptions::resolve_by_key( 'pr_report_unmatched:' . $f['terminal'] . ':' . $f['index'], 'התשלום נקלט ושויך לבקשה #' . $req['id'] );
 		return 'processed';
 	}
 }

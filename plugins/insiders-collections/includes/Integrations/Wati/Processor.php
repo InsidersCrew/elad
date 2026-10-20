@@ -149,7 +149,7 @@ final class Processor {
 			array(
 				'provider_id' => (string) ( $p['whatsappMessageId'] ?? $p['id'] ?? '' ) ?: null,
 				'text'        => (string) ( $p['text'] ?? '' ),
-				'operator'    => (string) ( $p['operatorEmail'] ?? $p['operatorName'] ?? $p['assignedId'] ?? '' ),
+				'operator'    => implode( '|', array_filter( array( (string) ( $p['operatorEmail'] ?? '' ), (string) ( $p['operatorName'] ?? '' ) ) ) ),
 				'occurred_at' => Clock::utc(),
 			)
 		);

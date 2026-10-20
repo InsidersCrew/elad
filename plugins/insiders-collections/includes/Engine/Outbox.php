@@ -46,11 +46,22 @@ final class Outbox {
 		// A run that died between "processing" and its outcome (timeout, fatal, restart) leaves the row
 		// claimed. The call may or may not have reached the provider: unknown, for a person, never a resend.
 		foreach ( Db::rows( 'SELECT * FROM ' . Db::t( 'outbox_events' ) . " WHERE state = 'processing' AND updated_at < %s ORDER BY id LIMIT 20", Clock::utc( Clock::now() - self::LEASE_MINUTES * MINUTE_IN_SECONDS ) ) as $ev ) {
-			$out[ self::settle( $ev, array( 'outcome' => Http::UNKNOWN, 'error' => 'הריצה נקטעה באמצע הפעולה' ) ) ]++;
+			if ( in_array( $ev['event_type'], array( 'wati_send', 'pipedrive_activity' ), true ) ) {
+				$out[ self::settle( $ev, array( 'outcome' => Http::UNKNOWN, 'error' => 'הריצה נקטעה באמצע הפעולה' ) ) ]++;
+			} else {
+				// Repeating these does no harm (an owner attribute, an alert, a suggestion): simply again.
+				Db::update( 'outbox_events', array( 'state' => 'pending', 'next_attempt_at' => Clock::utc(), 'updated_at' => Clock::utc() ), array( 'id' => (int) $ev['id'] ) );
+			}
 		}
 		$rows = Db::rows( 'SELECT id FROM ' . Db::t( 'outbox_events' ) . " WHERE state = 'pending' AND next_attempt_at <= %s ORDER BY id LIMIT %d", $now, $limit );
 		foreach ( $rows as $r ) {
-			$n = Db::exec( 'UPDATE ' . Db::t( 'outbox_events' ) . " SET state = 'processing', attempts = attempts + 1, updated_at = %s WHERE id = %d AND state = 'pending'", $now, (int) $r['id'] );
+			$ev = Db::row( 'SELECT event_type FROM ' . Db::t( 'outbox_events' ) . ' WHERE id = %d', (int) $r['id'] );
+			if ( str_starts_with( (string) ( $ev['event_type'] ?? '' ), 'wati' ) && Runner::integration_suspended( 'wati' ) ) {
+				// WATI refused our token: the rest of the batch waits for the fix instead of failing one by one.
+				Db::update( 'outbox_events', array( 'next_attempt_at' => Clock::utc( Clock::now() + 15 * MINUTE_IN_SECONDS ), 'updated_at' => Clock::utc() ), array( 'id' => (int) $r['id'] ) );
+				continue;
+			}
+			$n = Db::exec( 'UPDATE ' . Db::t( 'outbox_events' ) . " SET state = 'processing', attempts = attempts + 1, updated_at = %s WHERE id = %d AND state = 'pending'", Clock::utc(), (int) $r['id'] );
 			if ( 1 !== $n ) {
 				continue;
 			}
@@ -126,7 +137,7 @@ final class Outbox {
 			return;
 		}
 		if ( 'failed' === $state ) {
-			\Insiders\Collections\Domain\Journey::on_send_failed( $id );
+			\Insiders\Collections\Domain\Journey::on_send_failed( $id, false ); // an outage that outlasted the retries: no strike
 		}
 	}
 }

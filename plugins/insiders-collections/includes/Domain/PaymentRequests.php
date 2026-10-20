@@ -48,10 +48,14 @@ final class PaymentRequests {
 					return null;
 				}
 				$active = Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . " WHERE case_id = %d AND status IN ('draft','active') ORDER BY id DESC LIMIT 1", $case_id );
-				$fresh_enough = $active && ( Clock::ts( $active['expires_at'] ) ?? 0 ) > Clock::now() + 7 * DAY_IN_SECONDS;
-				if ( $active && $fresh_enough && $active['balance_version'] === $summary['signature'] && (int) $active['amount_minor'] === $summary['due_balance_minor'] && $active['token_enc'] ) {
+				if ( $active && $active['balance_version'] === $summary['signature'] && (int) $active['amount_minor'] === $summary['due_balance_minor'] && $active['token_enc'] ) {
 					$token = Crypto::decrypt( $active['token_enc'] );
 					if ( $token ) {
+						// The same link stays: a link sent today is open for 14 more days. Replacing it instead would
+						// strand a payment made on the old one, and tell the student "the amount changed" when it did not.
+						if ( ( Clock::ts( $active['expires_at'] ) ?? 0 ) < Clock::now() + 7 * DAY_IN_SECONDS ) {
+							Db::update( 'payment_requests', array( 'expires_at' => Clock::utc( Clock::now() + 14 * DAY_IN_SECONDS ), 'updated_at' => Clock::utc() ), array( 'id' => (int) $active['id'] ) );
+						}
 						return self::url( $token );
 					}
 				}
@@ -106,9 +110,14 @@ final class PaymentRequests {
 			return array( 'state' => 'expired', 'request' => $req );
 		}
 		if ( 'unknown' === $req['status'] && ( Clock::ts( $req['updated_at'] ) ?? 0 ) < Clock::now() - 20 * MINUTE_IN_SECONDS && ! $req['provider_pr_id'] ) {
-			// The timed-out create gave the student nothing to pay with: they may try again.
-			Db::update( 'payment_requests', array( 'status' => 'active', 'updated_at' => Clock::utc() ), array( 'id' => (int) $req['id'] ) );
-			$req['status'] = 'active';
+			// The timed-out create gave the student nothing to pay with: they may try again, on this request
+			// unless a newer one replaced it meanwhile (then this one leads there, never two payable links).
+			$newer = (int) Db::value( 'SELECT id FROM ' . Db::t( 'payment_requests' ) . " WHERE case_id = %d AND id > %d AND status IN ('draft','active','unknown','paid') LIMIT 1", (int) $req['case_id'], (int) $req['id'] );
+			$to    = $newer ? 'superseded' : 'active';
+			$n     = Db::exec( 'UPDATE ' . Db::t( 'payment_requests' ) . " SET status = %s, updated_at = %s WHERE id = %d AND status = 'unknown' AND provider_pr_id IS NULL AND updated_at < %s", $to, Clock::utc(), (int) $req['id'], Clock::utc( Clock::now() - 20 * MINUTE_IN_SECONDS ) );
+			if ( 1 === $n ) {
+				$req['status'] = $to;
+			}
 		}
 		if ( 'unknown' === $req['status'] ) {
 			return array( 'state' => 'checking', 'request' => $req );
@@ -170,6 +179,7 @@ final class PaymentRequests {
 						array( 'id' => (int) $fresh['id'] )
 					);
 					Audit::log( 'payment_request.provider_created', 'payment_request', (int) $fresh['id'], null, array( 'pr_id' => $res['pr_id'] ), '' );
+					Exceptions::resolve_by_key( 'pr_unknown:' . $fresh['id'], 'הבקשה נוצרה בניסיון חוזר' );
 					return array( 'result' => 'redirect', 'url' => $res['url'] );
 				}
 				if ( 'unknown' === $res['outcome'] ) {
@@ -187,7 +197,7 @@ final class PaymentRequests {
 
 	/** A case that was paid another way or closed leaves no payable link behind. */
 	public static function supersede_for_case( int $case_id, string $why ): int {
-		return Db::exec( 'UPDATE ' . Db::t( 'payment_requests' ) . " SET status = 'superseded', updated_at = %s WHERE case_id = %d AND status IN ('draft','active')", Clock::utc(), $case_id );
+		return Db::exec( 'UPDATE ' . Db::t( 'payment_requests' ) . " SET status = 'superseded', updated_at = %s WHERE case_id = %d AND status IN ('draft','active','unknown')", Clock::utc(), $case_id );
 	}
 
 	/** Paid/void bookkeeping when a payment matched this request. */

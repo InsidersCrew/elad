@@ -97,7 +97,7 @@ final class Reconciler {
 		$terminal = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_terminal', 'insiders' );
 		$field    = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_match_field' ) ?: 'pr_id';
 		$open     = Db::rows(
-			'SELECT r.id, r.provider_pr_id, r.amount_minor, r.currency, r.status, r.created_at, u.phone_e164 FROM ' . Db::t( 'payment_requests' ) . ' r JOIN ' . Db::t( 'cases' ) . ' c ON c.id = r.case_id JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id
+			'SELECT r.id, r.provider_pr_id, r.amount_minor, r.currency, r.status, r.created_at, r.expires_at, u.phone_e164 FROM ' . Db::t( 'payment_requests' ) . ' r JOIN ' . Db::t( 'cases' ) . ' c ON c.id = r.case_id JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id
 			 WHERE r.status IN ('active','superseded','expired','paid') AND r.provider_pr_id IS NOT NULL AND u.phone_e164 IS NOT NULL AND r.created_at >= %s",
 			Clock::utc( Clock::now() - 30 * DAY_IN_SECONDS )
 		);
@@ -113,6 +113,12 @@ final class Reconciler {
 			if ( Db::value( 'SELECT id FROM ' . Db::t( 'payments' ) . " WHERE provider = 'tranzila' AND terminal = %s AND transaction_id = %s", $t, $index ) ) {
 				continue;
 			}
+			// Already queued from an earlier scan, or already with a person (open or resolved): never decided twice.
+			// A rep's manual record is stored under another provider, so the exception is the only trace of it.
+			if ( Db::value( 'SELECT id FROM ' . Db::t( 'inbox_events' ) . ' WHERE provider_event_key = %s', hash( 'sha256', 'report-pr:' . $key ) )
+				|| Db::value( 'SELECT id FROM ' . Db::t( 'exceptions' ) . ' WHERE exception_key = %s', 'pr_report_unmatched:' . $key ) ) {
+				continue;
+			}
 			$phones = array();
 			foreach ( (array) $n['raw'] as $k => $v ) {
 				$e = str_starts_with( (string) $k, 'user_defined_' ) ? Phone::e164( (string) $v ) : null;
@@ -125,15 +131,31 @@ final class Reconciler {
 			}
 			// The report's date is local time; a date alone counts as the end of that day.
 			$sale_ts = preg_match( '/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}))?/', (string) $n['date'], $dm ) ? (int) Clock::local_to_ts( $dm[1], $dm[2] ?? '23:59' ) : 0;
-			$cands   = array_values( array_filter( $open, static fn( $r ) => in_array( (string) $r['phone_e164'], $phones, true ) && ( ! $sale_ts || $sale_ts >= (int) Clock::ts( $r['created_at'] ) - HOUR_IN_SECONDS ) ) );
-			$match   = array_values( array_filter( $cands, static fn( $r ) => 'active' === $r['status'] && (int) $r['amount_minor'] === (int) $n['amount_minor'] ) );
-			if ( 1 !== count( $match ) ) {
-				if ( $cands ) {
-					// Our student paid on the sales terminal, but not one open request with that amount: a person matches it.
-					Exceptions::open( 'pr_report_unmatched:' . $key, 'payment_without_debt', 'medium', 'תשלום של ' . Money::format( (int) $n['amount_minor'] ) . ' ₪ בדוח העסקאות מטלפון של תלמיד עם בקשת תשלום, ' . ( $match ? 'שמתאים ליותר מבקשה אחת' : 'שלא מתאים לבקשה פתוחה (סכום אחר, או בקשה שהוחלפה)' ) . '. נדרש שיוך ידני', array( 'details' => array( 'terminal' => $t, 'index' => $index, 'requests' => array_column( $cands, 'id' ) ) ) );
-				}
+			// Same phone, same amount, and a sale inside the request's life (from its creation to a day after it expired).
+			// Another amount from the same student is an ordinary purchase (a course, a session): not ours.
+			$same = array_values(
+				array_filter(
+					$open,
+					static fn( $r ) => in_array( (string) $r['phone_e164'], $phones, true ) && (int) $r['amount_minor'] === (int) $n['amount_minor']
+						&& ( ! $sale_ts || ( $sale_ts >= (int) Clock::ts( $r['created_at'] ) - HOUR_IN_SECONDS && $sale_ts <= (int) Clock::ts( $r['expires_at'] ) + DAY_IN_SECONDS ) )
+				)
+			);
+			$active = array_values( array_filter( $same, static fn( $r ) => 'active' === $r['status'] ) );
+			$old    = array_values( array_filter( $same, static fn( $r ) => in_array( $r['status'], array( 'superseded', 'expired' ), true ) ) );
+			$paid   = array_values( array_filter( $same, static fn( $r ) => 'paid' === $r['status'] ) );
+			$match  = null;
+			if ( 1 === count( $active ) ) {
+				$match = $active[0];
+			} elseif ( ! $active && 1 === count( $old ) && ! $paid ) {
+				$match = $old[0]; // paid on a link that was replaced meanwhile (the same debt, the same amount)
+			} elseif ( $same ) {
+				// More than one request fits, or this one was already paid (a second payment?): a person decides.
+				Exceptions::open( 'pr_report_unmatched:' . $key, 'payment_without_debt', 'medium', 'תשלום של ' . Money::format( (int) $n['amount_minor'] ) . ' ₪ בדוח העסקאות מטלפון של תלמיד, ' . ( $paid && ! $active && ! $old ? 'בסכום של בקשת תשלום ששולמה כבר (ייתכן תשלום כפול)' : 'שמתאים ליותר מבקשת תשלום אחת' ) . '. נדרש שיוך ידני', array( 'details' => array( 'terminal' => $t, 'index' => $index, 'requests' => array_column( $same, 'id' ) ) ) );
+			}
+			if ( ! $match ) {
 				continue;
 			}
+			$match = array( $match );
 			$payload = array( 'supplier' => $t, 'index' => $index, $field => $match[0]['provider_pr_id'], 'sum' => number_format( (int) $n['amount_minor'] / 100, 2, '.', '' ), 'currency' => $n['currency'] ?: $match[0]['currency'], 'Response' => '000', 'tranmode' => $n['tranmode'], 'source' => 'report' );
 			Inbox::store( 'tranzila', 'pr', wp_json_encode( $payload ), 'application/json', $payload, hash( 'sha256', 'report-pr:' . $key ), Clock::utc() );
 			++$found;

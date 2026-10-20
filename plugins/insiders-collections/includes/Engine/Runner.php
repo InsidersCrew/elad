@@ -152,8 +152,8 @@ final class Runner {
 		if ( null !== $last && Clock::local_date( (int) Clock::ts( $last ) ) === Clock::today() ) {
 			return false;
 		}
-		// A failing daily run (Tranzila down, say) is retried hourly, not on every tick.
-		$try = Clock::ts( self::beats()['daily']['error'] ?? null );
+		// A failing daily run (Tranzila down, a timeout that leaves no error behind) is retried hourly, not on every tick.
+		$try = Clock::ts( self::beats()['daily']['attempt'] ?? null );
 		return null === $try || $try > Clock::now() || Clock::now() - $try >= HOUR_IN_SECONDS;
 	}
 

@@ -88,7 +88,8 @@ final class Exceptions {
 		);
 		Audit::log( 'exception.resolve', 'exception', $id, null, null, $resolution );
 		$ex = Db::row( 'SELECT type, entity_type, entity_id, customer_id FROM ' . Db::t( 'exceptions' ) . ' WHERE id = %d', $id );
-		if ( $ex && 'send_unknown' === $ex['type'] ) {
+		if ( $ex && 'send_unknown' === $ex['type'] && get_current_user_id() ) {
+			// Only a person's resolution: an automatic one (a WATI status event) confirms its own message only.
 			// A person checked the conversation in WATI: the message counts as sent (quota, gap) and stops
 			// blocking the customer. Never resent: if it did not arrive, the next planned message goes.
 			if ( 'message' === $ex['entity_type'] && $ex['entity_id'] ) {

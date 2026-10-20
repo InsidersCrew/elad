@@ -384,39 +384,61 @@ final class Messaging {
 			return array( 'duplicate' => true, 'message_id' => -$message_id );
 		}
 		$all = Db::rows( 'SELECT * FROM ' . Db::t( 'cases' ) . " WHERE customer_id = %d AND workflow_state NOT IN ('closed','draft')", $customer_id );
+		// Classified first: what the message says decides whether it is a reply to us at all.
+		$intent = Intents::classify( (string) ( $msg['text'] ?? '' ), (string) ( $msg['type'] ?? 'text' ), ! empty( $msg['button'] ) );
+		Db::update( 'messages', array( 'intent' => $intent['intent'], 'intent_source' => $intent['source'] ), array( 'id' => $message_id ) );
 		// A program student writes to the business number about anything (a lesson, a login). Before the
-		// deadline that is a reply to the journey only after it really sent something: a simulated message
-		// reached no one. A debt case reacts to every message, as before ("paid", "stop", "a person").
-		$cases = array_values( array_filter( $all, static fn( $c ) => 'commitment' !== ( $c['phase'] ?? 'charge' ) || self::reached( (int) $c['id'] ) ) );
+		// deadline a message is a reply to the journey when it is a journey button (only our messages carry
+		// them), or after we really reached the student: something recognizable, or anything within three
+		// days of our last message. A lesson question a month after the intro is not a reply. A debt case
+		// reacts to every message, as before ("paid", "stop", "a person").
+		$button = 'button' === ( $intent['source'] ?? '' );
+		$vague  = in_array( $intent['intent'], array( 'unclear', 'media', 'voice', 'link_request', 'bot_question', 'promise' ), true );
+		$cases  = array_values(
+			array_filter(
+				$all,
+				static function ( $c ) use ( $button, $vague ) {
+					if ( 'commitment' !== ( $c['phase'] ?? 'charge' ) || $button ) {
+						return true;
+					}
+					$last = self::last_reach( (int) $c['id'] );
+					return null !== $last && ( ! $vague || Clock::now() - $last < 3 * DAY_IN_SECONDS );
+				}
+			)
+		);
 		foreach ( $cases as $c ) {
 			Scheduler::cancel_for_case( (int) $c['id'], 'customer_replied' );
 			Db::update( 'cases', array( 'last_inbound_at' => $msg['occurred_at'] ?? Clock::utc() ), array( 'id' => (int) $c['id'] ) );
 		}
-		// Classified before the owner check: a request to stop is honored whoever holds the conversation.
-		$intent = Intents::classify( (string) ( $msg['text'] ?? '' ), (string) ( $msg['type'] ?? 'text' ), ! empty( $msg['button'] ) );
-		Db::update( 'messages', array( 'intent' => $intent['intent'], 'intent_source' => $intent['source'] ), array( 'id' => $message_id ) );
 		if ( $cases || $all ) {
 			Db::update( 'messages', array( 'case_id' => (int) ( $cases[0]['id'] ?? $all[0]['id'] ) ), array( 'id' => $message_id ) );
 		}
 		$customer = Customers::get( $customer_id );
 		$owner_ok = in_array( $customer['conversation_owner'], array( 'none', 'collections' ), true );
+		$weighty  = $button || in_array( $intent['intent'], array( 'opened_account', 'declines_open', 'dispute', 'claims_paid', 'wrong_number', 'human' ), true );
 		if ( ! $owner_ok || ! $cases ) {
-			// Another owner (onboarding agent / human) holds the conversation, or nothing of ours has
-			// reached this customer yet: record only. No reply, no state change, no customer-level flag,
-			// except an explicit stop, which blocks the channel and goes to a person to confirm.
+			// Another owner (onboarding agent / human) holds the conversation, or the message is not a reply
+			// to anything of ours: record only. No reply, no state change, no customer-level flag, except an
+			// explicit stop, which blocks the channel and goes to a person to confirm.
+			$about = $all[0]['id'] ?? null;
 			if ( 'stop' === $intent['intent'] ) {
 				Customers::set_permission( $customer_id, 'whatsapp', false, 'customer_request:message:' . $message_id );
-				if ( $all ) {
-					Tasks::open( 'stop_review:' . $customer_id . ':' . $message_id, 'reply_review', array( 'case_id' => (int) $all[0]['id'], 'customer_id' => $customer_id, 'reason' => 'הלקוח כתב בקשת הפסקה, וההודעות בוואטסאפ נחסמו. אם הבקשה לא הייתה עלינו, אפשר להחזיר את ההרשאה בכרטיס הלקוח: ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
-				}
-			} elseif ( $owner_ok && $all && in_array( $intent['intent'], array( 'opened_account', 'declines_open', 'dispute', 'claims_paid', 'wrong_number', 'human' ), true ) ) {
-				// Worth a look, not an action: we never wrote to this student, so the words may be about anything.
-				Tasks::open( 'unreached_reply:' . $customer_id . ':' . $message_id, 'reply_review', array( 'case_id' => (int) $all[0]['id'], 'customer_id' => $customer_id, 'priority' => 'low', 'reason' => 'הודעה מתלמיד/ה שעוד לא קיבל/ה מאיתנו הודעה (' . ( array( 'opened_account' => 'כתב/ה על פתיחת חשבון', 'declines_open' => 'כתב/ה שלא יפתח/תפתח חשבון', 'dispute' => 'אולי בקשת ביטול או מחלוקת', 'claims_paid' => 'כתב/ה על תשלום', 'wrong_number' => 'אולי מספר שגוי', 'human' => 'ביקש/ה נציג' )[ $intent['intent'] ] ?? $intent['intent'] ) . '), אולי בנושא אחר: ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
+				Tasks::open( 'stop_review:' . $customer_id . ':' . $message_id, 'reply_review', array( 'case_id' => $about ? (int) $about : null, 'customer_id' => $customer_id, 'reason' => 'הלקוח כתב בקשת הפסקה, וההודעות בוואטסאפ נחסמו. אם הבקשה לא הייתה עלינו, אפשר להחזיר את ההרשאה בכרטיס הלקוח: ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
+			} elseif ( $all && $weighty ) {
+				// Worth a look, not an action: the words may be about anything. One task a day per student.
+				$labels = array( 'opened_account' => 'כתב/ה על פתיחת חשבון', 'declines_open' => 'כתב/ה שלא יפתח/תפתח חשבון', 'dispute' => 'אולי בקשת ביטול או מחלוקת', 'claims_paid' => 'כתב/ה על תשלום', 'wrong_number' => 'אולי מספר שגוי', 'human' => 'ביקש/ה נציג' );
+				$why    = $owner_ok ? 'הודעה מתלמיד/ה, אולי בנושא אחר' : 'הודעה בזמן שהשיחה בבעלות ' . $customer['conversation_owner'];
+				Tasks::open( 'unreached_reply:' . $customer_id . ':' . Clock::today(), 'reply_review', array( 'case_id' => (int) $about, 'customer_id' => $customer_id, 'priority' => $button ? 'high' : 'low', 'reason' => $why . ' (' . ( $button ? 'לחיצה על כפתור בהודעת הליווי' : ( $labels[ $intent['intent'] ] ?? $intent['intent'] ) ) . '): ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
 			}
 			return array( 'message_id' => $message_id, 'intent' => $owner_ok ? $intent['intent'] : 'not_owner', 'cases' => count( $cases ), 'recorded_only' => true );
 		}
 		Intents::apply( $customer_id, $message_id, $intent, $cases, $msg );
 		return array( 'message_id' => $message_id, 'intent' => $intent['intent'], 'cases' => count( $cases ) );
+	}
+
+	/** When this case last wrote to the customer on WhatsApp for real (ts), or null. A message on its way counts. */
+	public static function last_reach( int $case_id ): ?int {
+		return Clock::ts( Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND channel = 'whatsapp' AND is_internal = 0 AND kind <> 'team_message' AND delivery_state IN ('queued','accepted','sent','delivered','read','unknown')", $case_id ) );
 	}
 
 	/** Did this case really send the customer anything (not simulated, not failed)? */
@@ -466,9 +488,11 @@ final class Messaging {
 	private static function is_team_message( ?array $case, string $operator ): bool {
 		$list = array_filter( array_map( static fn( $x ) => mb_strtolower( trim( $x ) ), explode( ',', (string) Settings::get( 'wati_collections_operators' ) ) ) );
 		if ( $list ) {
-			return '' === $operator || ! in_array( mb_strtolower( trim( $operator ) ), $list, true );
+			$ids = array_filter( array_map( static fn( $x ) => mb_strtolower( trim( $x ) ), explode( '|', $operator ) ) );
+			return ! array_intersect( $ids, $list );
 		}
-		return ! $case || 'commitment' === ( $case['phase'] ?? 'charge' );
+		// No list: only a debt case outside the program (a failed standing order) treats a typed message as ours.
+		return ! $case || 'commitment' === ( $case['phase'] ?? 'charge' ) || 'non_open_charge' === ( $case['source_type'] ?? '' );
 	}
 
 	/** Internal note in the timeline — flagged so it can never be sent by mistake. */
