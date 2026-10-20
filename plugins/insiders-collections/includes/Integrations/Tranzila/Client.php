@@ -289,7 +289,9 @@ final class Client {
 		$pr_id = (string) ( $r['json']['pr_id'] ?? '' );
 		$link  = (string) ( $r['json']['pr_link'] ?? $r['json']['url'] ?? '' );
 		if ( '' === $pr_id || '' === $link || ( isset( $r['json']['error_code'] ) && 0 !== (int) $r['json']['error_code'] ) ) {
-			return array( 'outcome' => Http::PERMANENT, 'error' => (string) ( $r['json']['message'] ?? 'missing pr_id/pr_link' ) );
+			// The whole answer, not only the message: a schema error may name the field after it.
+			$why = is_array( $r['json'] ) ? wp_json_encode( $r['json'], JSON_UNESCAPED_UNICODE ) : 'missing pr_id/pr_link';
+			return array( 'outcome' => Http::PERMANENT, 'error' => mb_substr( (string) $why, 0, 400 ) );
 		}
 		return array( 'outcome' => Http::OK, 'pr_id' => $pr_id, 'url' => $link );
 	}

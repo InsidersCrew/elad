@@ -172,7 +172,8 @@ final class PaymentRequests {
 					Exceptions::open( 'pr_unknown:' . $fresh['id'], 'integration_failure', 'high', 'יצירת בקשת תשלום בטרנזילה הסתיימה בתוצאה לא ידועה', array( 'entity_type' => 'payment_request', 'entity_id' => (int) $fresh['id'] ) );
 					return array( 'result' => 'checking' );
 				}
-				Exceptions::open( 'pr_error:' . $fresh['id'], 'integration_failure', 'medium', 'טרנזילה דחתה יצירת בקשת תשלום: ' . mb_substr( (string) $res['error'], 0, 200 ), array( 'entity_type' => 'payment_request', 'entity_id' => (int) $fresh['id'] ) );
+				// One exception per distinct answer: a retry that fails differently must not hide behind the first reason.
+				Exceptions::open( 'pr_error:' . $fresh['id'] . ':' . substr( md5( (string) $res['error'] ), 0, 8 ), 'integration_failure', 'medium', 'טרנזילה דחתה יצירת בקשת תשלום: ' . mb_substr( (string) $res['error'], 0, 400 ), array( 'entity_type' => 'payment_request', 'entity_id' => (int) $fresh['id'] ) );
 				return array( 'result' => 'error' );
 			}
 		);
