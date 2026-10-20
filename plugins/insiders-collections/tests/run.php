@@ -2027,6 +2027,42 @@ $tests['X14'] = array( 'חיוב של הוראת קבע ששולם בנפרד: �
 	T::eq( 1, T::count( 'tasks', "type = 'mb_mark_handled' AND status = 'open'" ), 'one task per item' );
 } );
 
+$tests['X15'] = array( 'תשלום מקישור בלי Notify: נמצא בדוח העסקאות לפי סכום וטלפון, רק כשיש התאמה אחת', function () {
+	[ $c, $case ] = program_case();
+	Settings::set( array( 'cap_payment_links' => 1 ) );
+	PaymentRequests::checkout( basename( PaymentRequests::local_link( $case ) ) );
+	$req = Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . ' WHERE case_id = %d', $case );
+	$tx  = static fn( string $ix, string $phone ) => array( 'terminal' => 'insiders', 'index' => $ix, 'amount' => (int) $req['amount_minor'], 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A', 'txn_type' => 'DEBIT', 'transaction_date' => '2026-10-11', 'transaction_time' => '09:00:00', 'user_defined_5' => $phone );
+	T::$tranzila_tx['8802'] = $tx( '8802', '0529998877' ); // same amount, another person: never matched
+	Reconciler::incremental();
+	T::tick();
+	T::eq( 0, T::count( 'payments' ), 'a sale of the same amount by someone else is not taken as this payment' );
+	T::$tranzila_tx['8801'] = $tx( '8801', '050-1234567' );
+	$r = Reconciler::incremental();
+	T::tick();
+	T::eq( 1, $r['pr_from_report'], 'the payment is found in the report' );
+	T::eq( array( 'payment_request', 'paid' ), array( Db::value( 'SELECT origin FROM ' . Db::t( 'payments' ) ), Db::value( 'SELECT status FROM ' . Db::t( 'payment_requests' ) . ' WHERE id = %d', (int) $req['id'] ) ), 'recorded as the request payment, the request is paid' );
+	T::eq( 0, Reconciler::incremental()['pr_from_report'], 'and found once' );
+} );
+
+$tests['X16'] = array( 'חיוב שנכשל בהוראה שלא מופתה: ההוראה נקראת מטרנזילה, ממופה ללקוח ונפתח תיק; לקוח חדש לא מאומת', function () {
+	T::$tranzila_stos['6001'] = array( 'sto_id' => 6001, 'terminal_name' => 'insiderstok', 'sto_status' => 'active', 'charge_frequency' => 'monthly', 'charge_dom' => 11, 'first_charge_date' => '2026-01-11', 'next_charge_date' => '2026-11-11 00:00:00', 'charge_amount' => '250.0000', 'sto_payments_number' => 12, 'client' => array( 'name' => 'יעל לוי', 'email' => 'yael@example.test', 'phone_country_code' => '972', 'phone_area_code' => '052', 'phone_number' => '1112233' ), 'card' => array( 'token' => 'tokY', 'expire_month' => 1, 'expire_year' => 2030 ) );
+	T::tranzila( array( 'index' => '9901', 'sto_external_id' => '6001', 'sum' => '250.00', 'Response' => '004' ) );
+	T::tick();
+	$o = Db::row( 'SELECT * FROM ' . Db::t( 'recurring_orders' ) . " WHERE sto_id = '6001'" );
+	T::check( (bool) $o, 'the order is mapped' );
+	$cu = Customers::get( (int) $o['customer_id'] );
+	T::eq( array( '+972521112233', 'unverified', 2 ), array( $cu['phone_e164'], $cu['contact_status'], (int) $o['future_installments'] ), 'customer from the order, not verified, payments left from the schedule' );
+	T::eq( 1, T::count( 'cases', 'recurring_order_id = ' . (int) $o['id'] ), 'a case is open for the failed charge' );
+	T::eq( 0, T::count( 'exceptions', "exception_key LIKE 'no_order:%' AND status = 'open'" ), 'no manual mapping left open' );
+	// A known student on the same phone is linked, not duplicated.
+	$known = T::customer( array( 'phone' => '054-7770000', 'email' => 'known@example.test' ) );
+	T::$tranzila_stos['6002'] = array_merge( T::$tranzila_stos['6001'], array( 'sto_id' => 6002, 'client' => array( 'name' => 'שם אחר', 'phone_country_code' => '972', 'phone_area_code' => '054', 'phone_number' => '7770000' ) ) );
+	T::tranzila( array( 'index' => '9902', 'sto_external_id' => '6002', 'sum' => '250.00', 'Response' => '004' ) );
+	T::tick();
+	T::eq( $known, (int) Db::value( 'SELECT customer_id FROM ' . Db::t( 'recurring_orders' ) . " WHERE sto_id = '6002'" ), 'linked to the student already known by phone' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";

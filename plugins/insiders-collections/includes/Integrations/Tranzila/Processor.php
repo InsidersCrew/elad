@@ -163,6 +163,12 @@ final class Processor {
 	private static function sto_event( array $ev, array $f, array $p ): string {
 		$order = Db::row( 'SELECT * FROM ' . Db::t( 'recurring_orders' ) . ' WHERE terminal = %s AND sto_id = %s', $f['terminal'], $f['sto_id'] );
 		if ( ! $order ) {
+			$order = self::auto_map( $f['terminal'], $f['sto_id'] );
+			if ( $order ) {
+				Exceptions::resolve_by_key( 'no_order:' . $f['terminal'] . ':' . $f['index'], 'ההוראה מופתה ללקוח אוטומטית לפי פרטי ההוראה בטרנזילה' );
+			}
+		}
+		if ( ! $order ) {
 			Exceptions::open( 'no_order:' . $f['terminal'] . ':' . $f['index'], 'event_without_customer', 'medium', 'אירוע להוראה ' . ( $f['sto_id'] ?: '(ללא מזהה)' ) . ' שאינה ממופה ללקוח', array( 'inbox_event_id' => (int) $ev['id'], 'details' => array( 'terminal' => $f['terminal'], 'sto_id' => $f['sto_id'], 'index' => $f['index'] ) ) );
 			return 'needs_match';
 		}
@@ -339,6 +345,74 @@ final class Processor {
 		}
 		Payments::after_payment( $pid, false ); // routine installment, nothing owed
 		return 'processed';
+	}
+
+	/**
+	 * A standing order this plugin has not seen: read it from Tranzila and map it to a customer by its
+	 * phone, then its email. One match is linked; none creates the customer from the order. Two or more
+	 * stay with a person (an identity is never guessed). A created customer is unverified unless a
+	 * contact basis is recorded in settings, so nothing goes out before a person confirms the number.
+	 */
+	private static function auto_map( string $terminal, string $sto_id ): ?array {
+		if ( '' === $sto_id || ! Settings::on( 'sto_auto_map' ) ) {
+			return null;
+		}
+		$r = Client::get_sto( $terminal, $sto_id );
+		if ( ! $r['ok'] ) {
+			return null;
+		}
+		$s     = (array) $r['sto'];
+		$cl    = (array) ( $s['client'] ?? array() );
+		$cc    = preg_replace( '/\D/', '', (string) ( $cl['phone_country_code'] ?? '972' ) ) ?: '972';
+		$local = preg_replace( '/\D/', '', (string) ( $cl['phone_area_code'] ?? '' ) . (string) ( $cl['phone_number'] ?? '' ) );
+		$phone = '972' === $cc && strlen( $local ) >= 9 ? \Insiders\Collections\Support\Phone::e164( $local ) : null;
+		$email = strtolower( trim( (string) ( $cl['email'] ?? '' ) ) );
+		$found = $phone ? \Insiders\Collections\Domain\Customers::by_phone( $phone ) : array();
+		if ( ! $found && is_email( $email ) ) {
+			$found = Db::rows( 'SELECT * FROM ' . Db::t( 'customers' ) . ' WHERE email = %s', $email );
+		}
+		if ( count( $found ) > 1 ) {
+			return null;
+		}
+		if ( $found ) {
+			$cid = (int) $found[0]['id'];
+		} else {
+			$basis = trim( (string) Settings::get( 'sto_contact_basis' ) );
+			$name  = trim( (string) ( $cl['name'] ?? '' ) );
+			$cid   = \Insiders\Collections\Domain\Customers::create(
+				array(
+					'full_name'      => '' !== $name ? $name : 'לקוח הוראת קבע ' . $sto_id,
+					'phone'          => (string) $phone,
+					'email'          => is_email( $email ) ? $email : '',
+					'phone_verified' => '' !== $basis,
+				)
+			);
+			if ( '' !== $basis && $phone ) {
+				\Insiders\Collections\Domain\Customers::set_permission( $cid, 'whatsapp', true, 'sto: ' . $basis );
+			}
+		}
+		$first = substr( (string) ( $s['first_charge_date'] ?? '' ), 0, 10 );
+		$next  = substr( (string) ( $s['next_charge_date'] ?? $s['next_charge_date_time'] ?? '' ), 0, 10 );
+		$total = (int) ( $s['sto_payments_number'] ?? 0 );
+		$left  = null;
+		if ( $total > 0 && $first && $next ) {
+			$done = ( (int) substr( $next, 0, 4 ) - (int) substr( $first, 0, 4 ) ) * 12 + (int) substr( $next, 5, 2 ) - (int) substr( $first, 5, 2 );
+			$left = max( 0, $total - max( 0, $done ) );
+		}
+		$id = \Insiders\Collections\Domain\Matching::map_sto(
+			array(
+				'customer_id'         => $cid,
+				'terminal'            => $terminal,
+				'sto_id'              => $sto_id,
+				'next_due_at'         => $next,
+				'charge_dom'          => (int) ( $s['charge_dom'] ?? 0 ),
+				'first_charge_date'   => $first,
+				'charge_amount'       => isset( $s['charge_amount'] ) ? number_format( (float) $s['charge_amount'], 2, '.', '' ) : null,
+				'future_installments' => $left,
+				'evidence_ref'        => 'auto: stos/get, ' . ( $found ? 'existing customer' : 'customer created from the order' ),
+			)
+		);
+		return Db::row( 'SELECT * FROM ' . Db::t( 'recurring_orders' ) . ' WHERE id = %d', $id );
 	}
 
 	/** Notify from a payment request we created. Matched only by a confirmed identifier, then verified. */

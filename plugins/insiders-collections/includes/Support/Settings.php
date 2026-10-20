@@ -38,6 +38,8 @@ final class Settings {
 		'tranzila_terminals'          => 'insiders,insiderstok',
 		'tranzila_my_billing_terminal' => 'insiderstok',
 		'tranzila_shared_token_terminals' => 'insiders,insiderstok',
+		'sto_auto_map'                => 1,   // an event for an unknown standing order reads the order from Tranzila and maps it to a customer
+		'sto_contact_basis'           => '',  // when set, a customer created from a standing order counts as a verified WhatsApp contact
 		'tranzila_pr_fallback_email'  => '', // Tranzila emails each payment request here (never to the student); empty = the site's admin email // Tranzila 2026-10-18: a token from one works on the other
 		// My Billing notifications carry no cycle/installment id (verified 2026-10). Strategies:
 		// manual   = every event needs a person to map it (safe default, AT05)

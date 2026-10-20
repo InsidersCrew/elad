@@ -78,6 +78,50 @@ final class Reconciler {
 			Inbox::store( 'tranzila', 'sto', wp_json_encode( $payload ), 'application/json', $payload, hash( 'sha256', 'report:' . $key ), Clock::utc() );
 			++$missing;
 		}
-		return array( 'pages' => $pages, 'rows' => count( $seen ), 'requeued' => $requeued, 'missing_notifications' => $missing );
+		return array( 'pages' => $pages, 'rows' => count( $seen ), 'requeued' => $requeued, 'missing_notifications' => $missing, 'pr_from_report' => self::payment_requests_from_report( $seen ) );
+	}
+
+	/**
+	 * Tranzila sends no Notify for a payment-request payment on the sales terminal (₪1 test, 2026-10-20),
+	 * and the report row carries no pr_id. It does carry the client's phone, copied from the request into
+	 * a user_defined field. A successful sale is matched to an open request of ours only when exactly one
+	 * request has the same amount and the same phone; anything less certain is left alone.
+	 */
+	private static function payment_requests_from_report( array $seen ): int {
+		$terminal = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_terminal', 'insiders' );
+		$field    = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_match_field' ) ?: 'pr_id';
+		$open     = Db::rows(
+			'SELECT r.id, r.provider_pr_id, r.amount_minor, r.currency, u.phone_e164 FROM ' . Db::t( 'payment_requests' ) . ' r JOIN ' . Db::t( 'cases' ) . ' c ON c.id = r.case_id JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id
+			 WHERE r.status = 'active' AND r.provider_pr_id IS NOT NULL AND u.phone_e164 IS NOT NULL AND r.created_at >= %s",
+			Clock::utc( Clock::now() - 30 * DAY_IN_SECONDS )
+		);
+		if ( ! $open ) {
+			return 0;
+		}
+		$found = 0;
+		foreach ( $seen as $key => $n ) {
+			[ $t, $index ] = explode( ':', $key, 2 );
+			if ( $t !== $terminal || '000' !== $n['response'] || 'DEBIT' !== strtoupper( (string) ( $n['raw']['txn_type'] ?? 'DEBIT' ) ) || '' !== $n['sto_id'] ) {
+				continue;
+			}
+			if ( Db::value( 'SELECT id FROM ' . Db::t( 'payments' ) . " WHERE provider = 'tranzila' AND terminal = %s AND transaction_id = %s", $t, $index ) ) {
+				continue;
+			}
+			$phones = array();
+			foreach ( (array) $n['raw'] as $k => $v ) {
+				$d = preg_replace( '/\D/', '', (string) $v );
+				if ( str_starts_with( (string) $k, 'user_defined_' ) && strlen( $d ) >= 9 ) {
+					$phones[] = substr( $d, -9 );
+				}
+			}
+			$match = array_values( array_filter( $open, static fn( $r ) => (int) $r['amount_minor'] === (int) $n['amount_minor'] && in_array( substr( preg_replace( '/\D/', '', $r['phone_e164'] ), -9 ), $phones, true ) ) );
+			if ( 1 !== count( $match ) ) {
+				continue;
+			}
+			$payload = array( 'supplier' => $t, 'index' => $index, $field => $match[0]['provider_pr_id'], 'sum' => number_format( (int) $n['amount_minor'] / 100, 2, '.', '' ), 'currency' => $n['currency'] ?: $match[0]['currency'], 'Response' => '000', 'tranmode' => $n['tranmode'], 'source' => 'report' );
+			Inbox::store( 'tranzila', 'pr', wp_json_encode( $payload ), 'application/json', $payload, hash( 'sha256', 'report-pr:' . $key ), Clock::utc() );
+			++$found;
+		}
+		return $found;
 	}
 }

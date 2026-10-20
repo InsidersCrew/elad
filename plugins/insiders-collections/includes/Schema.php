@@ -669,6 +669,11 @@ final class Schema {
 		$out['settings.report_amount_unit'] = true;
 		// v7: a declined charge in the report finds its standing order by the token's hash.
 		$out['sto_book.token_hash'] = self::ensure_column( 'sto_book', 'token_hash', 'CHAR(64) NULL AFTER card_expiry' );
+		// v8: standing orders are mapped to customers automatically; events that waited for a manual mapping go round again.
+		if ( (int) get_option( 'icol_db_version', 0 ) < 8 ) {
+			$wpdb->query( 'UPDATE ' . Db::t( 'inbox_events' ) . " SET processing_state = 'received' WHERE provider = 'tranzila' AND processing_state = 'needs_match' AND payload_redacted LIKE '%sto_external_id%'" );
+		}
+		$out['inbox.sto_requeue'] = true;
 		return $out;
 	}
 
