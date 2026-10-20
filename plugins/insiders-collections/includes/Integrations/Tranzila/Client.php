@@ -225,21 +225,31 @@ final class Client {
 	/**
 	 * POST /v1/pr/create, per docs.tranzila.com (payment-request/get-v1-pr-create, read 2026-10-17).
 	 * Required: terminal_name, created_by_user, created_by_system, created_via, request_date (null),
-	 * request_language, response_language, client, items, payment_plans, payment_methods, payments_number.
+	 * request_language, response_language, client (name, contact_person, email), items (name,
+	 * unit_price, units_number), payment_plans, payment_methods, payments_number.
 	 * No send_sms/send_email: the link goes out in WhatsApp, Tranzila sends nothing itself.
 	 * No request_vat: the terminal's accounting module decides. Response: pr_id and pr_link;
 	 * the Notify of the payment carries pr_id. 'tranzila_pr_extra' can still add fields.
 	 */
 	public static function create_payment_request( array $req, array $items, array $customer ): array {
 		$terminal = (string) Settings::get( 'tranzila_pr_terminal', 'insiders' );
-		$client   = array(
-			'external_id' => 'icol-' . (int) $req['id'],
-			'name'        => (string) $customer['full_name'],
-		);
-		if ( '' !== (string) ( $customer['email'] ?? '' ) ) {
-			$client['email'] = (string) $customer['email'];
+		// The schema requires name, contact_person and a valid email on the client (a live request without
+		// contact_person came back "Json does not match validation schema", 2026-10-19). Tranzila sends nothing
+		// itself here, so a student without an email gets the business address in that field.
+		$name  = trim( (string) ( $customer['full_name'] ?? '' ) ) ?: 'לקוח';
+		$email = trim( (string) ( $customer['email'] ?? '' ) );
+		if ( ! is_email( $email ) ) {
+			$email = (string) Settings::get( 'tranzila_pr_fallback_email' ) ?: (string) get_option( 'admin_email' );
 		}
-		$client   = array_merge( $client, self::phone_parts( (string) ( $customer['phone_e164'] ?? '' ) ) );
+		$client = array_merge(
+			array(
+				'external_id'    => 'icol-' . (int) $req['id'],
+				'name'           => $name,
+				'contact_person' => $name,
+				'email'          => $email,
+			),
+			self::phone_parts( (string) ( $customer['phone_e164'] ?? '' ) )
+		);
 		$currency = (string) ( $req['currency'] ?: 'ILS' );
 		$body     = array(
 			'terminal_name'     => $terminal,

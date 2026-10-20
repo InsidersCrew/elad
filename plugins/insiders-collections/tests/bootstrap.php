@@ -320,6 +320,11 @@ add_filter(
 			return $json( array( 'error_code' => 0, 'message' => 'success', 'transaction_result' => array( 'processor_response_code' => '000', 'transaction_id' => 880000 + count( T::$charges ), 'auth_number' => '0587923', 'last_4' => substr( (string) $body['card_number'], -4 ), 'amount' => $body['items'][0]['unit_price'] ?? 0 ) ) );
 		}
 		if ( false !== strpos( $url, '/v1/pr/create' ) ) {
+			// Like the live schema (2026-10-19): the client needs name, contact_person and an email.
+			$cl = (array) ( $body['client'] ?? array() );
+			if ( '' === (string) ( $cl['name'] ?? '' ) || '' === (string) ( $cl['contact_person'] ?? '' ) || ! is_email( (string) ( $cl['email'] ?? '' ) ) ) {
+				return $json( array( 'error_code' => 20004, 'message' => 'Json does not match validation schema' ), 400 );
+			}
 			return $json( array( 'error_code' => 0, 'message' => 'ok', 'pr_id' => 'PR' . wp_rand( 1000, 9999 ), 'pr_link' => 'https://direct.tranzila.com/pr/' . wp_generate_password( 12, false ) ) );
 		}
 		if ( false !== strpos( $url, 'wati.test' ) ) {

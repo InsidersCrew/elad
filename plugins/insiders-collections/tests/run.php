@@ -1776,6 +1776,12 @@ $tests['X12'] = array( 'טרנזילה לפי התיעוד: בקשת תשלום 
 	T::eq( array( 'ILS', array( 1 ), 'TRAPI' ), array( $b['request_currency'] ?? null, $b['payment_methods'] ?? null, $b['created_via'] ?? null ), 'currency as ISO text, credit card, created via TRAPI' );
 	T::eq( array( 'I', 1, 'G', 'ILS' ), array( $b['items'][0]['type'] ?? null, $b['items'][0]['unit_type'] ?? null, $b['items'][0]['price_type'] ?? null, $b['items'][0]['currency_code'] ?? null ), 'item fields as documented' );
 	T::check( ! isset( $b['send_sms'] ) && ! isset( $b['send_email'] ), 'Tranzila sends nothing itself: the link goes out in WhatsApp' );
+	T::check( '' !== (string) ( $b['client']['contact_person'] ?? '' ) && is_email( (string) ( $b['client']['email'] ?? '' ) ), 'the client carries name, contact person and email, as the schema requires' );
+	// A student with no email still gets a payment page: the business address fills the required field.
+	[ $c2, $case2 ] = program_case();
+	Db::update( 'customers', array( 'email' => null ), array( 'id' => $c2 ) );
+	$res = PaymentRequests::checkout( basename( PaymentRequests::local_link( $case2 ) ) );
+	T::eq( 'redirect', $res['result'], 'no email on the student: the request is still created' );
 } );
 
 $tests['X13'] = array( 'כתובת Notify אחת למסוף: תשלום מקישור שמגיע לכתובת של הוראות הקבע נקלט לפי pr_id, ומכירה רגילה במסוף לא פותחת חריג', function () {
