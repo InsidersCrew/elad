@@ -40,6 +40,7 @@ final class Processor {
 					$mid = self::find_message( $p );
 					if ( $mid ) {
 						\Insiders\Collections\Domain\CardCharge::on_notice_failed( (int) $mid );
+						\Insiders\Collections\Domain\Journey::on_send_failed( (int) $mid );
 					}
 					Exceptions::open( 'delivery_failed:' . $mid, 'integration_failure', 'medium', 'WATI דיווח על כשל מסירה: ' . mb_substr( (string) ( $p['failedDetail'] ?? $p['failedCode'] ?? '' ), 0, 200 ), array( 'entity_type' => 'message', 'entity_id' => (int) $mid ) );
 				}
@@ -108,7 +109,14 @@ final class Processor {
 					}
 				}
 			}
-			Exceptions::open( 'shared_inbound:' . md5( (string) $p['waId'] ), 'identity_conflict', 'medium', 'הודעה נכנסת ממספר משותף ל־' . count( $customers ) . ' לקוחות', array() );
+			$text = (string) ( $p['text'] ?? ( $p['buttonReply']['text'] ?? '' ) );
+			if ( 'stop' === \Insiders\Collections\Domain\Intents::classify( $text, (string) ( $p['type'] ?? 'text' ) )['intent'] ) {
+				// Whoever of them wrote it, the number asked to stop: no message goes to that number.
+				foreach ( $customers as $c ) {
+					Customers::set_permission( (int) $c['id'], 'whatsapp', false, 'customer_request:shared_number' );
+				}
+			}
+			Exceptions::open( 'shared_inbound:' . md5( (string) $p['waId'] ), 'identity_conflict', 'medium', 'הודעה נכנסת ממספר משותף ל־' . count( $customers ) . ' לקוחות: ' . mb_substr( $text, 0, 200 ), array() );
 			return 'needs_match';
 		}
 		$ts = isset( $p['timestamp'] ) && is_numeric( $p['timestamp'] ) ? Clock::utc( (int) $p['timestamp'] ) : ( ! empty( $p['created'] ) ? Clock::utc( (int) strtotime( (string) $p['created'] ) ) : Clock::utc() );
@@ -141,6 +149,7 @@ final class Processor {
 			array(
 				'provider_id' => (string) ( $p['whatsappMessageId'] ?? $p['id'] ?? '' ) ?: null,
 				'text'        => (string) ( $p['text'] ?? '' ),
+				'operator'    => (string) ( $p['operatorEmail'] ?? $p['operatorName'] ?? $p['assignedId'] ?? '' ),
 				'occurred_at' => Clock::utc(),
 			)
 		);

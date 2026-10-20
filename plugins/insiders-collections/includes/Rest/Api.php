@@ -293,9 +293,18 @@ final class Api {
 		}
 		// Queued messages are voided at delivery time while the switch is on (Wati\Client::deliver_message);
 		// turning it off does not resend them — the scheduler re-plans from the current state (§20).
+		$mode = \Insiders\Collections\Domain\SendGuard::mode();
 		Settings::set( array( 'kill_switch' => $on ? 1 : 0 ) );
+		self::after_mode_change( $mode );
 		Audit::log( $on ? 'kill_switch.on' : 'kill_switch.off', 'system', 0, null, null, Http::str( $q, 'reason' ) );
 		return array( 'kill_switch' => $on );
+	}
+
+	/** Real sending just started (display-only off, sends on, kill switch off, by whichever was last). */
+	private static function after_mode_change( string $before ): void {
+		if ( 'simulate' === $before && 'live' === \Insiders\Collections\Domain\SendGuard::mode() ) {
+			\Insiders\Collections\Domain\Journey::restart_after_measurement();
+		}
 	}
 
 	private static function save_settings( \WP_REST_Request $q ): array {
@@ -319,10 +328,9 @@ final class Api {
 			throw new DomainError( 'validation_failed', 'לפני הפעלת הליווי יש לתעד על מה מבוססת ההרשאה לפנות לתלמידים בוואטסאפ', 422, array( 'journey_contact_basis' => 'חובה' ) );
 		}
 		$before = array_intersect_key( Settings::all(), $clean );
+		$mode   = \Insiders\Collections\Domain\SendGuard::mode();
 		Settings::set( $clean );
-		if ( ! empty( $before['display_only'] ) && ! Settings::on( 'display_only' ) ) {
-			\Insiders\Collections\Domain\Journey::restart_after_measurement();
-		}
+		self::after_mode_change( $mode );
 		foreach ( (array) $q->get_param( 'secrets' ) as $name => $value ) {
 			if ( in_array( $name, array( 'tranzila_app_key', 'tranzila_secret', 'wati_token', 'pipedrive_token', 'anthropic_api_key' ), true ) && '' !== (string) $value ) {
 				if ( ! Settings::set_secret( $name, (string) $value ) ) {

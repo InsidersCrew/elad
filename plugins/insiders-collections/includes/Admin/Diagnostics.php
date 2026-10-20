@@ -176,6 +176,10 @@ final class Diagnostics {
 			} )(),
 			// Students who joined before the baseline and are in the dashboard: not in the journey unless journey_from_date reaches them.
 			'before_baseline'  => $fd::before_baseline(),
+			// Cases the upgrade repairs put back into the journey (an unrelated message had moved them to a person).
+			'repaired'         => $Db::rows( 'SELECT entity_id AS case_id, occurred_at, reason FROM ' . $Db::t( 'audit_log' ) . " WHERE action = 'case.transition' AND reason LIKE %s ORDER BY id DESC LIMIT 50", '%[repair]' ),
+			'team_messages'    => (int) $Db::value( 'SELECT COUNT(*) FROM ' . $Db::t( 'messages' ) . " WHERE kind = 'team_message'" ),
+			'collections_operators' => '' !== trim( (string) $S::get( 'wati_collections_operators' ) ) ? 'מוגדר' : 'לא מוגדר: הודעה שמוקלדת ב-WATI עוצרת רק תיק אחרי המועד',
 			'finance_dashboard' => $fd::available() ? array( 'stale' => $fd::contract()['stale'], 'sync_ok_at' => $fd::contract()['sync_ok_at'], 'ledger_for_credit' => $fd::ledger_available() ) : 'לא נמצא',
 			'cases'            => $Db::rows( 'SELECT phase, COALESCE(track, \'-\') AS track, workflow_state, COUNT(*) AS n FROM ' . $Db::t( 'cases' ) . " WHERE source_type = 'non_open_charge' GROUP BY phase, track, workflow_state" ),
 			'last_run'         => Runner::beats()['journey'] ?? 'עוד לא רץ',

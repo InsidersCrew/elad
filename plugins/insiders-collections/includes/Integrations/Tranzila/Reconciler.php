@@ -4,6 +4,9 @@ namespace Insiders\Collections\Integrations\Tranzila;
 use Insiders\Collections\Engine\Inbox;
 use Insiders\Collections\Support\Clock;
 use Insiders\Collections\Support\Db;
+use Insiders\Collections\Support\Money;
+use Insiders\Collections\Support\Phone;
+use Insiders\Collections\Domain\Exceptions;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -49,6 +52,9 @@ final class Reconciler {
 			}
 		}
 		if ( $errors ) {
+			if ( ! array_filter( $errors, static fn( $e ) => str_starts_with( $e, (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_terminal', 'insiders' ) . ':' ) ) ) {
+				self::payment_requests_from_report( $seen );
+			}
 			// A failed scan must not look like an empty day: throw so the runner records an error, not a success.
 			throw new \RuntimeException( 'reconcile failed: ' . implode( ' | ', $errors ) );
 		}
@@ -91,8 +97,8 @@ final class Reconciler {
 		$terminal = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_terminal', 'insiders' );
 		$field    = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_pr_match_field' ) ?: 'pr_id';
 		$open     = Db::rows(
-			'SELECT r.id, r.provider_pr_id, r.amount_minor, r.currency, u.phone_e164 FROM ' . Db::t( 'payment_requests' ) . ' r JOIN ' . Db::t( 'cases' ) . ' c ON c.id = r.case_id JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id
-			 WHERE r.status = 'active' AND r.provider_pr_id IS NOT NULL AND u.phone_e164 IS NOT NULL AND r.created_at >= %s",
+			'SELECT r.id, r.provider_pr_id, r.amount_minor, r.currency, r.status, r.created_at, u.phone_e164 FROM ' . Db::t( 'payment_requests' ) . ' r JOIN ' . Db::t( 'cases' ) . ' c ON c.id = r.case_id JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id
+			 WHERE r.status IN ('active','superseded','expired','paid') AND r.provider_pr_id IS NOT NULL AND u.phone_e164 IS NOT NULL AND r.created_at >= %s",
 			Clock::utc( Clock::now() - 30 * DAY_IN_SECONDS )
 		);
 		if ( ! $open ) {
@@ -109,13 +115,23 @@ final class Reconciler {
 			}
 			$phones = array();
 			foreach ( (array) $n['raw'] as $k => $v ) {
-				$d = preg_replace( '/\D/', '', (string) $v );
-				if ( str_starts_with( (string) $k, 'user_defined_' ) && strlen( $d ) >= 9 ) {
-					$phones[] = substr( $d, -9 );
+				$e = str_starts_with( (string) $k, 'user_defined_' ) ? Phone::e164( (string) $v ) : null;
+				if ( null !== $e ) {
+					$phones[] = $e;
 				}
 			}
-			$match = array_values( array_filter( $open, static fn( $r ) => (int) $r['amount_minor'] === (int) $n['amount_minor'] && in_array( substr( preg_replace( '/\D/', '', $r['phone_e164'] ), -9 ), $phones, true ) ) );
+			if ( ! $phones ) {
+				continue; // an ordinary sale on the terminal: no phone of a request of ours
+			}
+			// The report's date is local time; a date alone counts as the end of that day.
+			$sale_ts = preg_match( '/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}))?/', (string) $n['date'], $dm ) ? (int) Clock::local_to_ts( $dm[1], $dm[2] ?? '23:59' ) : 0;
+			$cands   = array_values( array_filter( $open, static fn( $r ) => in_array( (string) $r['phone_e164'], $phones, true ) && ( ! $sale_ts || $sale_ts >= (int) Clock::ts( $r['created_at'] ) - HOUR_IN_SECONDS ) ) );
+			$match   = array_values( array_filter( $cands, static fn( $r ) => 'active' === $r['status'] && (int) $r['amount_minor'] === (int) $n['amount_minor'] ) );
 			if ( 1 !== count( $match ) ) {
+				if ( $cands ) {
+					// Our student paid on the sales terminal, but not one open request with that amount: a person matches it.
+					Exceptions::open( 'pr_report_unmatched:' . $key, 'payment_without_debt', 'medium', 'תשלום של ' . Money::format( (int) $n['amount_minor'] ) . ' ₪ בדוח העסקאות מטלפון של תלמיד עם בקשת תשלום, ' . ( $match ? 'שמתאים ליותר מבקשה אחת' : 'שלא מתאים לבקשה פתוחה (סכום אחר, או בקשה שהוחלפה)' ) . '. נדרש שיוך ידני', array( 'details' => array( 'terminal' => $t, 'index' => $index, 'requests' => array_column( $cands, 'id' ) ) ) );
+				}
 				continue;
 			}
 			$payload = array( 'supplier' => $t, 'index' => $index, $field => $match[0]['provider_pr_id'], 'sum' => number_format( (int) $n['amount_minor'] / 100, 2, '.', '' ), 'currency' => $n['currency'] ?: $match[0]['currency'], 'Response' => '000', 'tranmode' => $n['tranmode'], 'source' => 'report' );

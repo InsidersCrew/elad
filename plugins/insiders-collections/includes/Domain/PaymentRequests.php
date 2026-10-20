@@ -48,7 +48,8 @@ final class PaymentRequests {
 					return null;
 				}
 				$active = Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . " WHERE case_id = %d AND status IN ('draft','active') ORDER BY id DESC LIMIT 1", $case_id );
-				if ( $active && $active['balance_version'] === $summary['signature'] && (int) $active['amount_minor'] === $summary['due_balance_minor'] && $active['token_enc'] ) {
+				$fresh_enough = $active && ( Clock::ts( $active['expires_at'] ) ?? 0 ) > Clock::now() + 7 * DAY_IN_SECONDS;
+				if ( $active && $fresh_enough && $active['balance_version'] === $summary['signature'] && (int) $active['amount_minor'] === $summary['due_balance_minor'] && $active['token_enc'] ) {
 					$token = Crypto::decrypt( $active['token_enc'] );
 					if ( $token ) {
 						return self::url( $token );
@@ -103,6 +104,11 @@ final class PaymentRequests {
 		}
 		if ( in_array( $req['status'], array( 'expired', 'cancelled' ), true ) || ( Clock::ts( $req['expires_at'] ) ?? 0 ) < Clock::now() ) {
 			return array( 'state' => 'expired', 'request' => $req );
+		}
+		if ( 'unknown' === $req['status'] && ( Clock::ts( $req['updated_at'] ) ?? 0 ) < Clock::now() - 20 * MINUTE_IN_SECONDS && ! $req['provider_pr_id'] ) {
+			// The timed-out create gave the student nothing to pay with: they may try again.
+			Db::update( 'payment_requests', array( 'status' => 'active', 'updated_at' => Clock::utc() ), array( 'id' => (int) $req['id'] ) );
+			$req['status'] = 'active';
 		}
 		if ( 'unknown' === $req['status'] ) {
 			return array( 'state' => 'checking', 'request' => $req );
@@ -177,6 +183,11 @@ final class PaymentRequests {
 				return array( 'result' => 'error' );
 			}
 		);
+	}
+
+	/** A case that was paid another way or closed leaves no payable link behind. */
+	public static function supersede_for_case( int $case_id, string $why ): int {
+		return Db::exec( 'UPDATE ' . Db::t( 'payment_requests' ) . " SET status = 'superseded', updated_at = %s WHERE case_id = %d AND status IN ('draft','active')", Clock::utc(), $case_id );
 	}
 
 	/** Paid/void bookkeeping when a payment matched this request. */

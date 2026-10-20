@@ -330,6 +330,10 @@ final class Processor {
 		if ( null !== $cycle ) {
 			$key  = Cycle::source_key( $f['terminal'], $f['sto_id'], $cycle );
 			$item = Db::row( 'SELECT * FROM ' . Db::t( 'debt_items' ) . ' WHERE source_key = %s', $key );
+			if ( $item && ! in_array( $item['finance_state'], array( 'open', 'partially_paid', 'not_due' ), true ) && 'cancelled' !== $item['finance_state'] ) {
+				Exceptions::open( 'double_charge:' . $f['terminal'] . ':' . $f['index'], 'overpayment', 'high', 'הוראת הקבע חייבה (' . Money::format( (int) $f['amount_minor'] ) . ' ₪) מחזור ששולם כבר בדרך אחרת: ייתכן חיוב כפול. לבדוק ולהחזיר ללקוח אם צריך', array( 'entity_type' => 'payment', 'entity_id' => $pid, 'customer_id' => (int) $order['customer_id'] ) );
+				return 'needs_match';
+			}
 			if ( $item && in_array( $item['finance_state'], array( 'open', 'partially_paid', 'not_due' ), true ) ) {
 				$amt = min( (int) $f['amount_minor'], (int) $item['cached_balance_minor'] );
 				Ledger::allocate( $pid, (int) $item['id'], $amt, 'חיוב חוזר הצליח למחזור ' . $cycle );
@@ -446,7 +450,10 @@ final class Processor {
 	private static function payment_request_event( array $ev, array $f, array $p ): string {
 		$field = (string) Settings::get( 'tranzila_pr_match_field' );
 		$pr_id = '' !== $field ? trim( (string) ( $p[ $field ] ?? '' ) ) : trim( (string) ( $p['pr_id'] ?? '' ) );
-		$req   = '' !== $pr_id ? Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . ' WHERE provider_pr_id = %s', $pr_id ) : null;
+		if ( '' === $pr_id ) {
+			return 'ignored';
+		}
+		$req = Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . ' WHERE provider_pr_id = %s', $pr_id );
 		if ( ! $req || ! ResponseCodes::is_success( $f['response'] ) ) {
 			if ( ResponseCodes::is_success( $f['response'] ) ) {
 				Exceptions::open( 'pr_unmatched:' . $f['terminal'] . ':' . $f['index'], 'payment_without_debt', 'high', 'תשלום דרך בקשת תשלום שלא הותאם לבקשה במערכת', array( 'inbox_event_id' => (int) $ev['id'] ) );
@@ -476,10 +483,10 @@ final class Processor {
 				'verification_source' => 'report',
 			)
 		);
-		if ( ! $created ) {
+		if ( ! $created && ( (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'allocations' ) . ' WHERE payment_id = %d', $pid ) || 'paid' === $req['status'] ) ) {
 			return 'processed';
 		}
-		if ( '' !== $f['token'] ) {
+		if ( $created && '' !== $f['token'] ) {
 			CardTasks::store_credential( $pid, $f['terminal'], $f['token'], $f['expdate'] );
 		}
 		$left  = (int) $f['amount_minor'];

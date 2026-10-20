@@ -111,7 +111,7 @@ final class Journey {
 			'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'commitment' AND c.workflow_state IN ('active','waiting_reply')
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'scheduled_actions' ) . " s WHERE s.case_id = c.id AND s.state IN ('pending','claimed'))
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'scheduled_actions' ) . " s WHERE s.case_id = c.id AND s.type = 'send_journey' AND s.state = 'cancelled' AND s.updated_at > %s
-			   AND s.result LIKE 'cancel:%%' AND s.result NOT IN ('cancel:stale_step','cancel:phase_changed','cancel:ifd_stale','cancel:disabled','cancel:state','cancel:case_missing'))",
+			   AND s.result LIKE 'cancel:%%' AND s.result NOT IN ('cancel:stale_step','cancel:phase_changed','cancel:ifd_stale','cancel:ifd_unavailable','cancel:disabled','cancel:state','cancel:case_missing'))",
 			Clock::utc( Clock::now() - 20 * HOUR_IN_SECONDS )
 		);
 		foreach ( $idle as $c ) {
@@ -183,6 +183,13 @@ final class Journey {
 		if ( $existing ) {
 			// Someone already opened a case for this enrollment deal by hand: recorded once, never retried.
 			self::candidate_row( $pc, $r, $key, 'drafted', (array) ( $pc ? json_decode( (string) $pc['snapshot'], true ) : $r ), $existing, $source );
+			return null;
+		}
+		$same_person = $person ? (int) Db::value( 'SELECT c.id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id WHERE u.pipedrive_person_id = %d AND c.source_type = 'non_open_charge' AND c.workflow_state <> 'closed' LIMIT 1", $person ) : 0;
+		if ( $same_person ) {
+			// Two enrollment deals for one student would mean two journeys and two charges: a person decides.
+			self::candidate_row( $pc, $r, $key, 'drafted', (array) ( $pc ? json_decode( (string) $pc['snapshot'], true ) : $r ), $same_person, $source );
+			Exceptions::open( 'journey_dup_person:' . $person . ':' . $deal, 'identity_conflict', 'medium', 'לתלמיד (איש קשר ' . $person . ') יש עוד דיל הצטרפות (' . $deal . ') בזמן שתיק #' . $same_person . ' פתוח. הדיל השני לא נכנס לליווי. אם זה כפילות, לסגור את הדיל בפייפדרייב', array( 'entity_type' => 'case', 'entity_id' => $same_person ) );
 			return null;
 		}
 		// The fresh row wins; what an earlier run already learned (contact details) fills its gaps.
@@ -413,8 +420,10 @@ final class Journey {
 	/** Stop the messages and give the case to a person, once per case (a resumed case stays resumed). */
 	private static function hold_for_person( int $case_id, string $why, string $todo ): bool {
 		$case = Workflow::get( $case_id );
-		$key  = 'deal_lost:' . $case_id;
-		if ( ! $case || 'closed' === $case['workflow_state'] || Db::value( 'SELECT id FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', $key ) ) {
+		$key  = 'deal_lost:' . $case_id . ':' . substr( md5( $why ), 0, 10 );
+		// Before 0.3.22 the key was the case alone; the same cause under that key is already decided.
+		$legacy = Db::value( 'SELECT reason FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', 'deal_lost:' . $case_id );
+		if ( ! $case || 'closed' === $case['workflow_state'] || Db::value( 'SELECT id FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', $key ) || ( null !== $legacy && str_starts_with( (string) $legacy, $why ) ) ) {
 			return false;
 		}
 		Scheduler::cancel_for_case( $case_id, 'deal_lost' );
@@ -471,6 +480,10 @@ final class Journey {
 		$out = array( 'opened' => 0, 'paid' => 0 );
 		foreach ( $cases as $c ) {
 			$hit = $c['pipedrive_deal_id'] ? ( $res['by_deal'][ (int) $c['pipedrive_deal_id'] ] ?? null ) : null;
+			$per = $res['by_person'][ (int) $c['pipedrive_person_id'] ] ?? null;
+			if ( ! $hit && $per && 'opened' === $per['kind'] && $c['signed_at'] && substr( $per['resolved_at'], 0, 10 ) >= substr( (string) $c['signed_at'], 0, 10 ) ) {
+				$hit = $per;
+			}
 			if ( ! $hit && isset( $ledger[ (int) $c['id'] ] ) ) {
 				$hit = array( 'kind' => 'opened', 'resolved_at' => $ledger[ (int) $c['id'] ] );
 			}
@@ -480,6 +493,9 @@ final class Journey {
 			$kind     = $hit['kind'];
 			$approved = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d AND approved_at IS NOT NULL', (int) $c['id'] );
 			Scheduler::cancel_for_case( (int) $c['id'], 'resolved_' . $kind );
+			if ( $approved && 'human_review' === $c['workflow_state'] ) {
+				continue; // already with a person for this; the hourly run does not touch it again
+			}
 			if ( ! $approved ) {
 				Db::exec( 'DELETE FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d AND approved_at IS NULL', (int) $c['id'] );
 				Workflow::transition( (int) $c['id'], 'closed', 'opened' === $kind ? 'נפתח חשבון לפי דשבורד ההכנסות (' . $hit['resolved_at'] . ')' : 'החיוב נרשם כשולם בפייפדרייב (' . $hit['resolved_at'] . ')', null, array(), 'journey' );
@@ -561,6 +577,12 @@ final class Journey {
 						// Entered on the deadline day itself: "today is the last day", not "there is time until today".
 						return array( 'key' => 'j_t0', 'date' => $deadline );
 					}
+					// An opening now would push the deadline-day message past the minimum gap, and the last day
+					// would pass in silence: the deadline-day message alone, on its day.
+					$gap_days = (int) ceil( (int) Policy::effective_or_draft()['min_gap_hours'] / 24 );
+					if ( $gap_days > 0 && self::send_day( $deadline, Policy::effective_or_draft() ) < self::plus_days( $date, $gap_days ) ) {
+						return array( 'key' => 'j_t0', 'date' => $deadline );
+					}
 					return $date <= $deadline ? array( 'key' => 'j_intro', 'date' => $date ) : null;
 				}
 				$keys = array_keys( self::REACH );
@@ -600,15 +622,20 @@ final class Journey {
 	 * day moves back (the deadline-day message must not arrive after the deadline),
 	 * unless that is already in the past, then forward.
 	 */
-	private static function send_ts( string $date, array $policy, int $customer_id ): int {
-		$d = $date;
-		if ( ! Calendar::is_business_day( $d, $policy ) ) {
-			$back = $d;
-			for ( $i = 0; $i < 7 && ! Calendar::is_business_day( $back, $policy ); $i++ ) {
-				$back = self::plus_days( $back, -1 );
-			}
-			$d = ( $back >= Clock::today() && Calendar::is_business_day( $back, $policy ) ) ? $back : $d;
+	private static function send_day( string $date, array $policy ): string {
+		if ( Calendar::is_business_day( $date, $policy ) ) {
+			return $date;
 		}
+		$back = $date;
+		for ( $i = 0; $i < 7 && ! Calendar::is_business_day( $back, $policy ); $i++ ) {
+			$back = self::plus_days( $back, -1 );
+		}
+		return ( $back >= Clock::today() && Calendar::is_business_day( $back, $policy ) ) ? $back : $date;
+	}
+
+	/** @param int $not_before spreads a batch (the start of live sending) instead of sending it at once */
+	private static function send_ts( string $date, array $policy, int $customer_id, int $not_before = 0 ): int {
+		$d      = self::send_day( $date, $policy );
 		$jitter = (int) $policy['first_contact_jitter_minutes'];
 		$ts     = Clock::local_to_ts( $d, $policy['window_start'] ) + ( $jitter > 0 ? random_int( 0, $jitter ) * MINUTE_IN_SECONDS : 0 );
 		// Planned past the minimum gap up front: a send blocked by it is retried on the next
@@ -618,11 +645,11 @@ final class Journey {
 		if ( null !== $last ) {
 			$ts = max( $ts, $last + (int) $policy['min_gap_hours'] * HOUR_IN_SECONDS + MINUTE_IN_SECONDS );
 		}
-		return Calendar::next_slot( max( $ts, Clock::now() ), $policy );
+		return Calendar::next_slot( max( $ts, Clock::now(), $not_before ), $policy );
 	}
 
 	/** Schedule the case's next journey message (Messaging::plan_next delegates here in this phase). */
-	public static function plan_next( int $case_id ): ?int {
+	public static function plan_next( int $case_id, int $not_before = 0 ): ?int {
 		$case = Workflow::get( $case_id );
 		if ( ! $case || 'commitment' !== $case['phase'] || ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			return null;
@@ -640,7 +667,7 @@ final class Journey {
 			return null;
 		}
 		$policy = Policy::effective_or_draft();
-		$run_at = self::send_ts( $next['date'], $policy, (int) $case['customer_id'] );
+		$run_at = self::send_ts( $next['date'], $policy, (int) $case['customer_id'], $not_before );
 		$id     = Scheduler::schedule( 'send_journey', $run_at, 'journey:' . $case_id . ':' . $next['key'], $case_id, (int) $case['customer_id'], array( 'step' => $next['key'] ), (int) $policy['_version'] );
 		Db::update( 'cases', array( 'next_action_type' => 'send_journey', 'next_action_at' => Clock::utc( $run_at ) ), array( 'id' => $case_id ) );
 		return $id;
@@ -684,9 +711,22 @@ final class Journey {
 		if ( ! self::enabled() ) {
 			return 'cancel:disabled';
 		}
-		if ( FinanceDashboard::available() && FinanceDashboard::contract()['stale'] ) {
+		if ( ! FinanceDashboard::available() ) {
+			return 'cancel:ifd_unavailable'; // "לפי המערכת החשבון עוד לא נפתח" needs the dashboard
+		}
+		if ( FinanceDashboard::contract()['stale'] ) {
 			// "לפי המערכת החשבון עוד לא נפתח" needs a dashboard that read Pipedrive recently.
 			return 'cancel:ifd_stale'; // planned again by the hourly run once the dashboard is fresh
+		}
+		$person = (int) Db::value( 'SELECT pipedrive_person_id FROM ' . Db::t( 'customers' ) . ' WHERE id = %d', (int) $case['customer_id'] );
+		$agr    = Db::row( 'SELECT pipedrive_deal_id, signed_at FROM ' . Db::t( 'agreements' ) . ' WHERE id = %d', (int) $case['agreement_id'] );
+		$deal   = (int) ( $agr['pipedrive_deal_id'] ?? 0 );
+		if ( $person ) {
+			$res = FinanceDashboard::resolutions( array( $person ) );
+			$per = $res['by_person'][ $person ] ?? null;
+			if ( ( $deal && isset( $res['by_deal'][ $deal ] ) ) || ( $per && 'opened' === $per['kind'] && ! empty( $agr['signed_at'] ) && substr( $per['resolved_at'], 0, 10 ) >= substr( (string) $agr['signed_at'], 0, 10 ) ) ) {
+				return 'cancel:resolved'; // opened or paid since the last hourly read: that run closes or routes the case
+			}
 		}
 		$payload = (array) json_decode( (string) $action['payload'], true );
 		$step    = (string) ( $payload['step'] ?? '' );
@@ -959,15 +999,78 @@ final class Journey {
 			'SELECT c.id, c.customer_id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed' AND c.track_step IS NOT NULL AND c.track_step <> ''
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))"
 		);
+		// Not all at once: the first live messages leave a few minutes apart (WATI rate, and the replies
+		// that come back reach the reps gradually).
+		$spread = max( 1, (int) Settings::get( 'journey_restart_spread_minutes' ) ) * MINUTE_IN_SECONDS;
+		$at     = Clock::now();
 		foreach ( $rows as $r ) {
 			Scheduler::cancel_for_case( (int) $r['id'], 'measurement_ended' );
 			// The simulated steps keep their record under another key, so the same step can be planned again.
 			Db::exec( 'UPDATE ' . Db::t( 'scheduled_actions' ) . " SET idempotency_key = CONCAT(idempotency_key, ':sim', id) WHERE case_id = %d AND type = 'send_journey' AND idempotency_key NOT LIKE '%%:sim%%'", (int) $r['id'] );
 			Db::update( 'cases', array( 'track_step' => null ), array( 'id' => (int) $r['id'] ) );
-			self::plan_next( (int) $r['id'] );
+			self::plan_next( (int) $r['id'], $at );
+			$at += $spread;
 		}
-		if ( $rows ) {
-			Audit::log( 'journey.restart', 'system', 0, null, array( 'cases' => count( $rows ) ), 'מצב תצוגה בלבד כובה: הליווי מתחיל מההודעה הראשונה למי שקיבל עד עכשיו רק הודעות מדומות' );
+		// After the deadline: a debt case whose reminders were all simulated starts from its first reminder.
+		$charge = Db::rows(
+			'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'charge' AND c.workflow_state IN ('active','waiting_reply') AND c.sequence_step > 0
+			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))"
+		);
+		foreach ( $charge as $r ) {
+			Scheduler::cancel_for_case( (int) $r['id'], 'measurement_ended' );
+			Db::update( 'cases', array( 'sequence_step' => 0, 'sequence_started_at' => Clock::utc() ), array( 'id' => (int) $r['id'] ) );
+			Messaging::plan_next( (int) $r['id'] );
+		}
+		if ( $rows || $charge ) {
+			Audit::log( 'journey.restart', 'system', 0, null, array( 'cases' => count( $rows ), 'charge_cases' => count( $charge ) ), 'השליחה האמיתית התחילה: הליווי מתחיל מההודעה הראשונה למי שקיבל עד עכשיו רק הודעות מדומות' );
+		}
+		return count( $rows ) + count( $charge );
+	}
+
+	/**
+	 * A journey message WATI refused or reported failed: the step did not happen. Back to the step
+	 * before it and planned again; the second failure of the same step goes to a person.
+	 */
+	public static function on_send_failed( int $message_id ): void {
+		$m = Db::row( 'SELECT id, case_id, template_key FROM ' . Db::t( 'messages' ) . " WHERE id = %d AND direction = 'out' AND kind = 'commitment_reminder'", $message_id );
+		$case = $m && $m['case_id'] ? Workflow::get( (int) $m['case_id'] ) : null;
+		if ( ! $case || 'commitment' !== $case['phase'] || 'closed' === $case['workflow_state'] ) {
+			return;
+		}
+		$case_id = (int) $case['id'];
+		$step    = preg_replace( '/_reply$/', '', (string) $m['template_key'] );
+		if ( (string) $case['track_step'] !== $step ) {
+			return; // a later step already went, or the step was given back before
+		}
+		$prev = Db::value( 'SELECT template_key FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND id < %d AND direction = 'out' AND kind = 'commitment_reminder' AND delivery_state IN ('accepted','sent','delivered','read','unknown') ORDER BY id DESC LIMIT 1", $case_id, $message_id );
+		$fails = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND kind = 'commitment_reminder' AND delivery_state = 'failed' AND template_key IN (%s, %s)", $case_id, $step, $step . '_reply' );
+		Scheduler::cancel_for_case( $case_id, 'send_failed' );
+		// The step's action keeps its record under another key, so the same step can be planned again.
+		Db::exec( 'UPDATE ' . Db::t( 'scheduled_actions' ) . " SET idempotency_key = CONCAT(idempotency_key, ':fail', id) WHERE case_id = %d AND type = 'send_journey' AND idempotency_key = %s", $case_id, 'journey:' . $case_id . ':' . $step );
+		Db::update( 'cases', array( 'track_step' => $prev ? preg_replace( '/_reply$/', '', (string) $prev ) : null ), array( 'id' => $case_id ) );
+		$label = self::STEP_LABELS[ $step ] ?? $step;
+		if ( $fails >= 2 ) {
+			if ( Workflow::can( $case['workflow_state'], 'human_review' ) ) {
+				Workflow::transition( $case_id, 'human_review', 'הודעת הליווי לא נמסרה פעמיים: ' . $label, null, array(), 'journey' );
+			}
+			Tasks::open( 'journey_send_failed:' . $case_id . ':' . $step, 'reply_review', array( 'case_id' => $case_id, 'customer_id' => (int) $case['customer_id'], 'priority' => 'high', 'reason' => 'הודעת הליווי (' . $label . ') לא נמסרה פעמיים. לבדוק את המספר ב-WATI ולפנות לתלמיד/ה בדרך אחרת' ) );
+			return;
+		}
+		Audit::log( 'journey.send_failed', 'case', $case_id, null, array( 'step' => $step, 'message_id' => $message_id ), 'הודעת הליווי לא נמסרה (' . $label . '), תתוכנן שוב' );
+		self::plan_next( $case_id, Clock::now() + 2 * HOUR_IN_SECONDS ); // not straight back into the same failure
+	}
+
+	/**
+	 * Before 0.3.22 every message typed in WATI counted as a collections rep talking to the student.
+	 * On a program case nothing of ours had reached, it was another team's: relabelled, out of the quota.
+	 */
+	public static function relabel_team_messages(): int {
+		$rows = Db::rows(
+			'SELECT m.id FROM ' . Db::t( 'messages' ) . ' m JOIN ' . Db::t( 'cases' ) . " c ON c.id = m.case_id WHERE m.kind = 'operator_message' AND c.phase = 'commitment'
+			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " o WHERE o.case_id = c.id AND o.direction = 'out' AND o.kind NOT IN ('operator_message','team_message') AND o.channel = 'whatsapp' AND o.delivery_state IN ('accepted','sent','delivered','read','unknown'))"
+		);
+		foreach ( $rows as $r ) {
+			Db::update( 'messages', array( 'kind' => 'team_message', 'counts_toward_quota' => 0 ), array( 'id' => (int) $r['id'] ) );
 		}
 		return count( $rows );
 	}
@@ -985,7 +1088,7 @@ final class Journey {
 				continue;
 			}
 			$last = Db::row( 'SELECT before_json, reason FROM ' . Db::t( 'audit_log' ) . " WHERE entity_type = 'case' AND entity_id = %d AND action = 'case.transition' ORDER BY id DESC LIMIT 1", $id );
-			if ( ! $last || ! str_ends_with( (string) $last['reason'], '[inbound]' ) ) {
+			if ( ! $last || ! ( str_ends_with( (string) $last['reason'], '[inbound]' ) || str_ends_with( (string) $last['reason'], '[operator]' ) ) ) {
 				continue;
 			}
 			$back = (string) ( json_decode( (string) $last['before_json'], true )['state'] ?? '' );

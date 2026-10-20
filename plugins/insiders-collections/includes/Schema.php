@@ -674,9 +674,15 @@ final class Schema {
 			$wpdb->query( 'UPDATE ' . Db::t( 'inbox_events' ) . " SET processing_state = 'received' WHERE provider = 'tranzila' AND processing_state = 'needs_match' AND payload_redacted LIKE '%sto_external_id%'" );
 		}
 		$out['inbox.sto_requeue'] = true;
-		// v9: cases an unrelated inbound message sent to a person before anything was really sent go back.
-		if ( (int) get_option( 'icol_db_version', 0 ) < 9 ) {
-			\Insiders\Collections\Domain\Journey::repair_unprompted_reviews();
+		// v9/v10: cases an unrelated inbound message, or a message another team typed in WATI, sent to a
+		// person before anything was really sent go back. A data repair never blocks the schema upgrade.
+		if ( (int) get_option( 'icol_db_version', 0 ) < 10 ) {
+			try {
+				\Insiders\Collections\Domain\Journey::relabel_team_messages();
+				\Insiders\Collections\Domain\Journey::repair_unprompted_reviews();
+			} catch ( \Throwable $e ) {
+				error_log( '[ICOL] upgrade repair failed: ' . $e->getMessage() );
+			}
 		}
 		$out['cases.unprompted_reviews'] = true;
 		return $out;

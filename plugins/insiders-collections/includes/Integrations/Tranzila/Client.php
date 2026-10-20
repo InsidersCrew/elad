@@ -238,7 +238,8 @@ final class Client {
 		// request that it does not send by email or SMS (error 20404, 2026-10-20). The student gets the link in
 		// WhatsApp, so the email goes to the business address, never to the student.
 		$name  = trim( (string) ( $customer['full_name'] ?? '' ) ) ?: 'לקוח';
-		$email = (string) Settings::get( 'tranzila_pr_fallback_email' ) ?: (string) get_option( 'admin_email' );
+		$email = trim( (string) Settings::get( 'tranzila_pr_fallback_email' ) );
+		$email = is_email( $email ) ? $email : (string) get_option( 'admin_email' ); // a typo in the field must not break every link
 		$client = array_merge(
 			array(
 				'external_id'    => 'icol-' . (int) $req['id'],

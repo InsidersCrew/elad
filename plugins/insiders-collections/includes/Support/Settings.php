@@ -57,6 +57,7 @@ final class Settings {
 		'tranzila_report_base'        => 'https://report.tranzila.com',
 		'wati_api_base'               => '',
 		'wati_conversation_attr'      => 'conversation_owner',
+		'wati_collections_operators'  => '', // emails or names of the collections reps in WATI; empty = only debt cases react to typed messages
 		'pipedrive_api_base'          => 'https://api.pipedrive.com',
 		'ai_model'                    => 'claude-opus-5-5',
 		'ai_effort'                   => 'low',
@@ -88,6 +89,7 @@ final class Settings {
 		'declined_lost_reasons'          => 'לא מעוניין לפתוח חשבון',
 		'journey_from_date'              => '',  // empty = the dashboard's baseline (1.8); an earlier date includes students who joined before it
 		'journey_stop_stages'            => '', // a deal in one of these stages (any pipeline) stops the journey and goes to a person
+		'journey_restart_spread_minutes' => 3, // minutes between the first live messages when real sending starts
 		'journey_keep_lost_reasons'      => 'אין מענה', // lost for these reasons: the messages go on as if the deal were open
 		'cashflow_sync'                  => 1,   // read-only: the STO book and monthly totals for the finance dashboard's forecast
 		'program_auto_charge_on_pay_request' => 0, // "אני רוצה לשלם": approve and send the link at once, without a person

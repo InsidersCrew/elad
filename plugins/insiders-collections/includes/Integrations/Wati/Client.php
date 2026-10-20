@@ -60,9 +60,9 @@ final class Client {
 			$void = 'kill_switch';
 		} elseif ( false === Customers::permission( (int) $m['customer_id'], 'whatsapp' ) ) {
 			$void = 'opted_out';
-		} elseif ( 'collection_reminder' === $m['kind'] && $case && ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
+		} elseif ( in_array( $m['kind'], array( 'collection_reminder', 'commitment_reminder' ), true ) && $case && ! in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			$void = 'state:' . $case['workflow_state'];
-		} elseif ( 'collection_reminder' === $m['kind'] && (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $m['customer_id'], $m['created_at'] ) ) {
+		} elseif ( in_array( $m['kind'], array( 'collection_reminder', 'commitment_reminder' ), true ) && ( ! $case || 'commitment' !== ( $case['phase'] ?? 'charge' ) || \Insiders\Collections\Domain\Messaging::reached( (int) $case['id'] ) ) && (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $m['customer_id'], $m['created_at'] ) ) {
 			$void = 'customer_replied'; // AT12
 		}
 		if ( '' !== $void ) {
@@ -116,6 +116,7 @@ final class Client {
 		);
 		if ( 'failed' === $state ) {
 			\Insiders\Collections\Domain\Exceptions::open( 'send_failed:' . $message_id, 'integration_failure', 'medium', 'שליחת הודעה נכשלה, אין שליחה חוזרת עיוורת', array( 'entity_type' => 'message', 'entity_id' => $message_id, 'customer_id' => (int) $m['customer_id'] ) );
+			\Insiders\Collections\Domain\Journey::on_send_failed( $message_id );
 		}
 		return array( 'outcome' => $r['outcome'], 'error' => $r['error'] ?? '', 'retry_after' => $r['retry_after'] ?? null, 'result' => array( 'provider_id' => $provider_id ) );
 	}

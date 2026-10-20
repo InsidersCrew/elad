@@ -383,24 +383,37 @@ final class Messaging {
 		if ( $message_id < 0 ) {
 			return array( 'duplicate' => true, 'message_id' => -$message_id );
 		}
-		$cases = Db::rows( 'SELECT * FROM ' . Db::t( 'cases' ) . " WHERE customer_id = %d AND workflow_state NOT IN ('closed','draft')", $customer_id );
+		$all = Db::rows( 'SELECT * FROM ' . Db::t( 'cases' ) . " WHERE customer_id = %d AND workflow_state NOT IN ('closed','draft')", $customer_id );
 		// A program student writes to the business number about anything (a lesson, a login). Before the
 		// deadline that is a reply to the journey only after it really sent something: a simulated message
 		// reached no one. A debt case reacts to every message, as before ("paid", "stop", "a person").
-		$cases = array_values( array_filter( $cases, static fn( $c ) => 'commitment' !== ( $c['phase'] ?? 'charge' ) || self::reached( (int) $c['id'] ) ) );
+		$cases = array_values( array_filter( $all, static fn( $c ) => 'commitment' !== ( $c['phase'] ?? 'charge' ) || self::reached( (int) $c['id'] ) ) );
 		foreach ( $cases as $c ) {
 			Scheduler::cancel_for_case( (int) $c['id'], 'customer_replied' );
 			Db::update( 'cases', array( 'last_inbound_at' => $msg['occurred_at'] ?? Clock::utc() ), array( 'id' => (int) $c['id'] ) );
 		}
-		$customer = Customers::get( $customer_id );
-		if ( ! in_array( $customer['conversation_owner'], array( 'none', 'collections' ), true ) ) {
-			// Another owner (onboarding agent / human) holds the conversation: record only.
-			return array( 'message_id' => $message_id, 'intent' => 'not_owner', 'cases' => count( $cases ) );
-		}
+		// Classified before the owner check: a request to stop is honored whoever holds the conversation.
 		$intent = Intents::classify( (string) ( $msg['text'] ?? '' ), (string) ( $msg['type'] ?? 'text' ), ! empty( $msg['button'] ) );
 		Db::update( 'messages', array( 'intent' => $intent['intent'], 'intent_source' => $intent['source'] ), array( 'id' => $message_id ) );
-		if ( $cases ) {
-			Db::update( 'messages', array( 'case_id' => (int) $cases[0]['id'] ), array( 'id' => $message_id ) );
+		if ( $cases || $all ) {
+			Db::update( 'messages', array( 'case_id' => (int) ( $cases[0]['id'] ?? $all[0]['id'] ) ), array( 'id' => $message_id ) );
+		}
+		$customer = Customers::get( $customer_id );
+		$owner_ok = in_array( $customer['conversation_owner'], array( 'none', 'collections' ), true );
+		if ( ! $owner_ok || ! $cases ) {
+			// Another owner (onboarding agent / human) holds the conversation, or nothing of ours has
+			// reached this customer yet: record only. No reply, no state change, no customer-level flag,
+			// except an explicit stop, which blocks the channel and goes to a person to confirm.
+			if ( 'stop' === $intent['intent'] ) {
+				Customers::set_permission( $customer_id, 'whatsapp', false, 'customer_request:message:' . $message_id );
+				if ( $all ) {
+					Tasks::open( 'stop_review:' . $customer_id . ':' . $message_id, 'reply_review', array( 'case_id' => (int) $all[0]['id'], 'customer_id' => $customer_id, 'reason' => 'הלקוח כתב בקשת הפסקה, וההודעות בוואטסאפ נחסמו. אם הבקשה לא הייתה עלינו, אפשר להחזיר את ההרשאה בכרטיס הלקוח: ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
+				}
+			} elseif ( $owner_ok && $all && in_array( $intent['intent'], array( 'opened_account', 'declines_open', 'dispute', 'claims_paid', 'wrong_number', 'human' ), true ) ) {
+				// Worth a look, not an action: we never wrote to this student, so the words may be about anything.
+				Tasks::open( 'unreached_reply:' . $customer_id . ':' . $message_id, 'reply_review', array( 'case_id' => (int) $all[0]['id'], 'customer_id' => $customer_id, 'priority' => 'low', 'reason' => 'הודעה מתלמיד/ה שעוד לא קיבל/ה מאיתנו הודעה (' . ( array( 'opened_account' => 'כתב/ה על פתיחת חשבון', 'declines_open' => 'כתב/ה שלא יפתח/תפתח חשבון', 'dispute' => 'אולי בקשת ביטול או מחלוקת', 'claims_paid' => 'כתב/ה על תשלום', 'wrong_number' => 'אולי מספר שגוי', 'human' => 'ביקש/ה נציג' )[ $intent['intent'] ] ?? $intent['intent'] ) . '), אולי בנושא אחר: ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
+			}
+			return array( 'message_id' => $message_id, 'intent' => $owner_ok ? $intent['intent'] : 'not_owner', 'cases' => count( $cases ), 'recorded_only' => true );
 		}
 		Intents::apply( $customer_id, $message_id, $intent, $cases, $msg );
 		return array( 'message_id' => $message_id, 'intent' => $intent['intent'], 'cases' => count( $cases ) );
@@ -408,7 +421,8 @@ final class Messaging {
 
 	/** Did this case really send the customer anything (not simulated, not failed)? */
 	public static function reached( int $case_id ): bool {
-		return (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND delivery_state NOT IN ('simulated','draft','failed','cancelled') LIMIT 1", $case_id );
+		// A message another team typed in WATI is theirs, not ours: it does not open the conversation for this case.
+		return (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND channel = 'whatsapp' AND is_internal = 0 AND kind <> 'team_message' AND delivery_state IN ('accepted','sent','delivered','read','unknown') LIMIT 1", $case_id );
 	}
 
 	/** Operator message typed in WATI (AT33): documented, counts toward quota, shapes what follows. */
@@ -418,6 +432,9 @@ final class Messaging {
 			return (int) $existing;
 		}
 		$case = Db::row( 'SELECT * FROM ' . Db::t( 'cases' ) . " WHERE customer_id = %d AND workflow_state NOT IN ('closed','draft') ORDER BY id LIMIT 1", $customer_id );
+		// The business number is shared: onboarding reps and the onboarding agent write from it every day.
+		// Only a listed collections operator (or, with no list, a message on a debt case) is ours.
+		$team = self::is_team_message( $case, (string) ( $msg['operator'] ?? '' ) );
 		$id   = Db::insert(
 			'messages',
 			array(
@@ -428,21 +445,30 @@ final class Messaging {
 				'local_id'            => Ids::uuid(),
 				'direction'           => 'out',
 				'channel'             => 'whatsapp',
-				'kind'                => 'operator_message',
+				'kind'                => $team ? 'team_message' : 'operator_message',
 				'body'                => mb_substr( (string) ( $msg['text'] ?? '' ), 0, 10000 ),
 				'author_type'         => 'operator',
 				'delivery_state'      => 'sent',
-				'counts_toward_quota' => 1,
+				'counts_toward_quota' => $team ? 0 : 1,
 				'occurred_at'         => $msg['occurred_at'] ?? Clock::utc(),
 				'created_at'          => Clock::utc(),
 				'updated_at'          => Clock::utc(),
 			)
 		);
-		if ( $case && in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
+		if ( ! $team && $case && in_array( $case['workflow_state'], Workflow::SENDABLE, true ) ) {
 			// A human is talking to the customer: automation steps aside until a rep decides.
 			Workflow::transition( (int) $case['id'], 'human_review', 'נציג כתב ללקוח ישירות ב-WATI', null, array( 'last_outbound_at' => Clock::utc() ), 'operator' );
 		}
 		return $id;
+	}
+
+	/** A message typed in WATI by someone outside collections: recorded, but it neither pauses nor counts. */
+	private static function is_team_message( ?array $case, string $operator ): bool {
+		$list = array_filter( array_map( static fn( $x ) => mb_strtolower( trim( $x ) ), explode( ',', (string) Settings::get( 'wati_collections_operators' ) ) ) );
+		if ( $list ) {
+			return '' === $operator || ! in_array( mb_strtolower( trim( $operator ) ), $list, true );
+		}
+		return ! $case || 'commitment' === ( $case['phase'] ?? 'charge' );
 	}
 
 	/** Internal note in the timeline — flagged so it can never be sent by mistake. */

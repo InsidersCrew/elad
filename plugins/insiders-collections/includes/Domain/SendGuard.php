@@ -130,7 +130,9 @@ final class SendGuard {
 		if ( $unknown ) {
 			$add( 'delivery_unknown', 'case', 'יש הודעה קודמת במצב מסירה לא ידוע' );
 		}
-		if ( ! empty( $ctx['action_created_at'] ) ) {
+		// A program student writing about a lesson before we ever reached them is not a reply to us.
+		$unreached = 'commitment' === ( $case['phase'] ?? 'charge' ) && ! Messaging::reached( $case_id );
+		if ( ! empty( $ctx['action_created_at'] ) && ! $unreached ) {
 			$inbound_after = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $customer['id'], $ctx['action_created_at'] );
 			if ( $inbound_after ) {
 				$add( 'customer_replied', 'case', 'הלקוח כתב אחרי שההודעה תוזמנה' );

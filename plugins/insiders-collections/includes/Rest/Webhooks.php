@@ -111,7 +111,15 @@ final class Webhooks {
 		Runner::beat( 'webhook_wati', 'success' );
 		// "Stop reminders immediately on reply" (§15): process customer messages right away when cheap.
 		if ( 'message' === $event && empty( $parsed['owner'] ) ) {
-			add_action( 'shutdown', static fn() => Runner::tick( 'wati-inbound' ) );
+			add_action(
+				'shutdown',
+				static function () {
+					if ( function_exists( 'fastcgi_finish_request' ) ) {
+						fastcgi_finish_request(); // WATI gets its 200 now, not after our processing
+					}
+					Runner::tick( 'wati-inbound', true );
+				}
+			);
 		}
 		return new \WP_REST_Response( array( 'ok' => true ), 200 );
 	}

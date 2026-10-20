@@ -161,6 +161,9 @@ $tests['AT07'] = array( 'תלמיד עם מספר משותף', function () {
 	T::eq( 'human_review', Db::value( 'SELECT workflow_state FROM ' . Db::t( 'cases' ) . ' WHERE id = %d', $case_a ), 'inbound from shared number pauses case' );
 	T::eq( 1, T::count( 'exceptions', "type = 'identity_conflict'" ), 'identity exception' );
 	T::eq( 0, count( T::messages_out( $a ) ), 'no outreach' );
+	T::inbound( 'תפסיקו לשלוח לי הודעות' );
+	T::tick();
+	T::eq( array( false, false ), array( Customers::permission( $a, 'whatsapp' ), Customers::permission( $b, 'whatsapp' ) ), 'a stop from a shared number blocks the number for each of them' );
 } );
 
 $tests['AT08'] = array( 'חוב ידני ללא הסכם או אישור', function () {
@@ -2049,7 +2052,7 @@ $tests['X15'] = array( 'תשלום מקישור בלי Notify: נמצא בדוח
 	Settings::set( array( 'cap_payment_links' => 1 ) );
 	PaymentRequests::checkout( basename( PaymentRequests::local_link( $case ) ) );
 	$req = Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . ' WHERE case_id = %d', $case );
-	$tx  = static fn( string $ix, string $phone ) => array( 'terminal' => 'insiders', 'index' => $ix, 'amount' => (int) $req['amount_minor'], 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A', 'txn_type' => 'DEBIT', 'transaction_date' => '2026-10-11', 'transaction_time' => '09:00:00', 'user_defined_5' => $phone );
+	$tx  = static fn( string $ix, string $phone ) => array( 'terminal' => 'insiders', 'index' => $ix, 'amount' => (int) $req['amount_minor'], 'currency' => '1', 'processor_response_code' => '000', 'tranmode' => 'A', 'txn_type' => 'DEBIT', 'transaction_date' => Clock::local( Clock::now() + 600 )->format( 'Y-m-d' ), 'transaction_time' => Clock::local( Clock::now() + 600 )->format( 'H:i:s' ), 'user_defined_5' => $phone );
 	T::$tranzila_tx['8802'] = $tx( '8802', '0529998877' ); // same amount, another person: never matched
 	Reconciler::incremental();
 	T::tick();
@@ -2060,6 +2063,10 @@ $tests['X15'] = array( 'תשלום מקישור בלי Notify: נמצא בדוח
 	T::eq( 1, $r['pr_from_report'], 'the payment is found in the report' );
 	T::eq( array( 'payment_request', 'paid' ), array( Db::value( 'SELECT origin FROM ' . Db::t( 'payments' ) ), Db::value( 'SELECT status FROM ' . Db::t( 'payment_requests' ) . ' WHERE id = %d', (int) $req['id'] ) ), 'recorded as the request payment, the request is paid' );
 	T::eq( 0, Reconciler::incremental()['pr_from_report'], 'and found once' );
+	// A sale from that phone hours before the request existed, or of another amount, is a person's to match.
+	T::$tranzila_tx['8803'] = array_merge( $tx( '8803', '0501234567' ), array( 'amount' => 777 ) );
+	Reconciler::incremental();
+	T::eq( 1, T::count( 'exceptions', "exception_key LIKE 'pr_report_unmatched:%' AND status = 'open'" ), 'a payment from our student that fits no open request goes to a person' );
 } );
 
 $tests['X16'] = array( 'חיוב שנכשל בהוראה שלא מופתה: ההוראה נקראת מטרנזילה, ממופה ללקוח ונפתח תיק; לקוח חדש לא מאומת; בלי טלפון, הטלפון מפייפדרייב לפי המייל', function () {
@@ -2192,6 +2199,120 @@ $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI
 	// Dropping a variable the system fills anyway is fine: program_paid without {{name}}.
 	Templates::save( 'program_paid', array( 'body' => "התשלום בסך {{paid}} התקבל, תודה רבה!\n\nאנחנו כאן לשירותך בהמשך הדרך לכל עניין ושאלה 🙏🏼" ) );
 	T::eq( array( 'paid' ), Templates::get( 'program_paid' )['params'], 'program_paid without {{name}}: one variable' );
+} );
+
+$tests['P21'] = array( 'מספר משותף לכל הצוותים: תלמיד שעוד לא קיבל מאיתנו הודעה ומבקש נציג או כותב על פגישה לא משנה דבר; הודעה של צוות אחר לא עוצרת; בקשת הפסקה חוסמת ופותחת משימה', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'display_only' => 1 ) );
+	ifd_student( 721, 9721, '2026-08-01' );
+	Journey::sync();
+	T::tick();
+	$c  = student_case( 721 );
+	$cu = Customers::get( (int) $c['customer_id'] );
+	$wa = \Insiders\Collections\Support\Phone::wa_id( (string) $cu['phone_e164'] );
+	T::inbound( 'אפשר לדבר עם נציג על השיעור?', $wa );
+	T::inbound( 'אני צריכה לבטל את הפגישה מחר', $wa );
+	T::tick();
+	T::eq( array( $c['workflow_state'], $cu['conversation_owner'], 1 ), array( student_case( 721 )['workflow_state'], Customers::get( (int) $c['customer_id'] )['conversation_owner'], T::count( 'scheduled_actions', 'case_id = ' . (int) $c['id'] . " AND state = 'pending'" ) ), 'nothing changes: same state, same conversation owner, the journey still planned' );
+	T::eq( array( 0, 1 ), array( T::count( 'messages', 'customer_id = ' . (int) $c['customer_id'] . " AND direction = 'out' AND kind = 'service_reply'" ), T::count( 'tasks', "task_key LIKE 'unreached_reply:%'" ) ), 'no reply; asking for a person is a low-priority task to look at' );
+	T::wati( array( 'eventType' => 'sessionMessageSent_v2', 'id' => 'op-721', 'whatsappMessageId' => 'wamid.op721', 'waId' => $wa, 'text' => 'היי, כאן אורית מהאונבורדינג', 'owner' => true, 'operatorEmail' => 'orit@example.test' ) );
+	T::tick();
+	T::eq( array( 1, 0 ), array( T::count( 'messages', "kind = 'team_message'" ), T::count( 'messages', "kind = 'team_message' AND counts_toward_quota = 1" ) ), 'another team: recorded, outside the quota' );
+	T::check( in_array( student_case( 721 )['workflow_state'], Workflow::SENDABLE, true ) && ! Messaging::reached( (int) $c['id'] ), 'the journey is not stopped, and it is not us reaching the student' );
+	T::inbound( 'תפסיקו לשלוח לי הודעות', $wa );
+	T::tick();
+	T::eq( array( false, 1 ), array( Customers::permission( (int) $c['customer_id'], 'whatsapp' ), T::count( 'tasks', "task_key LIKE 'stop_review:%'" ) ), 'a stop request blocks WhatsApp and goes to a person to confirm' );
+	T::eq( array( 'stop', 'wrong_number', 'unclear', 'dispute' ), array_map( static fn( $t ) => \Insiders\Collections\Domain\Intents::classify( $t, 'text' )['intent'], array( 'להפסיק לשלוח לי', 'מי זה?', 'מי זה המרצה של השבוע', 'אני רוצה לבטל את החיוב' ) ), 'the words have to be about the messages, the number or the charge' );
+} );
+
+$tests['P22'] = array( 'הודעת ליווי שלא נמסרה: השלב לא נחשב, מתוכנן שוב; כישלון שני עובר לנציג', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 731, 9731, '2026-08-01' );
+	Journey::sync();
+	T::settle( 2 );
+	$c = student_case( 731 );
+	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'j_intro'", (int) $c['id'] );
+	T::eq( array( 'j_intro', 'accepted' ), array( $c['track_step'], $m['delivery_state'] ?? null ), 'the intro went out' );
+	T::wati( array( 'eventType' => 'templateMessageFailed', 'id' => 'f-731', 'localMessageId' => (string) $m['provider_id'], 'failedDetail' => 'not a WhatsApp number' ) );
+	\Insiders\Collections\Engine\Inbox::process( 10 );
+	$c = student_case( 731 );
+	$p = pending_journey( (int) $c['id'] );
+	T::eq( array( null, 'j_intro' ), array( $c['track_step'], $p['step'] ?? null ), 'not counted as sent: the intro is planned again' );
+	T::check( (int) Clock::ts( $p['run_at'] ?? null ) >= Clock::now() + 2 * HOUR_IN_SECONDS - 60, 'not straight back into the same failure' );
+	Clock::freeze( Clock::now() + 3 * HOUR_IN_SECONDS );
+	ifd_fresh();
+	T::settle( 2 );
+	$m2 = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'j_intro' AND id > %d", (int) $c['id'], (int) $m['id'] );
+	T::check( (bool) $m2, 'sent again' );
+	T::wati( array( 'eventType' => 'templateMessageFailed', 'id' => 'f2-731', 'localMessageId' => (string) ( $m2['provider_id'] ?? '' ), 'failedDetail' => 'not a WhatsApp number' ) );
+	\Insiders\Collections\Engine\Inbox::process( 10 );
+	T::eq( array( 'human_review', 1 ), array( student_case( 731 )['workflow_state'], T::count( 'tasks', "task_key LIKE 'journey_send_failed:%'" ) ), 'the second failure goes to a person' );
+} );
+
+$tests['P23'] = array( 'ריצה שנקטעה באמצע שליחה: לא נשארת "בעיבוד" לנצח, עוברת ל"לא ידוע" ולא נשלחת שוב', function () {
+	$c   = T::customer();
+	$mid = Db::insert( 'messages', array( 'customer_id' => $c, 'provider' => 'wati', 'local_id' => 'lease-1', 'direction' => 'out', 'channel' => 'whatsapp', 'kind' => 'collection_reminder', 'delivery_state' => 'queued', 'occurred_at' => Clock::utc(), 'created_at' => Clock::utc(), 'updated_at' => Clock::utc() ) );
+	$ev  = \Insiders\Collections\Engine\Outbox::enqueue( 'wati_send', 'message', $mid, 'wati_send:lease-1', array( 'message_id' => $mid ) );
+	Db::update( 'outbox_events', array( 'state' => 'processing', 'attempts' => 1, 'updated_at' => Clock::utc( Clock::now() - 20 * MINUTE_IN_SECONDS ) ), array( 'id' => $ev ) );
+	\Insiders\Collections\Engine\Outbox::process( 5 );
+	T::eq( array( 'unknown', 'unknown', 1 ), array( Db::value( 'SELECT state FROM ' . Db::t( 'outbox_events' ) . ' WHERE id = %d', $ev ), Db::value( 'SELECT delivery_state FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', $mid ), T::count( 'exceptions', "exception_key = 'outbox_unknown:" . $ev . "'" ) ), 'unknown, for a person; the message blocks further sends until checked' );
+	T::eq( 0, count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'wati.test' ) ) ), 'nothing resent' );
+	\Insiders\Collections\Domain\Exceptions::resolve( (int) Db::value( 'SELECT id FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'outbox_unknown:" . $ev . "'" ), 'נבדק ב-WATI, ההודעה הגיעה' );
+	T::eq( 'accepted', Db::value( 'SELECT delivery_state FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', $mid ), 'closing the exception after a check releases the customer' );
+} );
+
+$tests['P24'] = array( 'תחילת שליחה אמיתית: גם כשמדליקים את יכולת המשלוח (לא רק מצב תצוגה), ההודעות יוצאות בהפרש של כמה דקות; כניסה יום לפני המועד: רק הודעת יום המועד', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'display_only' => 0, 'cap_customer_sends' => 0, 'journey_restart_spread_minutes' => 3 ) );
+	foreach ( array( 741, 742, 743 ) as $i => $p ) {
+		ifd_student( $p, 9000 + $p, '2026-08-0' . ( $i + 1 ) );
+	}
+	Journey::sync();
+	T::tick();
+	T::eq( 3, T::count( 'messages', "template_key = 'j_intro' AND delivery_state = 'simulated'" ), 'with sends off, the intros are simulated' );
+	T::as( 'admin' );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'cap_customer_sends' => 1 ) ) );
+	$runs = array();
+	foreach ( array( 741, 742, 743 ) as $p ) {
+		$a      = pending_journey( (int) student_case( $p )['id'] );
+		$runs[] = array( $a['step'] ?? null, (int) Clock::ts( $a['run_at'] ?? null ) );
+	}
+	T::eq( array( 'j_intro', 'j_intro', 'j_intro' ), array_column( $runs, 0 ), 'turning sends on restarts the track too' );
+	$ts = array_column( $runs, 1 );
+	sort( $ts );
+	T::check( $ts[1] - $ts[0] >= 170 && $ts[2] - $ts[1] >= 170, 'a few minutes apart, not all at once' );
+	Settings::set( array( 'journey_from_date' => '2026-06-01' ) );
+	ifd_student( 744, 9744, gmdate( 'Y-m-d', strtotime( Clock::today() . ' -89 days' ) ) ); // deadline tomorrow
+	ifd_student( 745, 9745, gmdate( 'Y-m-d', strtotime( Clock::today() . ' -87 days' ) ) ); // deadline in three days
+	Journey::sync();
+	T::eq( array( 'j_t0', 'j_intro' ), array( pending_journey( (int) student_case( 744 )['id'] )['step'] ?? null, pending_journey( (int) student_case( 745 )['id'] )['step'] ?? null ), 'a day before the deadline: the deadline-day message alone (an intro now would push it past the 48-hour gap); three days: the intro' );
+} );
+
+$tests['P25'] = array( 'אותו תלמיד עם שני דילים של הצטרפות: תיק אחד, והשני לנציג; פתיחת חשבון שנרשמה על דיל אחר עוצרת את הליווי', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 751, 9751, '2026-08-01' );
+	ifd_student( 751, 9752, '2026-08-05' );
+	Journey::sync();
+	T::eq( array( 1, 1 ), array( T::count( 'cases', "phase = 'commitment' AND customer_id = " . (int) student_case( 751 )['customer_id'] ), T::count( 'exceptions', "exception_key LIKE 'journey_dup_person:751:%'" ) ), 'one case; the second deal goes to a person' );
+	global $wpdb;
+	$deal = (int) Db::value( 'SELECT a.pipedrive_deal_id FROM ' . Db::t( 'agreements' ) . ' a JOIN ' . Db::t( 'cases' ) . ' c ON c.agreement_id = a.id WHERE c.id = %d', (int) student_case( 751 )['id'] );
+	$other = 9751 === $deal ? 9752 : 9751;
+	$wpdb->update( FinanceDashboard::table( 'commitments' ), array( 'resolved_at' => Clock::utc(), 'resolution_kind' => 'opened' ), array( 'deal_id' => $other ) );
+	FinanceDashboard::flush();
+	Journey::sync();
+	T::eq( 'closed', student_case( 751 )['workflow_state'], 'the account the student opened closes the case, whichever deal it was recorded on' );
 } );
 
 foreach ( $tests as $id => [ $title, $fn ] ) {

@@ -88,6 +88,9 @@ final class Workflow {
 					// Resume never "catches up" old messages (§13 חידוש טיפול).
 					Scheduler::cancel_for_case( $case_id, 'state:' . $to );
 				}
+				if ( 'closed' === $to ) {
+					PaymentRequests::supersede_for_case( $case_id, 'closed' ); // no payable link outlives its case
+				}
 				Audit::log( 'case.transition', 'case', $case_id, array( 'state' => $from, 'version' => (int) $case['version'] ), array( 'state' => $to, 'version' => (int) $case['version'] + 1 ), $reason . ( $source ? ' [' . $source . ']' : '' ) );
 				$case = array_merge( $case, $data );
 				do_action( 'icol_case_transitioned', $case_id, $from, $to, $reason );

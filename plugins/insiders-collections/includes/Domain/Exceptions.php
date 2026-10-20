@@ -87,6 +87,16 @@ final class Exceptions {
 			array( 'id' => $id )
 		);
 		Audit::log( 'exception.resolve', 'exception', $id, null, null, $resolution );
+		$ex = Db::row( 'SELECT type, entity_type, entity_id, customer_id FROM ' . Db::t( 'exceptions' ) . ' WHERE id = %d', $id );
+		if ( $ex && 'send_unknown' === $ex['type'] ) {
+			// A person checked the conversation in WATI: the message counts as sent (quota, gap) and stops
+			// blocking the customer. Never resent: if it did not arrive, the next planned message goes.
+			if ( 'message' === $ex['entity_type'] && $ex['entity_id'] ) {
+				Db::exec( 'UPDATE ' . Db::t( 'messages' ) . " SET delivery_state = 'accepted', updated_at = %s WHERE id = %d AND delivery_state = 'unknown'", Clock::utc(), (int) $ex['entity_id'] );
+			} elseif ( $ex['customer_id'] ) {
+				Db::exec( 'UPDATE ' . Db::t( 'messages' ) . " SET delivery_state = 'accepted', updated_at = %s WHERE customer_id = %d AND direction = 'out' AND delivery_state = 'unknown'", Clock::utc(), (int) $ex['customer_id'] );
+			}
+		}
 	}
 
 	public static function resolve_by_key( string $key, string $resolution ): void {

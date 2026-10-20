@@ -19,6 +19,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class Outbox {
 	private const MAX_ATTEMPTS = 5;
+	private const LEASE_MINUTES = 15;
 
 	public static function enqueue( string $type, string $agg_type, int $agg_id, string $key, array $payload ): int {
 		global $wpdb;
@@ -41,8 +42,13 @@ final class Outbox {
 
 	public static function process( int $limit ): array {
 		$now  = Clock::utc();
-		$rows = Db::rows( 'SELECT id FROM ' . Db::t( 'outbox_events' ) . " WHERE state = 'pending' AND next_attempt_at <= %s ORDER BY id LIMIT %d", $now, $limit );
 		$out  = array( 'done' => 0, 'retry' => 0, 'failed' => 0, 'unknown' => 0 );
+		// A run that died between "processing" and its outcome (timeout, fatal, restart) leaves the row
+		// claimed. The call may or may not have reached the provider: unknown, for a person, never a resend.
+		foreach ( Db::rows( 'SELECT * FROM ' . Db::t( 'outbox_events' ) . " WHERE state = 'processing' AND updated_at < %s ORDER BY id LIMIT 20", Clock::utc( Clock::now() - self::LEASE_MINUTES * MINUTE_IN_SECONDS ) ) as $ev ) {
+			$out[ self::settle( $ev, array( 'outcome' => Http::UNKNOWN, 'error' => 'הריצה נקטעה באמצע הפעולה' ) ) ]++;
+		}
+		$rows = Db::rows( 'SELECT id FROM ' . Db::t( 'outbox_events' ) . " WHERE state = 'pending' AND next_attempt_at <= %s ORDER BY id LIMIT %d", $now, $limit );
 		foreach ( $rows as $r ) {
 			$n = Db::exec( 'UPDATE ' . Db::t( 'outbox_events' ) . " SET state = 'processing', attempts = attempts + 1, updated_at = %s WHERE id = %d AND state = 'pending'", $now, (int) $r['id'] );
 			if ( 1 !== $n ) {
@@ -85,13 +91,15 @@ final class Outbox {
 		}
 		if ( Http::UNKNOWN === $outcome ) {
 			Db::update( 'outbox_events', array_merge( $base, array( 'state' => 'unknown' ) ), array( 'id' => (int) $ev['id'] ) );
-			Exceptions::open( 'outbox_unknown:' . $ev['id'], 'send_unknown', 'high', 'פעולה חיצונית הסתיימה בתוצאה לא ידועה (' . $ev['event_type'] . ')', array( 'entity_type' => $ev['aggregate_type'], 'entity_id' => (int) $ev['aggregate_id'] ) );
+			self::message_outcome( $ev, 'unknown' );
+			Exceptions::open( 'outbox_unknown:' . $ev['id'], 'send_unknown', 'high', 'פעולה חיצונית הסתיימה בתוצאה לא ידועה (' . $ev['event_type'] . ')' . ( 'wati_send' === $ev['event_type'] ? '. לבדוק בשיחה ב-WATI אם ההודעה הגיעה; סגירת החריג מסמנת אותה כנשלחה ומשחררת את הלקוח' : '' ), array( 'entity_type' => $ev['aggregate_type'], 'entity_id' => (int) $ev['aggregate_id'] ) );
 			return 'unknown';
 		}
 		if ( Http::AUTH === $outcome ) {
 			$integration = str_starts_with( $ev['event_type'], 'wati' ) ? 'wati' : ( str_starts_with( $ev['event_type'], 'pipedrive' ) ? 'pipedrive' : 'mail' );
 			Runner::suspend( $integration, 'auth: ' . ( $res['error'] ?? '' ) );
 			Db::update( 'outbox_events', array_merge( $base, array( 'state' => 'failed' ) ), array( 'id' => (int) $ev['id'] ) );
+			self::message_outcome( $ev, 'failed' );
 			return 'failed';
 		}
 		if ( Http::RETRYABLE === $outcome && (int) $ev['attempts'] < self::MAX_ATTEMPTS ) {
@@ -100,7 +108,25 @@ final class Outbox {
 			return 'retry';
 		}
 		Db::update( 'outbox_events', array_merge( $base, array( 'state' => 'failed' ) ), array( 'id' => (int) $ev['id'] ) );
+		self::message_outcome( $ev, 'failed' );
 		Exceptions::open( 'outbox_failed:' . $ev['id'], 'integration_failure', 'medium', 'פעולה חיצונית נכשלה (' . $ev['event_type'] . '): ' . mb_substr( (string) ( $res['error'] ?? '' ), 0, 200 ), array( 'entity_type' => $ev['aggregate_type'], 'entity_id' => (int) $ev['aggregate_id'] ) );
 		return 'failed';
+	}
+
+	/**
+	 * A WhatsApp message whose send ended without reaching WATI's answer stays "queued" otherwise:
+	 * it would look pending forever. Failed gives the journey step back; unknown blocks further sends.
+	 */
+	private static function message_outcome( array $ev, string $state ): void {
+		if ( 'wati_send' !== $ev['event_type'] ) {
+			return;
+		}
+		$id = (int) ( json_decode( (string) $ev['payload'], true )['message_id'] ?? 0 );
+		if ( ! $id || 1 !== Db::exec( 'UPDATE ' . Db::t( 'messages' ) . " SET delivery_state = %s, updated_at = %s WHERE id = %d AND delivery_state = 'queued'", $state, Clock::utc(), $id ) ) {
+			return;
+		}
+		if ( 'failed' === $state ) {
+			\Insiders\Collections\Domain\Journey::on_send_failed( $id );
+		}
 	}
 }

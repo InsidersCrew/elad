@@ -37,7 +37,8 @@ final class Runner {
 	private const BEATS = 'icol_heartbeats';
 	private static ?string $token = null;
 
-	public static function tick( string $trigger ): array {
+	/** @param bool $light only incoming events and their replies (the run right after a WATI webhook) */
+	public static function tick( string $trigger, bool $light = false ): array {
 		if ( ! self::lock() ) {
 			return array( 'skipped' => 'locked' );
 		}
@@ -45,9 +46,14 @@ final class Runner {
 		$r = array( 'trigger' => $trigger );
 		try {
 			self::beat( 'tick', 'attempt', $trigger );
-			$r['inbox']   = self::job( 'inbox', static fn() => Inbox::process( 50 ) );
-			$r['actions'] = self::job( 'actions', static fn() => self::run_actions( 50 ) );
-			$r['outbox']  = self::job( 'outbox', static fn() => Outbox::process( 50 ) );
+			$r['inbox'] = self::job( 'inbox', static fn() => Inbox::process( 50 ) );
+			if ( $light ) {
+				$r['outbox'] = self::job( 'outbox', static fn() => Outbox::process( 10 ) );
+				return $r;
+			}
+			// Small batches: a tick stays well inside the PHP time limit, and sends go out spread over minutes.
+			$r['actions'] = self::job( 'actions', static fn() => self::run_actions( 20 ) );
+			$r['outbox']  = self::job( 'outbox', static fn() => Outbox::process( 20 ) );
 			if ( \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::available() && self::due( 'journey', HOUR_IN_SECONDS ) ) {
 				$r['journey'] = self::job( 'journey', static fn() => \Insiders\Collections\Domain\Journey::sync() );
 			}
@@ -143,7 +149,12 @@ final class Runner {
 
 	private static function daily_due(): bool {
 		$last = self::beats()['daily']['success'] ?? null;
-		return null === $last || Clock::local_date( (int) Clock::ts( $last ) ) !== Clock::today();
+		if ( null !== $last && Clock::local_date( (int) Clock::ts( $last ) ) === Clock::today() ) {
+			return false;
+		}
+		// A failing daily run (Tranzila down, say) is retried hourly, not on every tick.
+		$try = Clock::ts( self::beats()['daily']['error'] ?? null );
+		return null === $try || $try > Clock::now() || Clock::now() - $try >= HOUR_IN_SECONDS;
 	}
 
 	public static function run_actions( int $limit ): array {
