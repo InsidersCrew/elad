@@ -2075,6 +2075,42 @@ $tests['X16'] = array( 'חיוב שנכשל בהוראה שלא מופתה: הה
 	T::eq( 1, T::count( 'tasks', "type = 'complete_phone' AND status = 'open'" ), 'no phone anywhere: a task to complete it' );
 } );
 
+$tests['P17'] = array( 'סוף תקופת המדידה: מי שקיבל רק הודעות מדומות מתחיל מההודעה הראשונה, בפועל', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'display_only' => 1 ) );
+	ifd_student( 671, 9671, '2026-08-01' ); // deadline 30/10, nineteen days away
+	Journey::sync();
+	T::tick();
+	$c = student_case( 671 );
+	T::eq( array( 'j_intro', 1 ), array( $c['track_step'], T::count( 'messages', "case_id = " . (int) $c['id'] . " AND delivery_state = 'simulated'" ) ), 'during measurement the intro is only simulated' );
+	T::as( 'admin' );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'display_only' => 0 ) ) );
+	$c = student_case( 671 );
+	$next = Db::row( 'SELECT * FROM ' . Db::t( 'scheduled_actions' ) . " WHERE case_id = %d AND state = 'pending' AND type = 'send_journey'", (int) $c['id'] );
+	T::eq( array( null, 'j_intro' ), array( $c['track_step'], json_decode( (string) ( $next['payload'] ?? '' ), true )['step'] ?? null ), 'going live restarts the track: the intro is planned again, for real' );
+	T::tick();
+	T::eq( 1, T::count( 'messages', "case_id = " . (int) $c['id'] . " AND delivery_state <> 'simulated' AND template_key = 'j_intro'" ), 'and the student gets it' );
+} );
+
+$tests['P18'] = array( 'תלמידים שהצטרפו לפני 1.8 ונמצאים בדשבורד: נספרים בכלי האבחון, ונכנסים רק כשמגדירים תאריך התחלה מוקדם', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 681, 9681, '2026-07-10' ); // deadline 08/10: passed
+	ifd_student( 682, 9682, '2026-07-25' ); // deadline 23/10: ahead
+	$b = FinanceDashboard::before_baseline();
+	T::eq( array( 2, 1, 1 ), array( $b['unresolved'], $b['deadline_passed'], $b['deadline_ahead'] ), 'counted before anything changes' );
+	Journey::sync();
+	T::eq( null, student_case( 681 ), 'not in the journey by default' );
+	Settings::set( array( 'journey_from_date' => '2026-06-01' ) );
+	Journey::sync();
+	T::eq( array( 'late', 'reach' ), array( student_case( 681 )['track'] ?? null, student_case( 682 )['track'] ?? null ), 'with an earlier start date: a passed deadline enters the late track, an upcoming one the regular track' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";

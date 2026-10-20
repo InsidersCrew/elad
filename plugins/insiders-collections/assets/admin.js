@@ -735,7 +735,19 @@
 		api.get('/exceptions').then(function (rows) {
 			clear(page);
 			add(page, pageHead('תור חריגים', 'כל מה שהמערכת לא מכריעה לבד. פתרון חריג שומר את המיפוי והאסמכתה.'));
+			// Bulk close: one note for every selected exception (e.g. test errors that no longer matter).
+			var picked = {}, boxes = [];
+			if (can('icol_resolve_exception') && rows.length) {
+				var all = h('input', { type: 'checkbox', 'aria-label': 'בחירת הכול' });
+				all.addEventListener('change', function () { boxes.forEach(function (b) { b.el.checked = all.checked; if (all.checked) { picked[b.id] = true; } else { delete picked[b.id]; } }); });
+				add(page, h('div', { class: 'icol-actions', style: 'margin-bottom:10px' }, h('label', { class: 'icol-mode' }, all, ' בחירת הכול'), h('button', { class: 'icol-btn sm', text: 'סגירת המסומנים', onclick: function () {
+					var ids = Object.keys(picked).map(Number);
+					if (!ids.length) { toast('לא סומנו חריגים', 'warn'); return; }
+					simpleModal('סגירת ' + ids.length + ' חריגים', 'הסיבה נרשמת בכל אחד מהם.', [field('resolution', 'למה נסגרים', 'textarea', { required: true, value: 'שגיאות מתקופת הבדיקות, טופלו בגרסה חדשה' })], function (fs) { return api.post('/exceptions/resolve-bulk', { ids: ids, resolution: val(fs[0]) }); });
+				} })));
+			}
 			add(page, table([
+				['sel', '', function (e) { if (!can('icol_resolve_exception')) { return ''; } var b = h('input', { type: 'checkbox', 'aria-label': 'סימון' }); b.addEventListener('change', function () { if (b.checked) { picked[e.id] = true; } else { delete picked[e.id]; } }); boxes.push({ id: e.id, el: b }); return b; }],
 				['severity', 'חומרה', function (e) { return chip(L.severity[e.severity] || e.severity, e.severity === 'high' || e.severity === 'critical' ? 'bad' : (e.severity === 'medium' ? 'warn' : '')); }],
 				['type', 'סוג', 'type_label'],
 				['summary', 'פירוט', function (e) { return h('span', {}, e.summary, e.details && e.details.sto_id ? h('span', { class: 'sub', text: 'הוראה ' + e.details.sto_id + ' · מסוף ' + e.details.terminal }) : null); }],
@@ -1105,6 +1117,7 @@
 			late_grace_days: field('late_grace_days', 'המתנה לתגובה לפני אישור, למי שהמועד שלו עבר (ימים)', 'number', { value: st.late_grace_days }),
 			credit_window_days: field('credit_window_days', 'חלון זיכוי אחרי תשלום (ימים)', 'number', { value: st.credit_window_days }),
 			card_charge_notice_days: field('card_charge_notice_days', 'חיוב מהכרטיס השמור: ימי עבודה בין ההודעה לחיוב', 'number', { value: st.card_charge_notice_days }),
+			journey_from_date: field('journey_from_date', 'לכלול גם תלמידים שהצטרפו לפני 1.8, החל מתאריך', 'date', { value: st.journey_from_date, help: 'ריק: רק מ־1.8. תלמיד שהמועד שלו כבר עבר נכנס למסלול "המועד עבר": הודעה אחת, ואחריה אישור חיוב ברשימה. בדיקה לפני: כלי האבחון program, השורה before_baseline.' }),
 			journey_batch: field('journey_batch', 'תלמידים חדשים בכל ריצה', 'number', { value: st.journey_batch, help: 'כל תלמיד הוא קריאה לפייפדרייב. הריצה היא פעם בשעה.' }),
 			program_auto_charge_on_pay_request: field('program_auto_charge_on_pay_request', 'כשתלמיד לוחץ "אני רוצה לשלם": לאשר את החיוב ולשלוח את הקישור מיד', 'checkbox', { value: Number(st.program_auto_charge_on_pay_request) === 1, wide: true, help: 'כבוי: אחראי הגבייה מאשר ברשימה, והקישור יוצא ברגע האישור. פעיל: המערכת מאשרת לבד לפי המחירון, אחרי אותן בדיקות מול הדשבורד, והתלמיד מקבל את הקישור בתוך דקה.' }),
 			program_price_table: field('program_price_table', 'מחירון לפי תאריך ההסכם', 'textarea', { value: st.program_price_table, rows: 3, wide: true, help: 'שורה לכל מחירון: תאריך תחולה, מחיר מלא, דמי רישום. לדוגמה: 2026-08-01 980 100. תלמיד משלם את המחיר שהיה בתוקף בתאריך ההסכם שלו, פחות דמי הרישום.' }),

@@ -90,6 +90,41 @@ final class FinanceDashboard {
 		return class_exists( '\IFD_Commitments' ) && defined( 'IFD_Commitments::WINDOW_DAYS' ) ? (int) \IFD_Commitments::WINDOW_DAYS : 90;
 	}
 
+	/**
+	 * First join date the program reads. The baseline by default; an earlier date set in the
+	 * program settings brings in students who joined before it and are already in the dashboard.
+	 */
+	public static function from_date(): string {
+		$from = trim( (string) \Insiders\Collections\Support\Settings::get( 'journey_from_date' ) );
+		return preg_match( '/^\d{4}-\d{2}-\d{2}$/', $from ) && $from < self::baseline() ? $from : self::baseline();
+	}
+
+	/** Unresolved commitments that joined before the baseline: how many, and where their deadlines stand. */
+	public static function before_baseline(): array {
+		if ( ! self::available() ) {
+			return array();
+		}
+		global $wpdb;
+		$today = \Insiders\Collections\Support\Clock::today();
+		$w     = self::window_days();
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT COUNT(*) unresolved, MIN(signed_at) first_joined, MAX(signed_at) last_joined,
+				        COALESCE(SUM(DATE_ADD(signed_at, INTERVAL %d DAY) < %s),0) deadline_passed,
+				        COALESCE(SUM(DATE_ADD(signed_at, INTERVAL %d DAY) >= %s),0) deadline_ahead
+				 FROM " . self::table( 'commitments' ) . "
+				 WHERE resolved_at IS NULL AND signed_at < %s AND (signed_source IS NULL OR signed_source NOT IN ('resolution_first','reverted'))",
+				$w,
+				$today,
+				$w,
+				$today,
+				self::baseline()
+			),
+			ARRAY_A
+		);
+		return array_map( static fn( $v ) => is_numeric( $v ) ? (int) $v : $v, (array) $row ) + array( 'included_from' => self::from_date() );
+	}
+
 	public static function baseline(): string {
 		return defined( 'IFD_BASELINE_DATE' ) ? (string) IFD_BASELINE_DATE : '2026-08-01';
 	}
@@ -112,7 +147,7 @@ final class FinanceDashboard {
 				   AND DATE_ADD(c.signed_at, INTERVAL %d DAY) <= %s
 				 ORDER BY c.signed_at ASC
 				 LIMIT 5000",
-				self::baseline(),
+				self::from_date(),
 				self::window_days(),
 				$until
 			),

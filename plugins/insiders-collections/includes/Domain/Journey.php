@@ -509,7 +509,9 @@ final class Journey {
 
 	/** Local date of the last proactive message to this customer (the ones that count toward the quota). */
 	private static function last_proactive_date( int $customer_id ): ?string {
-		$last = Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ('failed','cancelled','draft')", $customer_id );
+		// Once live, a message that was only simulated during the measurement period never reached the student.
+		$skip = Settings::on( 'display_only' ) ? "'failed','cancelled','draft'" : "'failed','cancelled','draft','simulated'";
+		$last = Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ({$skip})", $customer_id );
 		$ts   = Clock::ts( $last );
 		return null === $ts ? null : Clock::local_date( $ts );
 	}
@@ -594,7 +596,8 @@ final class Journey {
 		$ts     = Clock::local_to_ts( $d, $policy['window_start'] ) + ( $jitter > 0 ? random_int( 0, $jitter ) * MINUTE_IN_SECONDS : 0 );
 		// Planned past the minimum gap up front: a send blocked by it is retried on the next
 		// business day, which for the deadline-day message would be after the deadline.
-		$last = Clock::ts( Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ('failed','cancelled','draft')", $customer_id ) );
+		$skip = Settings::on( 'display_only' ) ? "'failed','cancelled','draft'" : "'failed','cancelled','draft','simulated'";
+		$last = Clock::ts( Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ({$skip})", $customer_id ) );
 		if ( null !== $last ) {
 			$ts = max( $ts, $last + (int) $policy['min_gap_hours'] * HOUR_IN_SECONDS + MINUTE_IN_SECONDS );
 		}
@@ -927,6 +930,29 @@ final class Journey {
 		}
 		self::plan_next( $case_id );
 		return true;
+	}
+
+	/**
+	 * Display-only turned off: a student whose journey messages were all simulated has heard nothing yet,
+	 * so the track starts again from its first step (the intro, or the first message of the track)
+	 * instead of continuing with a reminder about a message that never went out.
+	 */
+	public static function restart_after_measurement(): int {
+		$rows = Db::rows(
+			'SELECT c.id, c.customer_id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed' AND c.track_step IS NOT NULL AND c.track_step <> ''
+			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))"
+		);
+		foreach ( $rows as $r ) {
+			Scheduler::cancel_for_case( (int) $r['id'], 'measurement_ended' );
+			// The simulated steps keep their record under another key, so the same step can be planned again.
+			Db::exec( 'UPDATE ' . Db::t( 'scheduled_actions' ) . " SET idempotency_key = CONCAT(idempotency_key, ':sim', id) WHERE case_id = %d AND type = 'send_journey' AND idempotency_key NOT LIKE '%%:sim%%'", (int) $r['id'] );
+			Db::update( 'cases', array( 'track_step' => null ), array( 'id' => (int) $r['id'] ) );
+			self::plan_next( (int) $r['id'] );
+		}
+		if ( $rows ) {
+			Audit::log( 'journey.restart', 'system', 0, null, array( 'cases' => count( $rows ) ), 'מצב תצוגה בלבד כובה: הליווי מתחיל מההודעה הראשונה למי שקיבל עד עכשיו רק הודעות מדומות' );
+		}
+		return count( $rows );
 	}
 
 	public static function date_he( string $ymd ): string {

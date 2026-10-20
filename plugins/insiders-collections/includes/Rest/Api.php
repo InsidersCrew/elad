@@ -124,6 +124,13 @@ final class Api {
 		$r( 'POST', '/reauth', 'icol_reveal_token', static fn( $q ) => self::reauth( $q ), true );
 
 		// Exceptions, matching, tasks, candidates.
+		$r( 'POST', '/exceptions/resolve-bulk', 'icol_resolve_exception', static function ( $q ) {
+			$ids = array_slice( array_filter( array_map( 'intval', (array) $q->get_param( 'ids' ) ) ), 0, 500 );
+			foreach ( $ids as $eid ) {
+				Exceptions::resolve( $eid, Http::str( $q, 'resolution' ) );
+			}
+			return array( 'ok' => true, 'resolved' => count( $ids ) );
+		}, true );
 		$r( 'POST', "/exceptions/$id/resolve", 'icol_resolve_exception', static function ( $q ) { Exceptions::resolve( Http::int( $q, 'id' ), Http::str( $q, 'resolution' ) ); return array( 'ok' => true ); }, true );
 		$r( 'POST', "/attempts/$id/match", 'icol_approve_debt', static fn( $q ) => array( 'debt_item_id' => Matching::attempt_to_item( Http::int( $q, 'id' ), (array) $q->get_json_params() ) ), true );
 		$r( 'POST', '/sto-mappings', 'icol_approve_debt', static fn( $q ) => array( 'recurring_order_id' => Matching::map_sto( (array) $q->get_json_params() ) ), true );
@@ -313,6 +320,9 @@ final class Api {
 		}
 		$before = array_intersect_key( Settings::all(), $clean );
 		Settings::set( $clean );
+		if ( ! empty( $before['display_only'] ) && ! Settings::on( 'display_only' ) ) {
+			\Insiders\Collections\Domain\Journey::restart_after_measurement();
+		}
 		foreach ( (array) $q->get_param( 'secrets' ) as $name => $value ) {
 			if ( in_array( $name, array( 'tranzila_app_key', 'tranzila_secret', 'wati_token', 'pipedrive_token', 'anthropic_api_key' ), true ) && '' !== (string) $value ) {
 				if ( ! Settings::set_secret( $name, (string) $value ) ) {
