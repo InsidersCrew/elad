@@ -40,7 +40,9 @@ final class ProgramCharges {
 		$grace = max( 0, (int) Settings::get( 'late_grace_days' ) );
 		$out   = array();
 		foreach ( $rows as $r ) {
-			$sent  = Db::rows( 'SELECT template_key, occurred_at FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ('failed','cancelled','draft') ORDER BY occurred_at", (int) $r['id'] );
+			// Once live, a simulated message told the student nothing: the grace period runs from a real one.
+			$skip  = Settings::on( 'display_only' ) ? "'failed','cancelled','draft'" : "'failed','cancelled','draft','simulated'";
+			$sent  = Db::rows( 'SELECT template_key, occurred_at FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ({$skip}) ORDER BY occurred_at", (int) $r['id'] );
 			$quote = Pricing::quote( $r['signed_at'] ?: ( $r['joined_at'] ?: null ), (bool) (int) $r['no_registration_fee'] );
 			$block = array();
 			$warn  = array();

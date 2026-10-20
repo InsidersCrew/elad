@@ -710,6 +710,9 @@ final class Journey {
 		if ( ! self::enabled() ) {
 			return 'cancel:disabled';
 		}
+		if ( SendGuard::paused() ) {
+			return 'retry:paused'; // the step waits for the switch, it is not "sent" as a simulation
+		}
 		if ( ! FinanceDashboard::available() ) {
 			return 'cancel:ifd_unavailable'; // "לפי המערכת החשבון עוד לא נפתח" needs the dashboard
 		}
@@ -995,7 +998,7 @@ final class Journey {
 	 */
 	public static function restart_after_measurement(): int {
 		$rows = Db::rows(
-			'SELECT c.id, c.customer_id FROM ' . Db::t( 'cases' ) . ' c LEFT JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed' AND c.track_step IS NOT NULL AND c.track_step <> ''
+			'SELECT c.id, c.customer_id, c.track, a.account_open_deadline FROM ' . Db::t( 'cases' ) . ' c LEFT JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed' AND c.track_step IS NOT NULL AND c.track_step <> ''
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))
 			 ORDER BY a.account_open_deadline IS NULL, a.account_open_deadline, c.id"
 		);
@@ -1007,14 +1010,22 @@ final class Journey {
 			Scheduler::cancel_for_case( (int) $r['id'], 'measurement_ended' );
 			// The simulated steps keep their record under another key, so the same step can be planned again.
 			Db::exec( 'UPDATE ' . Db::t( 'scheduled_actions' ) . " SET idempotency_key = CONCAT(idempotency_key, ':sim', id) WHERE case_id = %d AND type = 'send_journey' AND idempotency_key NOT LIKE '%%:sim%%'", (int) $r['id'] );
-			Db::update( 'cases', array( 'track_step' => null ), array( 'id' => (int) $r['id'] ) );
+			$late = 'reach' === $r['track'] && $r['account_open_deadline'] && $r['account_open_deadline'] < Clock::today();
+			// The deadline passed during the measurement: the student was never really told. The late-entry message, then the grace period.
+			Db::update( 'cases', $late ? array( 'track_step' => null, 'track' => 'late' ) : array( 'track_step' => null ), array( 'id' => (int) $r['id'] ) );
 			$aid = self::plan_next( (int) $r['id'], $at );
 			$run = $aid ? (int) Clock::ts( Db::value( 'SELECT run_at FROM ' . Db::t( 'scheduled_actions' ) . ' WHERE id = %d', $aid ) ) : 0;
-			if ( $run && $run < $at + $spread ) {
-				$at += $spread; // nearest deadline first; a step weeks away keeps its own date and takes no slot
+			if ( $run && Clock::local_date( $run ) <= Clock::local_date( $at ) ) {
+				$at = max( $at, $run ) + $spread; // nearest deadline first; a step weeks away keeps its own date and takes no slot
 			}
 		}
 		// After the deadline: a debt case whose reminders were all simulated starts from its first reminder.
+		foreach ( Db::rows( 'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'charge' AND c.workflow_state = 'human_review' AND c.state_reason = %s
+			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))", 'שלוש פניות ללא תשובה, העברה לנציג' ) as $r ) {
+			// "Three messages, no answer": none of them was real.
+			Workflow::transition( (int) $r['id'], 'active', 'השליחה האמיתית התחילה: הפניות הקודמות היו מדומות', null, array(), 'journey' );
+			Tasks::close_by_key( 'no_reply:' . $r['id'], 'הפניות היו מדומות, הרצף מתחיל מחדש' );
+		}
 		$charge = Db::rows(
 			'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'charge' AND c.workflow_state IN ('active','waiting_reply') AND c.sequence_step > 0
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))"
@@ -1071,6 +1082,10 @@ final class Journey {
 				$fails = 0;
 				Exceptions::open( 'wati_mass_failure:' . Clock::today(), 'integration_failure', 'high', 'כמה הודעות ליווי לתלמידים שונים נכשלו בשעה האחרונה. כנראה בעיה בתבנית או בחשבון WATI, לא במספרים. ההודעות יתוכננו שוב; כדאי לבדוק את WATI', array() );
 			}
+		}
+		$tries = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND template_key IN (%s, %s) AND delivery_state IN ('failed','cancelled')", $case_id, $step, $step . '_reply' );
+		if ( $tries >= 4 ) {
+			$fails = 2; // four tries of the same step did not go out: a person, not another loop
 		}
 		Scheduler::cancel_for_case( $case_id, 'send_failed' );
 		// The step's action keeps its record under another key, so the same step can be planned again.

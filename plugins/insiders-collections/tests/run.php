@@ -2291,14 +2291,16 @@ $tests['P24'] = array( 'תחילת שליחה אמיתית: גם כשמדליק�
 		T::check( false, $e );
 		return;
 	}
-	Settings::set( array( 'display_only' => 0, 'cap_customer_sends' => 0, 'journey_restart_spread_minutes' => 3 ) );
+	Settings::set( array( 'display_only' => 1, 'cap_customer_sends' => 0, 'journey_restart_spread_minutes' => 3 ) );
 	foreach ( array( 741, 742, 743 ) as $i => $p ) {
 		ifd_student( $p, 9000 + $p, '2026-08-0' . ( $i + 1 ) );
 	}
 	Journey::sync();
 	T::tick();
-	T::eq( 3, T::count( 'messages', "template_key = 'j_intro' AND delivery_state = 'simulated'" ), 'with sends off, the intros are simulated' );
+	T::eq( 3, T::count( 'messages', "template_key = 'j_intro' AND delivery_state = 'simulated'" ), 'during measurement, the intros are simulated' );
 	T::as( 'admin' );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'display_only' => 0 ) ) ); // sends still off: nothing starts yet
+	T::eq( 'j_intro', student_case( 741 )['track_step'], 'still simulate: no restart yet' );
 	T::api( 'POST', '/settings', array( 'settings' => array( 'cap_customer_sends' => 1 ) ) );
 	$runs = array();
 	foreach ( array( 741, 742, 743 ) as $p ) {
@@ -2314,6 +2316,13 @@ $tests['P24'] = array( 'תחילת שליחה אמיתית: גם כשמדליק�
 	ifd_student( 745, 9745, gmdate( 'Y-m-d', strtotime( Clock::today() . ' -87 days' ) ) ); // deadline in three days
 	Journey::sync();
 	T::eq( array( 'j_t0', 'j_intro' ), array( pending_journey( (int) student_case( 744 )['id'] )['step'] ?? null, pending_journey( (int) student_case( 745 )['id'] )['step'] ?? null ), 'a day before the deadline: the deadline-day message alone (an intro now would push it past the 48-hour gap); three days: the intro' );
+	// After go-live the kill switch pauses: the due step waits, nothing is simulated, no step is skipped.
+	Settings::set( array( 'kill_switch' => 1 ) );
+	$before = T::count( 'messages', "delivery_state = 'simulated'" );
+	Clock::freeze( Clock::now() + HOUR_IN_SECONDS );
+	ifd_fresh();
+	T::tick();
+	T::eq( array( $before, null, 'pending' ), array( T::count( 'messages', "delivery_state = 'simulated'" ), student_case( 744 )['track_step'], pending_journey( (int) student_case( 744 )['id'] )['state'] ?? null ), 'kill switch: held, not simulated' );
 } );
 
 $tests['P25'] = array( 'אותו תלמיד עם שני דילים של הצטרפות: תיק אחד, והשני לנציג; פתיחת חשבון שנרשמה על דיל אחר עוצרת את הליווי', function () {
@@ -2408,6 +2417,27 @@ $tests['X17'] = array( 'קישור תשלום שעומד לפוג: אותו קי
 	$req = Db::row( 'SELECT * FROM ' . Db::t( 'payment_requests' ) . ' WHERE case_id = %d ORDER BY id DESC LIMIT 1', $case );
 	T::eq( array( $u1, 1 ), array( $u2, T::count( 'payment_requests', 'case_id = ' . $case ) ), 'the same link, no second request' );
 	T::check( (int) Clock::ts( $req['expires_at'] ) > Clock::now() + 13 * DAY_IN_SECONDS, 'open for two more weeks' );
+} );
+
+$tests['P27'] = array( 'מועד שעבר בזמן המדידה: ביום השיגור התלמיד מקבל את הודעת "המועד עבר", ורשימת האישור מחכה להודעה האמיתית', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'display_only' => 1, 'journey_from_date' => '2026-06-01' ) );
+	ifd_student( 771, 9771, gmdate( 'Y-m-d', strtotime( Clock::today() . ' -85 days' ) ) ); // five days left
+	Journey::sync();
+	T::tick();
+	T::check( '' !== (string) student_case( 771 )['track_step'], 'a simulated step during measurement' );
+	Clock::freeze( Clock::now() + 8 * DAY_IN_SECONDS );
+	ifd_fresh();
+	$row = array_values( array_filter( \Insiders\Collections\Domain\ProgramCharges::queue()['rows'] ?? array(), static fn( $r ) => (int) ( $r['case_id'] ?? 0 ) === (int) student_case( 771 )['id'] ) )[0] ?? null;
+	T::as( 'admin' );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'display_only' => 0 ) ) );
+	$c = student_case( 771 );
+	T::eq( array( 'late', 'l_intro' ), array( $c['track'], pending_journey( (int) $c['id'] )['step'] ?? null ), 'the deadline passed while nothing real went: the late-entry message' );
+	$row = array_values( array_filter( \Insiders\Collections\Domain\ProgramCharges::queue()['rows'] ?? array(), static fn( $r ) => (int) ( $r['case_id'] ?? 0 ) === (int) $c['id'] ) )[0] ?? null;
+	T::check( null === $row || ! empty( $row['blockers'] ?? $row['block'] ?? array() ), 'not ready for approval before a real message and the grace period' );
 } );
 
 foreach ( $tests as $id => [ $title, $fn ] ) {

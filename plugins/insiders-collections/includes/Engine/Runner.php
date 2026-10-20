@@ -230,6 +230,9 @@ final class Runner {
 		if ( str_contains( $res, 'events_pending' ) ) {
 			return $now + 5 * MINUTE_IN_SECONDS;
 		}
+		if ( str_contains( $res, 'paused' ) || str_contains( $res, 'setup' ) ) {
+			return Calendar::next_slot( $now + 15 * MINUTE_IN_SECONDS, $policy ); // waits for a switch or a setting
+		}
 		if ( str_contains( $res, 'quota' ) || str_contains( $res, 'min_gap' ) ) {
 			$next = Calendar::add_business_days( Clock::today(), 1, $policy );
 			return Calendar::next_slot( Clock::local_to_ts( $next, $policy['window_start'] ) + random_int( 0, 40 ) * MINUTE_IN_SECONDS, $policy );

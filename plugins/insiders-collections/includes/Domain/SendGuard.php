@@ -21,6 +21,11 @@ defined( 'ABSPATH' ) || exit;
  */
 final class SendGuard {
 
+	/** Live sending was started and then stopped (kill switch, sends off): hold the steps, do not simulate them. */
+	public static function paused(): bool {
+		return ! Settings::on( 'display_only' ) && ( Settings::on( 'kill_switch' ) || ! Settings::on( 'cap_customer_sends' ) );
+	}
+
 	public static function mode(): string {
 		if ( Settings::on( 'display_only' ) || Settings::on( 'kill_switch' ) || ! Settings::on( 'cap_customer_sends' ) ) {
 			return 'simulate';

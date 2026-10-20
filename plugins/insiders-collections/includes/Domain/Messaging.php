@@ -235,6 +235,9 @@ final class Messaging {
 		if ( ! $case ) {
 			return 'cancel:case_missing';
 		}
+		if ( SendGuard::paused() ) {
+			return 'retry:paused'; // the step waits for the switch, it is not "sent" as a simulation
+		}
 		$payload = (array) json_decode( (string) $action['payload'], true );
 		if ( (int) ( $payload['step'] ?? -1 ) !== (int) $case['sequence_step'] && empty( $payload['promise_followup'] ) ) {
 			return 'cancel:stale_step';
@@ -273,6 +276,12 @@ final class Messaging {
 		$codes = array_column( $guard['blocking'], 'code' );
 		if ( $guard['transient'] ) {
 			return 'retry:' . implode( ',', $codes );
+		}
+		$scopes = array_unique( array_column( $guard['blocking'], 'scope' ) );
+		if ( 'live' === $guard['mode'] && ! array_diff( $scopes, array( 'setup', 'transient' ) ) ) {
+			// Nothing about this student: a template, the policy or WATI is not ready. The step waits for it.
+			Exceptions::open( 'setup_block:' . Clock::today(), 'integration_failure', 'high', 'הודעות ממתינות כי חסרה הגדרה: ' . implode( ' · ', array_unique( array_column( array_filter( $guard['blocking'], static fn( $b ) => 'setup' === $b['scope'] ), 'message' ) ) ), array() );
+			return 'retry:setup,' . implode( ',', $codes );
 		}
 		Audit::log( 'reminder.blocked', 'case', (int) $case['id'], null, array( 'codes' => $codes ), implode( ' · ', array_column( $guard['blocking'], 'message' ) ) );
 		if ( in_array( 'no_due_balance', $codes, true ) ) {

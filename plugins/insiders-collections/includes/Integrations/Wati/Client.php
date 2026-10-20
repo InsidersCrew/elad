@@ -99,6 +99,11 @@ final class Client {
 			$r['outcome'] = Http::PERMANENT;
 			$r['error']   = (string) ( $r['json']['info'] ?? $r['json']['message'] ?? 'result=false' );
 		}
+		$valid = is_array( $r['json'] ) ? ( $r['json']['validWhatsAppNumber'] ?? $r['json']['receivers'][0]['isValidWhatsAppNumber'] ?? null ) : null;
+		if ( Http::OK === $r['outcome'] && false === $valid ) {
+			$r['outcome'] = Http::PERMANENT;
+			$r['error']   = 'המספר אינו מחובר לוואטסאפ';
+		}
 		$state = array(
 			Http::OK        => 'accepted',
 			Http::UNKNOWN   => 'unknown',
