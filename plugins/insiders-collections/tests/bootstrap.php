@@ -325,6 +325,9 @@ add_filter(
 			if ( '' === (string) ( $cl['name'] ?? '' ) || '' === (string) ( $cl['contact_person'] ?? '' ) || ! is_email( (string) ( $cl['email'] ?? '' ) ) ) {
 				return $json( array( 'error_code' => 20004, 'message' => 'Json does not match validation schema' ), 400 );
 			}
+			if ( empty( $body['send_email'] ) && empty( $body['send_sms'] ) ) {
+				return $json( array( 'error_code' => 20404, 'message' => 'לא נבחרה אפשרות שליחת דואר אלקטרוני או הודעת טקסט' ) );
+			}
 			return $json( array( 'error_code' => 0, 'message' => 'ok', 'pr_id' => 'PR' . wp_rand( 1000, 9999 ), 'pr_link' => 'https://direct.tranzila.com/pr/' . wp_generate_password( 12, false ) ) );
 		}
 		if ( false !== strpos( $url, 'wati.test' ) ) {

@@ -1775,7 +1775,7 @@ $tests['X12'] = array( 'טרנזילה לפי התיעוד: בקשת תשלום 
 	T::check( array_key_exists( 'request_date', $b ) && null === $b['request_date'], 'request_date is sent as null' );
 	T::eq( array( 'ILS', array( 1 ), 'TRAPI' ), array( $b['request_currency'] ?? null, $b['payment_methods'] ?? null, $b['created_via'] ?? null ), 'currency as ISO text, credit card, created via TRAPI' );
 	T::eq( array( 'I', 1, 'G', 'ILS' ), array( $b['items'][0]['type'] ?? null, $b['items'][0]['unit_type'] ?? null, $b['items'][0]['price_type'] ?? null, $b['items'][0]['currency_code'] ?? null ), 'item fields as documented' );
-	T::check( ! isset( $b['send_sms'] ) && ! isset( $b['send_email'] ), 'Tranzila sends nothing itself: the link goes out in WhatsApp' );
+	T::check( ! isset( $b['send_sms'] ) && isset( $b['send_email'] ) && get_option( 'admin_email' ) === ( $b['client']['email'] ?? '' ), 'Tranzila must send it by email (20404): to the business address, never to the student' );
 	T::check( '' !== (string) ( $b['client']['contact_person'] ?? '' ) && is_email( (string) ( $b['client']['email'] ?? '' ) ), 'the client carries name, contact person and email, as the schema requires' );
 	// A student with no email still gets a payment page: the business address fills the required field.
 	[ $c2, $case2 ] = program_case();

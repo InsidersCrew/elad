@@ -227,20 +227,18 @@ final class Client {
 	 * Required: terminal_name, created_by_user, created_by_system, created_via, request_date (null),
 	 * request_language, response_language, client (name, contact_person, email), items (name,
 	 * unit_price, units_number), payment_plans, payment_methods, payments_number.
-	 * No send_sms/send_email: the link goes out in WhatsApp, Tranzila sends nothing itself.
+	 * send_email is required in practice (20404 without it); it goes to the business address, not the student.
 	 * No request_vat: the terminal's accounting module decides. Response: pr_id and pr_link;
 	 * the Notify of the payment carries pr_id. 'tranzila_pr_extra' can still add fields.
 	 */
 	public static function create_payment_request( array $req, array $items, array $customer ): array {
 		$terminal = (string) Settings::get( 'tranzila_pr_terminal', 'insiders' );
 		// The schema requires name, contact_person and a valid email on the client (a live request without
-		// contact_person came back "Json does not match validation schema", 2026-10-19). Tranzila sends nothing
-		// itself here, so a student without an email gets the business address in that field.
+		// contact_person came back "Json does not match validation schema", 2026-10-19), and Tranzila refuses a
+		// request that it does not send by email or SMS (error 20404, 2026-10-20). The student gets the link in
+		// WhatsApp, so the email goes to the business address, never to the student.
 		$name  = trim( (string) ( $customer['full_name'] ?? '' ) ) ?: 'לקוח';
-		$email = trim( (string) ( $customer['email'] ?? '' ) );
-		if ( ! is_email( $email ) ) {
-			$email = (string) Settings::get( 'tranzila_pr_fallback_email' ) ?: (string) get_option( 'admin_email' );
-		}
+		$email = (string) Settings::get( 'tranzila_pr_fallback_email' ) ?: (string) get_option( 'admin_email' );
 		$client = array_merge(
 			array(
 				'external_id'    => 'icol-' . (int) $req['id'],
@@ -265,6 +263,7 @@ final class Client {
 			'payment_plans'     => array( 1 ),
 			'payment_methods'   => array( 1 ),
 			'client'            => $client,
+			'send_email'        => array( 'sender_name' => 'INSIDERS', 'sender_email' => 'donotreply@tranzila.com' ),
 			'items'             => array_map(
 				static fn( $i ) => array(
 					'name'          => mb_substr( (string) $i['description'], 0, 100 ),
