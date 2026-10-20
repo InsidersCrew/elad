@@ -358,7 +358,13 @@ final class Processor {
 			 WHERE c.recurring_order_id = %d AND d.finance_state = 'settled'",
 			(int) $order['id']
 		);
-		if ( null === $cycle && $handled_open ) {
+		// On the order's own charge day it is the regular monthly charge (whatever the cycle strategy): only a
+		// charge on another day is a retry. The ±1 day matches Cycle::resolve (runs can cross midnight).
+		$dom       = (int) ( $order['charge_dom'] ?? 0 );
+		$local     = Clock::local( (int) $f['occurred_ts'] );
+		$scheduled = $dom >= 1 && $dom <= 31 ? \Insiders\Collections\Integrations\Tranzila\Cycle::scheduled_date( (int) $local->format( 'Y' ), (int) $local->format( 'n' ), $dom ) : null;
+		$off_day   = null === $scheduled || abs( strtotime( $local->format( 'Y-m-d' ) ) - strtotime( $scheduled ) ) > DAY_IN_SECONDS;
+		if ( null === $cycle && $handled_open && $off_day ) {
 			return self::double_charge( $f, $pid, $order );
 		}
 		Payments::after_payment( $pid, false ); // routine installment, nothing owed

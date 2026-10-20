@@ -2055,6 +2055,11 @@ $tests['X14'] = array( 'חיוב של הוראת קבע ששולם בנפרד: �
 	T::tranzila( array( 'index' => '1002', 'sto_external_id' => '5001', 'sum' => '490.00', 'Response' => '000' ) );
 	T::tick();
 	T::eq( 1, T::count( 'exceptions', "exception_key LIKE 'double_charge:%' AND status = 'open'" ), 'a retry of a month paid another way is a possible double charge, not a routine installment' );
+	// The next month's charge on its own day, while that task is still open: routine, not a double charge.
+	T::at( '2026-11-11', '11:00' );
+	T::tranzila( array( 'index' => '1003', 'sto_external_id' => '5001', 'sum' => '490.00', 'Response' => '000' ) );
+	T::tick();
+	T::eq( 1, T::count( 'exceptions', "exception_key LIKE 'double_charge:%'" ), 'the regular monthly charge is not flagged' );
 } );
 
 $tests['X15'] = array( 'תשלום מקישור בלי Notify: נמצא בדוח העסקאות לפי סכום וטלפון, רק כשיש התאמה אחת', function () {
