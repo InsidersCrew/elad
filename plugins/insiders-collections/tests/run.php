@@ -2490,6 +2490,26 @@ $tests['L01'] = array( 'שיגור מדורג: רק המספרים ברשימה 
 	T::eq( 1, T::count( 'messages', 'case_id = ' . (int) $in['id'] . " AND template_key = 'j_intro' AND delivery_state NOT IN ('simulated','cancelled','failed')" ), 'the first student does not get the intro twice' );
 } );
 
+$tests['R01'] = array( 'כלי האבחון roster: כל תלמיד שהדשבורד מכיר, ולמה הוא בליווי או לא', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 791, 9791, '2026-08-01' );                                   // deadline 30/10: in the journey
+	ifd_student( 792, 9792, '2026-09-20' );                                   // deadline 19/12: not yet
+	ifd_student( 793, 9793, '2026-08-02', array( 'resolved' => '2026-09-01 10:00:00', 'kind' => 'opened' ) );
+	ifd_student( 794, 9794, '2026-07-10' );                                   // before the start date
+	Journey::sync();
+	$m = new \ReflectionMethod( \Insiders\Collections\Admin\Diagnostics::class, 'roster' );
+	$m->setAccessible( true );
+	$_GET['persons'] = '799';
+	$r = $m->invoke( null );
+	unset( $_GET['persons'] );
+	$by = array_column( $r['students'], 'status', 'person' );
+	T::eq( array( 'בליווי או בטיפול', 'ממתין לתחילת הליווי', 'סגור בדשבורד', 'לפני תאריך ההתחלה' ), array( $by[791] ?? '', $by[792] ?? '', $by[793] ?? '', $by[794] ?? '' ), 'each student with the reason' );
+	T::check( str_contains( (string) ( $r['not_in_dashboard'][799] ?? '' ), 'לא נמצא' ), 'a person the dashboard does not have is explained' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

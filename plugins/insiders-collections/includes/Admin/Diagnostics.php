@@ -57,6 +57,9 @@ final class Diagnostics {
 			case 'program':
 				self::dump( self::program() );
 				break;
+			case 'roster':
+				self::dump( self::roster() );
+				break;
 			case 'tranzila_auth':
 				self::tranzila_auth();
 				break;
@@ -115,7 +118,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'roster' => 'כל תלמידי התוכנית שדשבורד ההכנסות מכיר, ולמה כל אחד בליווי או לא (עם &from=YYYY-MM-DD, &persons=מזהים מפייפדרייב)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}
@@ -145,6 +148,106 @@ final class Diagnostics {
 	}
 
 	/** Beginner program, read-only: what the hourly job would do now, without doing it. */
+	/**
+	 * Every program student the revenue dashboard knows, from a date, with the reason each one is or is not
+	 * in the journey. Read only. &persons=1,2,3 also explains Pipedrive persons the dashboard does not have.
+	 */
+	private static function roster(): array {
+		$fd = \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::class;
+		$Db = \Insiders\Collections\Support\Db::class;
+		$S  = \Insiders\Collections\Support\Settings::class;
+		if ( ! $fd::available() ) {
+			return array( 'error' => 'דשבורד ההכנסות לא זמין באתר' );
+		}
+		global $wpdb;
+		$since = preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $_GET['from'] ?? '' ) ) ? (string) $_GET['from'] : '2026-06-01';
+		$raw   = (array) $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT c.person_id, c.deal_id, c.signed_at, c.resolved_at, c.resolution_kind, c.signed_source, l.person_name FROM ' . $fd::table( 'commitments' ) . ' c LEFT JOIN ' . $fd::table( 'leads' ) . ' l ON l.person_id = c.person_id WHERE c.signed_at >= %s ORDER BY c.signed_at, c.deal_id',
+				$since
+			),
+			ARRAY_A
+		);
+		$norm = array();
+		foreach ( array_filter( array_map( array( Revenue::class, 'normalize' ), $fd::unresolved_until( '2099-12-31' ) ) ) as $r ) {
+			$norm[ (int) $r['pipedrive_deal_id'] ] = $r;
+		}
+		$cands = array();
+		foreach ( $Db::rows( 'SELECT candidate_key, status, snapshot, case_id FROM ' . $Db::t( 'program_candidates' ) ) as $pc ) {
+			$cands[ $pc['candidate_key'] ] = $pc;
+		}
+		$start   = (int) $S::get( 'journey_start_days' );
+		$from    = $fd::from_date();
+		$today   = \Insiders\Collections\Support\Clock::today();
+		$enabled = \Insiders\Collections\Domain\Journey::enabled();
+		$rows    = array();
+		$summary = array();
+		$seen    = array();
+		foreach ( $raw as $c ) {
+			$deal   = (int) $c['deal_id'];
+			$person = (int) $c['person_id'];
+			$seen[ $person ] = true;
+			$case   = $deal ? $Db::row( 'SELECT c.id, c.workflow_state, c.phase, c.track FROM ' . $Db::t( 'cases' ) . ' c JOIN ' . $Db::t( 'agreements' ) . ' a ON a.id = c.agreement_id WHERE a.pipedrive_deal_id = %d ORDER BY c.id DESC LIMIT 1', $deal ) : null;
+			$n      = $norm[ $deal ] ?? null;
+			$dl     = $n['effective_deadline'] ?? gmdate( 'Y-m-d', strtotime( substr( (string) $c['signed_at'], 0, 10 ) . ' UTC' ) + $fd::window_days() * DAY_IN_SECONDS );
+			$pc     = $cands[ Revenue::candidate_key( array( 'pipedrive_person_id' => $person, 'pipedrive_deal_id' => $deal ) ) ] ?? null;
+			$snap   = $pc ? (array) json_decode( (string) $pc['snapshot'], true ) : array();
+			if ( $case ) {
+				$bucket = 'בליווי או בטיפול';
+				$why    = 'תיק #' . $case['id'] . ': ' . ( 'commitment' === $case['phase'] ? 'לפני המועד' : 'אחרי המועד' ) . ', ' . \Insiders\Collections\Domain\Workflow::label( $case['workflow_state'] ) . ( $case['track'] ? ', מסלול ' . $case['track'] : '' );
+			} elseif ( $c['resolved_at'] ) {
+				$bucket = 'סגור בדשבורד';
+				$why    = ( 'fixed' === $c['resolution_kind'] ? 'שולם' : 'נפתח חשבון' ) . ' לפי דשבורד ההכנסות (' . substr( (string) $c['resolved_at'], 0, 10 ) . ')';
+			} elseif ( in_array( (string) $c['signed_source'], array( 'resolution_first', 'reverted' ), true ) ) {
+				$bucket = 'הדשבורד לא מחשיב כהתחייבות';
+				$why    = 'בדשבורד הדיל מסומן ' . $c['signed_source'] . ' (הפתיחה נרשמה לפני ההצטרפות, או שההצטרפות בוטלה)';
+			} elseif ( substr( (string) $c['signed_at'], 0, 10 ) < $from ) {
+				$bucket = 'לפני תאריך ההתחלה';
+				$why    = 'הצטרף לפני ' . $from . ' (תאריך ההתחלה בהגדרות התוכנית)';
+			} elseif ( ! $n ) {
+				$bucket = 'הדשבורד לא מחזיר כמועמד';
+				$why    = 'בלי מזהה איש קשר תקין או בלי מועד';
+			} elseif ( gmdate( 'Y-m-d', strtotime( $dl . ' UTC' ) - $start * DAY_IN_SECONDS ) > $today ) {
+				$bucket = 'ממתין לתחילת הליווי';
+				$why    = 'ייכנס אוטומטית ב-' . gmdate( 'Y-m-d', strtotime( $dl . ' UTC' ) - $start * DAY_IN_SECONDS ) . ' (' . $start . ' יום לפני המועד)';
+			} elseif ( $pc && 'invalid' === $pc['status'] ) {
+				$bucket = 'נתקע';
+				$why    = 'מועד לא תקין';
+			} elseif ( $pc && ! empty( $snap['enrich_error'] ) ) {
+				$bucket = 'נתקע';
+				$why    = 'לא הצלחנו למשוך פרטי קשר מפייפדרייב (' . (int) ( $snap['enrich_attempts'] ?? 0 ) . ' ניסיונות): ' . mb_substr( (string) $snap['enrich_error'], 0, 120 );
+			} elseif ( $pc && ! in_array( $pc['status'], array( 'new', 'enrolling' ), true ) ) {
+				$bucket = 'נתקע';
+				$why    = 'סטטוס מועמד ' . $pc['status'] . ( $pc['case_id'] ? ', משויך לתיק #' . $pc['case_id'] : '' );
+			} elseif ( $Db::value( 'SELECT id FROM ' . $Db::t( 'exceptions' ) . ' WHERE exception_key LIKE %s AND status = %s', 'journey_dup_person:' . $person . ':%', 'open' ) ) {
+				$bucket = 'נתקע';
+				$why    = 'לתלמיד יש עוד דיל הצטרפות עם תיק פתוח (חריג פתוח)';
+			} else {
+				$bucket = 'ייכנס בריצה הקרובה';
+				$why    = $enabled ? 'אמור להיכנס בריצה השעתית הבאה' : 'הליווי כבוי בהגדרות, ולכן לא נכנס';
+			}
+			$summary[ $bucket ] = ( $summary[ $bucket ] ?? 0 ) + 1;
+			$rows[] = array( 'name' => (string) $c['person_name'], 'person' => $person, 'deal' => $deal, 'joined' => substr( (string) $c['signed_at'], 0, 10 ), 'deadline' => $dl, 'status' => $bucket, 'why' => $why );
+		}
+		$extra = array();
+		foreach ( array_filter( array_map( 'intval', preg_split( '/[\s,]+/', (string) ( $_GET['persons'] ?? '' ) ) ) ) as $p ) {
+			if ( isset( $seen[ $p ] ) ) {
+				continue;
+			}
+			$any = $wpdb->get_row( $wpdb->prepare( 'SELECT signed_at, resolved_at, signed_source FROM ' . $fd::table( 'commitments' ) . ' WHERE person_id = %d ORDER BY signed_at DESC LIMIT 1', $p ), ARRAY_A );
+			$extra[ $p ] = $any ? 'בדשבורד, אבל הצטרף לפני ' . $since . ' (' . substr( (string) $any['signed_at'], 0, 10 ) . '). להריץ שוב עם &from= מוקדם יותר' : 'לא נמצא בטבלת ההתחייבויות של דשבורד ההכנסות. הדשבורד לא מזהה אותו כמי שהצטרף לתוכנית (שלב הדיל בפייפדרייב, או שהסנכרון לא קרא אותו)';
+		}
+		return array(
+			'from'         => $since,
+			'start_date'   => $from,
+			'start_days'   => $start,
+			'journey_on'   => $enabled,
+			'summary'      => $summary,
+			'not_in_dashboard' => $extra ?: 'אפשר להוסיף &persons= עם מזהי אנשי קשר מפייפדרייב של תלמידים שחסרים, כדי לראות למה',
+			'students'     => $rows,
+		);
+	}
+
 	private static function program(): array {
 		$fd    = \Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::class;
 		$S     = \Insiders\Collections\Support\Settings::class;
