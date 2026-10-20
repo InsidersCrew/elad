@@ -223,7 +223,7 @@ final class CardCharge {
 		}
 		// A notice that was only simulated never leads to a real charge, even if the switches changed since.
 		$told = ( 'live' === ( $p['notice_mode'] ?? '' ) && ! $wa_failed ) || 'live' === ( $p['email_mode'] ?? '' );
-		if ( Settings::on( 'kill_switch' ) || Settings::on( 'display_only' ) || ! $told ) {
+		if ( 'live' !== SendGuard::mode( (int) $case['customer_id'] ) || ! $told ) {
 			self::note( $case_id, 'סימולציה: היה מחויב הכרטיס שמסתיים ב-' . $cred['last4'] . ' בסך ' . Money::ils( $amount ) . ' (מצב תצוגה בלבד או מתג עצירה)' );
 			return 'done:simulated';
 		}
@@ -301,7 +301,7 @@ final class CardCharge {
 		[ $text ] = Templates::render( Templates::get( 'card_charge_notice' ), $vars );
 		$text     = preg_replace( '/אפשר לכתוב לנו כאן/u', 'אפשר להשיב למייל הזה או לכתוב לנו בוואטסאפ', $text );
 		$subject  = 'INSIDERS: חיוב על תוכנית הליווי ב-' . (string) ( $vars['charge_date'] ?? '' );
-		$live     = ! Settings::on( 'kill_switch' ) && ! Settings::on( 'display_only' );
+		$live     = 'live' === SendGuard::mode( (int) $case['customer_id'] ); // also outside a staged go-live list: simulated
 		$sent     = false;
 		if ( $live ) {
 			$html = '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">' . nl2br( esc_html( $text ) ) . '</div>';

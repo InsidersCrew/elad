@@ -4,6 +4,7 @@ namespace Insiders\Collections\Domain;
 use Insiders\Collections\Engine\Runner;
 use Insiders\Collections\Support\Clock;
 use Insiders\Collections\Support\Db;
+use Insiders\Collections\Support\Phone;
 use Insiders\Collections\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
@@ -26,11 +27,39 @@ final class SendGuard {
 		return ! Settings::on( 'display_only' ) && ( Settings::on( 'kill_switch' ) || ! Settings::on( 'cap_customer_sends' ) );
 	}
 
-	public static function mode(): string {
+	/**
+	 * @param int|null $customer_id with a staged go-live list, a customer whose number is not on it stays in
+	 *                              display-only mode, exactly as during the measurement period.
+	 */
+	public static function mode( ?int $customer_id = null ): string {
 		if ( Settings::on( 'display_only' ) || Settings::on( 'kill_switch' ) || ! Settings::on( 'cap_customer_sends' ) ) {
 			return 'simulate';
 		}
+		if ( null !== $customer_id && ! self::allowed( $customer_id ) ) {
+			return 'simulate';
+		}
 		return 'live';
+	}
+
+	/** Staged go-live: the numbers that get real messages while the list is not empty (E.164). */
+	public static function allowlist(): array {
+		$out = array();
+		foreach ( preg_split( '/[\s,;]+/', (string) Settings::get( 'live_allowlist' ) ) as $raw ) {
+			$e = '' !== trim( $raw ) ? Phone::e164( $raw ) : null;
+			if ( null !== $e ) {
+				$out[ $e ] = true;
+			}
+		}
+		return array_keys( $out );
+	}
+
+	public static function allowed( int $customer_id ): bool {
+		$list = self::allowlist();
+		if ( ! $list ) {
+			return true;
+		}
+		$c = Customers::get( $customer_id );
+		return $c && in_array( (string) $c['phone_e164'], $list, true );
 	}
 
 	/**
@@ -42,13 +71,13 @@ final class SendGuard {
 			$b[] = array( 'code' => $code, 'scope' => $scope, 'message' => $msg );
 		};
 		$at       = $ctx['at'] ?? Clock::now();
-		$mode     = self::mode();
 		$case     = Workflow::get( $case_id );
 		$customer = $case ? Customers::get( (int) $case['customer_id'] ) : null;
 		if ( ! $case || ! $customer ) {
 			$add( 'not_found', 'case', 'התיק לא נמצא' );
-			return self::result( $b, $mode );
+			return self::result( $b, self::mode() );
 		}
+		$mode = self::mode( (int) $customer['id'] );
 		$is_reminder = $ctx['is_reminder'] ?? true;
 		$tpl         = $ctx['template'] ?? null;
 		$policy      = Policy::current();

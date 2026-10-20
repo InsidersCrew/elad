@@ -300,9 +300,13 @@ final class Api {
 		return array( 'kill_switch' => $on );
 	}
 
-	/** Real sending just started (display-only off, sends on, kill switch off, by whichever was last). */
-	private static function after_mode_change( string $before ): void {
-		if ( 'simulate' === $before && 'live' === \Insiders\Collections\Domain\SendGuard::mode() ) {
+	/**
+	 * Real sending just started for students who so far got only simulated messages: display-only off, sends
+	 * on, kill switch off (by whichever was last), or the staged go-live list emptied (everyone now).
+	 */
+	private static function after_mode_change( string $before, array $list_before = array() ): void {
+		$live = 'live' === \Insiders\Collections\Domain\SendGuard::mode();
+		if ( $live && ( 'simulate' === $before || ( $list_before && ! \Insiders\Collections\Domain\SendGuard::allowlist() ) ) ) {
 			\Insiders\Collections\Domain\Journey::restart_after_measurement();
 		}
 	}
@@ -329,8 +333,9 @@ final class Api {
 		}
 		$before = array_intersect_key( Settings::all(), $clean );
 		$mode   = \Insiders\Collections\Domain\SendGuard::mode();
+		$list   = \Insiders\Collections\Domain\SendGuard::allowlist();
 		Settings::set( $clean );
-		self::after_mode_change( $mode );
+		self::after_mode_change( $mode, $list );
 		foreach ( (array) $q->get_param( 'secrets' ) as $name => $value ) {
 			if ( in_array( $name, array( 'tranzila_app_key', 'tranzila_secret', 'wati_token', 'pipedrive_token', 'anthropic_api_key' ), true ) && '' !== (string) $value ) {
 				if ( ! Settings::set_secret( $name, (string) $value ) ) {

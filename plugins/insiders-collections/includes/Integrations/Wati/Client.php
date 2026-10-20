@@ -58,6 +58,8 @@ final class Client {
 		$void     = '';
 		if ( Settings::on( 'kill_switch' ) || Settings::on( 'display_only' ) ) {
 			$void = 'kill_switch';
+		} elseif ( ! \Insiders\Collections\Domain\SendGuard::allowed( (int) $m['customer_id'] ) ) {
+			$void = 'not_in_allowlist';
 		} elseif ( false === Customers::permission( (int) $m['customer_id'], 'whatsapp' ) ) {
 			$void = 'opted_out';
 		} elseif ( 'commitment_reminder' === $m['kind'] && ( Clock::ts( $m['created_at'] ) ?? 0 ) < Clock::now() - 3 * HOUR_IN_SECONDS ) {
@@ -167,7 +169,7 @@ final class Client {
 		if ( ! $c || empty( $c['phone_e164'] ) ) {
 			return array( 'outcome' => Http::PERMANENT, 'error' => 'no phone' );
 		}
-		if ( 'simulate' === \Insiders\Collections\Domain\SendGuard::mode() ) {
+		if ( 'simulate' === \Insiders\Collections\Domain\SendGuard::mode( $customer_id ) ) {
 			// Display-only writes nothing to WATI: the owner attribute silences the registration agent
 			// for this contact, which is a real effect. Recorded as what would have been written.
 			return array( 'outcome' => Http::OK, 'error' => '', 'result' => array( 'simulated' => true, 'attribute' => (string) Settings::get( 'wati_conversation_attr' ), 'value' => $owner ) );

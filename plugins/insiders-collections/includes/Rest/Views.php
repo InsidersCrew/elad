@@ -57,6 +57,7 @@ final class Views {
 		return array(
 			'mode'        => array(
 				'send_mode'    => SendGuard::mode(),
+				'allowlist'    => count( SendGuard::allowlist() ),
 				'kill_switch'  => Settings::on( 'kill_switch' ),
 				'display_only' => Settings::on( 'display_only' ),
 				'policy_approved' => null !== Policy::current(),

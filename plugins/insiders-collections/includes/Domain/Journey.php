@@ -538,7 +538,7 @@ final class Journey {
 	/** Local date of the last proactive message to this customer (the ones that count toward the quota). */
 	private static function last_proactive_date( int $customer_id ): ?string {
 		// Once live, a message that was only simulated during the measurement period never reached the student.
-		$skip = Settings::on( 'display_only' ) ? "'failed','cancelled','draft'" : "'failed','cancelled','draft','simulated'";
+		$skip = 'simulate' === SendGuard::mode( $customer_id ) ? "'failed','cancelled','draft'" : "'failed','cancelled','draft','simulated'";
 		$last = Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ({$skip})", $customer_id );
 		$ts   = Clock::ts( $last );
 		return null === $ts ? null : Clock::local_date( $ts );
@@ -639,7 +639,7 @@ final class Journey {
 		$ts     = Clock::local_to_ts( $d, $policy['window_start'] ) + ( $jitter > 0 ? random_int( 0, $jitter ) * MINUTE_IN_SECONDS : 0 );
 		// Planned past the minimum gap up front: a send blocked by it is retried on the next
 		// business day, which for the deadline-day message would be after the deadline.
-		$skip = Settings::on( 'display_only' ) ? "'failed','cancelled','draft'" : "'failed','cancelled','draft','simulated'";
+		$skip = 'simulate' === SendGuard::mode( $customer_id ) ? "'failed','cancelled','draft'" : "'failed','cancelled','draft','simulated'";
 		$last = Clock::ts( Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'out' AND counts_toward_quota = 1 AND delivery_state NOT IN ({$skip})", $customer_id ) );
 		if ( null !== $last ) {
 			$ts = max( $ts, $last + (int) $policy['min_gap_hours'] * HOUR_IN_SECONDS + MINUTE_IN_SECONDS );
@@ -998,7 +998,7 @@ final class Journey {
 	 */
 	public static function restart_after_measurement(): int {
 		$rows = Db::rows(
-			'SELECT c.id, c.customer_id, c.track, a.account_open_deadline FROM ' . Db::t( 'cases' ) . ' c LEFT JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed' AND c.track_step IS NOT NULL AND c.track_step <> ''
+			'SELECT c.id, c.customer_id, c.track, a.account_open_deadline FROM ' . Db::t( 'cases' ) . ' c LEFT JOIN ' . Db::t( 'agreements' ) . " a ON a.id = c.agreement_id WHERE c.phase = 'commitment' AND c.workflow_state <> 'closed'
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))
 			 ORDER BY a.account_open_deadline IS NULL, a.account_open_deadline, c.id"
 		);

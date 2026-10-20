@@ -2461,6 +2461,35 @@ $tests['I01'] = array( 'סיווג הודעות נכנסות על מאגר של 
 	T::eq( array(), array_slice( $bad, 0, 10 ), count( $bad ) . ' misclassified' );
 } );
 
+$tests['L01'] = array( 'שיגור מדורג: רק המספרים ברשימה מקבלים הודעות אמיתיות, כל השאר במצב תצוגה; ריקון הרשימה מתחיל אצל השאר מההודעה הראשונה', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'display_only' => 1 ) );
+	ifd_student( 781, 9781, '2026-08-01' );
+	ifd_student( 782, 9782, '2026-08-01' );
+	Journey::sync();
+	T::tick();
+	$in  = student_case( 781 );
+	$out = student_case( 782 );
+	$wa_in  = \Insiders\Collections\Support\Phone::wa_id( (string) Customers::get( (int) $in['customer_id'] )['phone_e164'] );
+	T::as( 'admin' );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'live_allowlist' => student_phone( 781 ), 'display_only' => 0 ) ) );
+	T::$http_log = array();
+	T::settle( 3 );
+	$sent = array_values( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'sendTemplateMessage' ) ) );
+	T::eq( 1, count( $sent ), 'one real message went out' );
+	T::check( $sent && str_contains( $sent[0]['url'], $wa_in ), 'to the number on the list' );
+	T::eq( array( 1, 0 ), array( T::count( 'messages', 'case_id = ' . (int) $in['id'] . " AND template_key = 'j_intro' AND delivery_state NOT IN ('simulated','cancelled','failed')" ), T::count( 'messages', 'case_id = ' . (int) $out['id'] . " AND delivery_state NOT IN ('simulated','cancelled','failed','draft')" ) ), 'the other student only simulated, as in the measurement' );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'live_allowlist' => '' ) ) );
+	$c = student_case( 782 );
+	T::eq( array( null, 'j_intro' ), array( $c['track_step'], pending_journey( (int) $c['id'] )['step'] ?? null ), 'emptying the list: the others start from the first message, for real' );
+	T::settle( 3 );
+	T::eq( 1, T::count( 'messages', 'case_id = ' . (int) $c['id'] . " AND template_key = 'j_intro' AND delivery_state NOT IN ('simulated','cancelled','failed')" ), 'and get it' );
+	T::eq( 1, T::count( 'messages', 'case_id = ' . (int) $in['id'] . " AND template_key = 'j_intro' AND delivery_state NOT IN ('simulated','cancelled','failed')" ), 'the first student does not get the intro twice' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

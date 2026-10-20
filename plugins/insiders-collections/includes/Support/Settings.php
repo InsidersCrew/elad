@@ -57,6 +57,7 @@ final class Settings {
 		'tranzila_report_base'        => 'https://report.tranzila.com',
 		'wati_api_base'               => '',
 		'wati_conversation_attr'      => 'conversation_owner',
+		'live_allowlist'              => '', // staged go-live: while not empty, only these phone numbers get real messages
 		'wati_collections_operators'  => '', // emails or names of the collections reps in WATI; empty = any typed message pauses a case after the deadline
 		'pipedrive_api_base'          => 'https://api.pipedrive.com',
 		'ai_model'                    => 'claude-opus-5-5',
