@@ -1,0 +1,665 @@
+# Format: <expected intent(s), a|b means either is fine> <group> <message text>
+# Groups: a=lesson/community/tech chatter, b=stop, c=wrong number, d=dispute/cancel, e=paid,
+#         f=opened account, g=won't open, h=human, i=promise, j=hardship, k=bot, l=wants to open / stuck
+#
+# ---------- (a) chatter: lessons, zoom, recordings, logins, community, broker tech ----------
+unclear a מתי השיעור הבא?
+unclear a יש היום זום?
+unclear a לא מצליח להיכנס לזום
+unclear a הלינק לזום לא עובד
+unclear a שלחו לי בבקשה את הלינק לשיעור של היום
+unclear a איפה ההקלטה של השיעור אתמול
+unclear a ההקלטות הפסיקו לעבוד לי
+unclear a למה הפסיקו לשלוח את ההקלטות?
+unclear a הפסיקו לשלוח לי תזכורות לשיעורים, קרה משהו?
+unclear a איך שמים stop loss בפלטפורמה?
+unclear a מה ההבדל בין stop loss ל stop limit
+unclear a שמתי סטופ לוס והוא לא נכנס
+unclear a Stop loss זה חובה בכל עסקה?
+unclear a trailing stop איך מגדירים בפלטפורמה של הברוקר
+unclear a הסטופ שלי קפץ לי באמצע הלילה 😩
+unclear a the video won't stop buffering
+unclear a איך להפסיק את זה שהוידאו מתחיל לבד
+unclear a איך להפסיק לקבל התראות מהקהילה? כל דקה מצלצל לי
+unclear a אני רוצה להפסיק לקבל מיילים מהפורום
+unclear a לא רוצה לקבל הודעות מהקבוצה של המחזור, איך משתיקים?
+unclear a תוציאו אותי מהקהילה הישנה ותכניסו לחדשה
+unclear a תוריד אותי לקבוצה של המתחילים בבקשה
+unclear a תסירו אותי מהקבוצה של מחזור 12 אני כבר במחזור 13
+unclear a תורידו אותי מהזום של יום שני אני לא יכול להגיע
+unclear a תוציאו אותי מהוואטסאפ של המחזור יש יותר מדי הודעות
+unclear a תמחקו אותי מהטלגרם הישן
+unclear a תפסיקו לכתוב בקבוצה בלילה אנשים ישנים
+unclear a תפסיקו לתייג אותי בקבוצה 😅
+unclear a אל תפנו אותי לאתר, לא עובד שם כלום
+unclear a שכחתי להפסיק את ההקלטה בזום
+unclear a לא מכיר את זה, מה זה RSI?
+unclear a לא מכירה את זה בכלל, איפה זה במצגת?
+unclear a מי זה המרצה של היום?
+unclear a מי זאת המרצה החדשה
+unclear a הכנסתי מספר שגוי בטופס של הברוקר מה עושים
+unclear a יש טעות במספר החשבון שרשמתי בטופס
+unclear a בזום זה לא אני שמופיע בשם, זה המשתמש של אשתי
+unclear a זה לא אני ששלחתי את ההודעה בקבוצה, מישהו התחזה
+unclear a אין פה שום הקלטה של שיעור 4
+unclear a לא חייב להיות בזום בזמן אמת נכון?
+unclear a לא חייבים מצלמה בזום?
+unclear a אני לא חייבת להשתתף בכל השיעורים נכון?
+unclear a זה לא חייב להיות היום, אפשר לראות את ההקלטה?
+unclear a רציתי לבטל את ההרשמה לשיעור של יום שני
+unclear a ביטול השתתפות בוובינר מחר
+unclear a אפשר לבטל את הפגישה עם הנציג? אני לא יכול מחר
+unclear a איך מזהים הונאה בקריפטו?
+unclear a שמעתי שיש הרבה הונאות בטלגרם עם סיגנלים
+unclear a עוד לא חתמתי על הטפסים של הברוקר
+unclear a לא חתמתי עדיין על המסמכים, איפה זה?
+unclear a יש לי תלונה על הזום, כל הזמן קופא
+unclear a הנציג אמר לי שהשיעור ב8
+unclear a דיברתי עם נציג של הברוקר והוא אמר שצריך צילום ת"ז
+unclear a כל בן אדם יכול להצליח במסחר?
+unclear a הנציגה שלי אמרה שיש הקלטה
+unclear a העברתי את הלינק לחבר שרוצה להצטרף
+unclear a העברתי את השיעור לטלפון ועכשיו אין סאונד
+unclear a העברתי לזום מהמחשב לטלפון וזה נתקע
+unclear|link_request a צריך קבלה על הקורס בשביל רואה החשבון
+unclear|link_request a עד מתי צריך שזה ישולם?
+unclear a יש לי חשבון בזום? איך יודעים
+unclear a יש לי חשבון באתר אבל שכחתי סיסמה
+unclear a כבר יש לי חשבון בגוגל, להתחבר דרכו?
+unclear a כבר פתחתי את הזום ואין אף אחד
+unclear a כבר פתחתי את הלינק והוא לא נטען
+unclear a פתחתי חשבון באתר של הקורס ולא רואה את השיעורים
+unclear a לא רוצה לפתוח את המצלמה בזום זה בסדר?
+unclear a אני לא אפתח את הזום מהמחשב של העבודה, אפשר מהטלפון?
+unclear a אפשר לפתוח את ההקלטה בטלפון?
+unclear a איך פותחים את הקורס בטלפון
+unclear a קשה לי להבין את הנושא של הנרות היפניים
+unclear a קשה לי להתחבר לזום מהטלפון
+unclear a השיעור מחר ב-8?
+unclear a ביום שני יש שיעור?
+unclear a בחמישי יש לייב?
+unclear a מה השעה של השיעור מחר
+unclear a בשני בערב אני לא יכול, יש הקלטה?
+unclear a האם השיעור של יום ראשון מתקיים?
+unclear a הזום מתחבר אוטומטית או צריך לינק כל פעם?
+unclear a יש קורס על AI במסחר?
+unclear a יש לכם בוט מסחר?
+unclear a תודה רבה!!
+unclear a 🙏🙏
+unclear a אחלה שיעור היום 🔥
+unclear a מעולה תודה
+unclear a סבבה
+unclear a שיעור מטורף, תודה לאלון
+unclear a איפה רואים את המצגת?
+unclear a לא מצליח להתחבר לדשבורד
+unclear a שכחתי סיסמה
+unclear a איך נכנסים לקהילה
+unclear a אני לא רואה את הקבוצה של המחזור
+unclear a אפשר לקבל את הלינק לקהילה?
+unclear a מה הסיסמה לזום
+unclear a אין לי קול בזום
+unclear a הוידאו נתקע לי באמצע
+unclear a נתקעתי בשיעור 3 לא מבין את הגרף
+unclear a המסך שלי נתקע בעמוד של החשבון באתר
+unclear a שאלה על השיעור: מה זה תמיכה והתנגדות
+unclear a אפשר לשאול שאלה על המניה של אנבידיה?
+unclear a מה דעתכם על נאסד״ק היום
+unclear a ההקלטה של יום רביעי עלתה?
+unclear a לא הספקתי את השיעור, יש הקלטה?
+unclear a אני בחו"ל השבוע, אפשר לראות הקלטות?
+unclear a אשמח לקבל את המצגת במייל
+unclear a נרשמתי לוובינר ולא קיבלתי לינק
+unclear a הלינק לא נפתח לי
+unclear a קיבלתי הודעה שהחשבון באתר ננעל
+unclear a אני מקבל שגיאה כשאני נכנס
+unclear a המרצה אמר שנקבל שיעורי בית
+unclear a צריך להוריד את האפליקציה של הברוקר לפני השיעור?
+unclear a די מבולבל מהשיעור האחרון חחח
+unclear a די! איזה שיעור מטורף 🔥
+unclear a שלחתי שאלה בקבוצה ואף אחד לא ענה
+unclear a תודה על ההסבר, הבנתי
+unclear a אפשר לדבר עם המרצה אחרי השיעור?
+unclear a היי, אני חדש בקורס, מאיפה מתחילים?
+unclear a קבלתי את ההקלטה תודה
+unclear a אני מעביר את השיעור לחבר
+unclear a סיימתי את שיעור 4 🎉
+unclear a המערכת לא נותנת לי לפתוח את השיעור הבא
+unclear a פתחתי את המחשב ולא נכנס לשיעור
+unclear a ok thanks
+unclear a where is the zoom link
+unclear a can't login to the dashboard
+unclear a אני מקבל את ההודעות פעמיים בקבוצה
+unclear a תוסיפו אותי לקבוצה בבקשה
+unclear a אפשר להוסיף את אשתי לזום?
+unclear a שיעור 5 לא נפתח
+unclear a לא רוצה להחמיץ את הלייב, תזכירו לי
+unclear a הקהילה שקטה היום חחח
+unclear|human a יש מישהו מהצוות שיכול לעזור לי עם הסיסמה?
+unclear a שאלה טכנית - הגרפים לא נטענים
+unclear a הלייב נפל לי באמצע,אפשר הקלטה?
+unclear a אניל א מצליח להיכנס לאתר
+unclear a בואו נעשה עוד שיעור על אופציות 🙏
+unclear a המרצה הסביר שזה לא חייב להיות מושלם
+unclear a הייתה לי שגיאה בתשלום של הזום פרו שלי חחח לא קשור אליכם
+unclear a יש לי חשבון דמו בפלטפורמה, איך עוברים לאמיתי?
+unclear a מתי פותחים את המודול הבא?
+unclear a לא קיבלתי את המייל עם הסיסמה
+unclear a שלחתי לכם צילום מסך של השגיאה
+unclear a אני בעבודה אצפה בהקלטה בערב
+unclear a תשלחו לי את ההקלטה בבקשה
+unclear a זה לא אני שלא הגעתי, הזום לא עבד
+#
+# ---------- (b) genuine stop ----------
+stop b הסר
+stop b הסרה
+stop b הסר בבקשה
+stop b הסרה בבקשה
+stop b נא להסיר
+stop b להסיר בבקשה
+stop b הסירו אותי בבקשה
+stop b תסירו אותי מהרשימה
+stop b תורידו אותי מרשימת התפוצה
+stop b תוציאו אותי מהרשימה שלכם
+stop b תמחקו את המספר שלי
+stop b תסירו את המספר שלי מהמערכת
+stop b אני מבקש להסיר את המספר שלי
+stop b STOP
+stop b Stop please
+stop b stop!!!
+stop b די
+stop b די!!!
+stop b די כבר
+stop b די עם ההודעות
+stop b מספיק עם ההודעות האלה
+stop b תפסיקו לשלוח לי הודעות
+stop b תפסיקו להציק לי
+stop b תפסיקו לחפור
+stop b תפסיקו כבר!!
+stop b תפסיקו עם ההודעות
+stop b אל תשלחו לי יותר
+stop b אל תשלחו לי שום דבר יותר
+stop b אל תכתבו לי יותר
+stop b לא רוצה לקבל יותר הודעות
+stop b אני לא רוצה לקבל מכם הודעות
+stop b לא מעוניין לקבל הודעות
+stop b לא מעוניינת בהודעות שלכם
+stop b לא לשלוח לי יותר
+stop b בבקשה להפסיק לשלוח לי הודעות
+stop b תפסיק לשלוח לי
+stop b unsubscribe
+stop b remove me from this list
+stop b please stop messaging me
+stop b תורידו אותי מהרשימה כבר שבוע אני מבקש 😡
+stop b הסר הסר הסר
+stop b תסירי אותי
+stop b אל תפנו אליי יותר
+stop b לא לפנות אליי יותר
+stop b תפסיקו להטריד
+stop b אני לא רוצה שתשלחו לי יותר הודעות
+stop b הסירו
+stop b תוציאו אותי מהתפוצה של ההודעות
+stop b תפסיקו לשלוח לי הודעות על החיוב, אני לא מעוניין
+#
+# ---------- (c) wrong number / who is this ----------
+wrong_number c מי זה?
+wrong_number c מי זה
+wrong_number c מי זאת??
+wrong_number c מי אתם?
+wrong_number c מי אתם בכלל
+wrong_number c מי זה בכלל?
+wrong_number c טעות במספר
+wrong_number c מספר שגוי
+wrong_number c יש לכם מספר שגוי
+wrong_number c טעיתם במספר
+wrong_number c זה לא המספר של דני
+wrong_number c אין פה שום אורי, טעיתם
+wrong_number c לא מכיר אתכם
+wrong_number c לא מכירה את המספר הזה
+wrong_number c מאיפה יש לכם את המספר שלי?
+wrong_number|dispute c לא נרשמתי לשום דבר, טעות
+wrong_number c זה לא אני, אני לא תלמיד שלכם
+wrong_number c הגעתם למספר לא נכון
+wrong_number c wrong number
+wrong_number c who is this?
+wrong_number c זה המספר של אמא שלי, היא לא נרשמה לכלום
+wrong_number c לא מכיר שום אינסיידרס
+#
+# ---------- (d) genuine cancellation / dispute ----------
+dispute d ביטול
+dispute d אני רוצה ביטול
+dispute d אני רוצה לבטל
+dispute d רוצה לבטל את הקורס
+dispute d אני מבקשת לבטל את העסקה
+dispute d תבטלו לי את החיוב
+dispute d בטלו את ההוראת קבע
+dispute d לבטל את המנוי בבקשה
+dispute d אני לא חייב לכם כלום
+dispute d אני לא חייבת לכם שקל
+dispute d לא מגיע לכם כסף
+dispute d לא הסכמתי לחיוב הזה
+dispute d לא אישרתי את החיוב הזה!!
+dispute d למה חייבתם אותי?
+dispute d חייבו אותי פעמיים
+dispute d חיוב כפול באשראי
+dispute d תחזירו לי את הכסף
+dispute d אני רוצה החזר כספי
+dispute d מגיע לי החזר
+dispute d אני פונה לחברת האשראי להכחשת עסקה
+dispute d אני אפנה לעורך דין
+dispute d אני מגיש תביעה קטנה
+dispute d זו הונאה
+dispute d אתם רמאים
+dispute d אני עוזב את התוכנית, תבטלו הכל
+dispute d אני רוצה לצאת מהתוכנית
+dispute|claims_paid d שילמתי כבר על הקורס, למה אתם מחייבים אותי שוב?
+dispute d לא חתמתי על שום התחייבות לפתוח חשבון
+dispute d אף אחד לא אמר לי שיהיה חיוב אם לא אפתח
+dispute d זה לא מה שסיכמנו בשיחה
+dispute d ביטול עסקה
+dispute d אני פורש מהקורס ולא משלם
+dispute d I want a refund
+dispute d cancel my subscription
+dispute d אני מתלונן להגנת הצרכן
+dispute d גנבים!!
+dispute d תבטלו את זה
+dispute d אני רוצה לבטל את ההשתתפות בתוכנית
+#
+# ---------- (e) "I paid" / "I transferred" ----------
+claims_paid e שילמתי
+claims_paid e כבר שילמתי
+claims_paid e שלמתי אתמול
+claims_paid e שילמנו כבר
+claims_paid e העברתי לכם
+claims_paid e העברתי בביט
+claims_paid e עשיתי העברה בנקאית הבוקר
+claims_paid e שלחתי לכם בביט
+claims_paid e ביצעתי תשלום
+claims_paid e התשלום בוצע
+claims_paid e שולם
+claims_paid e כבר שולם
+claims_paid|human e הסדרתי את זה מול הנציגה
+claims_paid e הנה האסמכתא
+claims_paid e מצרף אסמכתה
+claims_paid e שלחתי צילום של ההעברה
+claims_paid|dispute e הכסף ירד לי מהאשראי כבר
+claims_paid e סגרתי את החוב
+claims_paid e סגרתי את התשלום בטלפון עם רוני
+claims_paid e אבא שלי שילם בשבילי
+claims_paid e paid
+claims_paid e I paid yesterday
+claims_paid e שילמתי דרך הלינק ששלחתם
+claims_paid e עשיתי את התשלום
+claims_paid e שילמתיי 🙏
+claims_paid e שילמתי בפייבוקס
+claims_paid e העברתי את התשלום אתמול בערב
+#
+# ---------- (f) already opened the account ----------
+opened_account f כבר פתחתי חשבון
+opened_account f פתחתי חשבון
+opened_account f פתחתי
+opened_account f פתחתי!! ✅
+opened_account f כבר פתחתי
+opened_account f פתחתיחשבון אתמול
+opened_account f יש לי כבר חשבון
+opened_account f יש לי כבר חשבון מסחר
+opened_account f יש לי חשבון בברוקר כבר שנה
+opened_account f החשבון נפתח
+opened_account f החשבון שלי נפתח אתמול
+opened_account f נפתח לי החשבון
+opened_account f החשבון פתוח
+opened_account f החשבון שלי כבר פתוח
+opened_account f החשבון אושר
+opened_account f קיבלתי אישור מהברוקר
+opened_account f סיימתי את הפתיחה
+opened_account f סיימתי לפתוח את החשבון
+opened_account f פתחתי אצל הברוקר
+opened_account f פתחנו חשבון זוגי
+opened_account f הפקדתי כבר
+opened_account f הפקדתי 5000 אתמול
+opened_account f העברתי את הכסף לחשבון בברוקר, איך רואים את זה בפלטפורמה?
+opened_account f פתחתי את החשבון בשבוע שעבר
+opened_account f already opened the account
+opened_account f I opened an account
+opened_account f פתחתי חשבון מסחר
+opened_account f הכל פתוח כבר אצל הברוקר
+opened_account f אני כבר עם חשבון פעיל
+opened_account f יש לי חשבון
+#
+# ---------- (g) won't open an account ----------
+declines_open g לא אפתח חשבון
+declines_open g אני לא אפתח
+declines_open g לא רוצה לפתוח חשבון
+declines_open g לא מעוניין לפתוח
+declines_open g לא מתכוונת לפתוח חשבון
+declines_open g אין לי כוונה לפתוח
+declines_open g אין לי שום כוונה לפתוח חשבון
+declines_open g החלטתי לא לפתוח
+declines_open g אני לא פותח חשבון אצל הברוקר הזה
+declines_open g לא מעוניין בחשבון
+declines_open g לא רוצה ברוקר
+declines_open g לא בא לי לפתוח
+declines_open g מעדיף לא לפתוח חשבון
+declines_open g אני מוותר על הפתיחה
+declines_open g לא רוצה חשבון, תודה
+declines_open g לא מתאים לי לפתוח חשבון כרגע
+#
+# ---------- (h) asking for a human ----------
+human h נציג
+human h נציג בבקשה
+human h אפשר נציג?
+human h אני רוצה לדבר עם נציג
+human h אפשר לדבר עם בן אדם?
+human h אני רוצה לדבר עם מישהו
+human h תתקשרו אליי
+human h תתקשר אליי בבקשה
+human h תחזרו אליי
+human h תחזור אליי
+human h שמישהו יחזור אליי
+human h אפשר שיחה טלפונית?
+human h אפשר טלפון?
+human h יש מישהו אמיתי פה?
+human h תעבירו אותי לנציג
+human h רוצה לדבר עם אחראי
+human h can I talk to a person
+#
+# ---------- (i) promise to pay with a date ----------
+promise i אשלם בתחילת החודש
+promise i אני אשלם ב-10
+promise i אעביר עד ה-15
+promise i אשלם עד ה 10/11
+promise i אסדיר את זה בשבוע הבא
+promise i ביום ראשון אני מעביר
+promise i בחמישי אשלם
+promise i מחר אני מסדר
+promise i אחרי המשכורת
+promise i כשתיכנס המשכורת אני משלם
+promise i אסדר את זה בסוף החודש
+promise i אני אסדר מחר
+promise i ב10 לחודש אני משלם
+promise i עד סוף השבוע זה מסודר
+promise i אחרי החגים אני משלם
+promise i אשלם ב-1/11
+promise i ביום שני בבוקר
+promise i תן לי עד יום חמישי
+#
+# ---------- (j) hardship ----------
+hardship j אין לי כסף כרגע
+hardship j אין לי כרגע את הכסף
+hardship j קשה לי כלכלית
+hardship j מצב כלכלי קשה
+hardship j אני מובטל
+hardship j פוטרתי מהעבודה
+hardship j פיטרו אותי
+hardship j לא יכול לשלם את זה עכשיו
+hardship j אפשר בתשלומים?
+hardship j אפשר פריסה?
+hardship j אני במינוס
+hardship j לא מסוגלת לשלם את כל הסכום
+hardship j אין לי מאיפה
+#
+# ---------- (k) questions about the bot ----------
+bot_question k זה בוט?
+bot_question k אני מדבר עם רובוט?
+bot_question k את בוט?
+bot_question k זו הודעה אוטומטית?
+bot_question k זה אדם או מחשב?
+bot_question k אתה AI?
+bot_question k זה צ'אט בוט?
+bot_question k are you a bot?
+bot_question k זה ChatGPT?
+bot_question k זו מערכת אוטומטית?
+#
+# ---------- (l) wants to open / opening in progress ----------
+wants_to_open l אני רוצה לפתוח חשבון
+wants_to_open l איך פותחים חשבון?
+wants_to_open l אפשר עזרה בפתיחה?
+stuck l התחלתי את הפתיחה ונתקעתי
+stuck l הפתיחה תקועה כבר שבוע
+stuck l החשבון בבדיקה אצל הברוקר
+stuck l נתקעתי באימות זהות של החשבון
+stuck l אני בתהליך פתיחה
+stuck|unclear l שלחתי מסמכים לברוקר ועדיין מחכה לאישור
+# Held-out corpus: written AFTER the proposed rules, not used to write them (first run is blind).
+# Format as corpus.tsv.
+unclear a איך מבטלים את ההתראות מהאפליקציה של הקהילה
+unclear a תפסיקו את הזום כבר אנחנו מחכים 20 דקות
+unclear a די, הבנתי את החומר סוף סוף 😂
+unclear a stop limit order לא עובד לי בפלטפורמה
+unclear a איפה שמים את ה-stop?
+unclear a STOP LOSS!!!
+unclear a תורידו אותי מהרשימת המתנה לסדנה
+unclear a תוציאו אותי מהזום אני לא מצליח לצאת
+unclear a לא רוצה לקבל הודעות על כל פוסט בקהילה
+unclear a אני לא רוצה הודעות בקבוצה של המחזור, רק את הלינקים
+unclear a איך אני מפסיק לקבל התראות מזום
+unclear a להפסיק לקבל הודעות מהברוקר איך?
+unclear a שכחתי להפסיק לשלוח את המסך בזום
+unclear a המרצה ביקש להפסיק לכתוב בצ'אט
+unclear a תמחקו את ההודעה ששלחתי בטעות בקבוצה
+unclear a מי זה המרצה של מחר?
+unclear a מי זה רוני? הוא מהצוות?
+unclear a זה לא אני, זה הבן שלי שנכנס עם החשבון שלי לזום
+unclear a לא חייבים לפתוח חשבון עכשיו נכון?
+unclear a ביטלו את השיעור היום?
+unclear a רוצה לבטל את ההרשמה לוובינר
+unclear a אני רוצה לבטל את השיעור הפרטי שקבעתי
+unclear a זה נראה לי הונאה הסיגנלים האלה בטלגרם
+unclear a לא חתמתי על ההסכם עם הברוקר עדיין
+unclear|human a הנציג שלי לא עונה
+unclear a שילמתי על המנוי של TradingView ולא רואה את האינדיקטור
+unclear a כמה שילמת על הקורס?
+unclear a העברתי את הסטופ לנקודת כניסה
+unclear a העברתי את העסקה ללילה
+unclear a יש לי חשבון ב-TradingView, זה מספיק?
+unclear|opened_account a יש לי חשבון בבינאנס
+unclear a פתחתי עסקה ראשונה בדמו 🎉
+unclear|opened_account a פתחתי תיק השקעות בבנק
+unclear a החשבון שלי באתר נפתח רק בטלפון
+unclear a כבר פתחתי את השיעור הבא
+unclear a פתחתי את המצגת
+unclear a לא רוצה לפתוח עסקאות בלילה
+unclear a לא אפתח פוזיציה לפני הדוחות
+unclear a קשה לי עם הגרפים
+unclear a השיעור ביום חמישי הוזז?
+unclear a לא קיבלתי הודעה על השיעור, תשלחו?
+unclear a למה לא שלחתם את ההקלטה?
+unclear a איך מעבירים את הכסף מהדמו לאמיתי?
+unclear a קיבלתי אישור כניסה לקהילה תודה
+unclear a תפסיקו לשלוח את הלינקים בקבוצה הכללית
+unclear a אל תשלחו לי את המצגת במייל, בוואטסאפ עדיף
+unclear a מי אתה המרצה של היום? לא ראיתי אותך קודם
+unclear a נציג הברוקר ביקש ממני צילום תעודה
+unclear a הסטופ לוס ירד לי
+link_request i אפשר לקבל קישור לתשלום?
+#
+stop b תסירו אותי מכל הרשימות שלכם
+stop b הסירו אותי מהרשימה בבקשה
+stop b לא מעוניין שתפנו אליי יותר
+stop b די לשלוח לי הודעות!!
+stop b תפסיקו לשלוח לי את ההודעות האלה
+stop b אל תשלחו לי הודעות
+stop b בלי הודעות יותר בבקשה
+stop b לא רוצה יותר הודעות ממכם
+stop b תוריד אותי מהרשימה
+stop b תוציאו אותי מהרשימה של הגבייה
+stop b תוציאו אותי מהמערכת שלכם
+stop b Stop it
+stop b STOP!!!
+stop b תפסיקו לשלוח
+stop b די די די
+stop b מבקש להפסיק את ההודעות
+stop b אני לא רוצה לקבל יותר הודעות בוואטסאפ
+stop b תפסיקו להתקשר ולשלוח הודעות
+stop|human b אל תתקשרו ואל תשלחו לי כלום
+stop b נא לא לשלוח הודעות
+stop b אני מבקשת שלא תשלחו לי יותר
+#
+wrong_number c מי זה???
+wrong_number c מי מדבר?
+wrong_number c אני לא מכיר אף אחד בשם הזה
+wrong_number c טעות, אין פה יוסי
+wrong_number c המספר הזה לא שייך לדנה
+wrong_number c זה לא הטלפון של מיכל
+wrong_number c סליחה מי אתם?
+wrong_number c קיבלתי את ההודעה בטעות
+#
+dispute d אני דורש לבטל את החיוב מיד
+dispute d למה ירד לי 500 שקל מהכרטיס?
+dispute d לא נתתי אישור לחייב אותי
+dispute d אני לא משלם על משהו שלא קיבלתי
+dispute d תבטלו לי את ההרשמה לתוכנית
+dispute d זה עוקץ
+dispute d אני מבטל את העסקה
+dispute d אני רוצה לבטל את ההתחייבות
+dispute d אני אתבע אתכם
+dispute d החיוב הזה לא חוקי
+dispute d בחיים לא הסכמתי לזה
+#
+claims_paid e כבר שלמתי לפני שבוע
+claims_paid e העברתי אתמול 300
+claims_paid e שילמתי באשראי
+claims_paid e התשלום עבר
+claims_paid e הנה צילום מסך של ההעברה
+claims_paid e שלחתי את האסמכתא
+claims_paid e שילמתי את היתרה
+claims_paid e בעלי שילם
+#
+opened_account f כבר פתחתי את החשבון אצל IBI
+opened_account f פתחתי בIBI
+opened_account f החשבון אושר אתמול
+opened_account f יש לי חשבון פתוח
+opened_account f סיימתי את כל התהליך מול הברוקר
+opened_account f קיבלתי מייל שהחשבון נפתח
+opened_account f הכל סגור, פתחתי
+opened_account f חשבון פתוח ✅
+#
+declines_open g אני לא אפתח שום חשבון
+declines_open g לא מתכוון לפתוח שום דבר
+declines_open g לא, תודה. לא אפתח
+declines_open g אני לא רוצה לפתוח חשבון בכלל
+declines_open g החלטתי שאני לא פותח
+#
+human h אפשר שמישהו יתקשר אליי?
+human h אני צריך לדבר עם מישהו דחוף
+human h אפשר לדבר עם הנציגה שלי?
+human h רוצה שיחה עם נציג
+human h תתקשרי אליי מתי שנוח
+#
+# ---- added after the blind round-1 run (found while analysing it; not blind) ----
+unclear|human a עוד לא פתחתי חשבון, אני מחכה שהנציג יחזור אליי עם ההסבר
+unclear|stuck a לא פתחתי את החשבון עדיין, מחכה למסמכים
+unclear a עדיין לא פתחתי
+unclear a אין לי חשבון עדיין, מה עושים?
+unclear|link_request a לא שילמתי עדיין, איך משלמים?
+unclear a שלחתי הודעה בטעות בקבוצה
+# Second blind set: written after round 2, NOT used to tune anything. Results are reported as-is.
+unclear a אחי השיעור היום היה פצצה
+unclear a מתי עולה ההקלטה של הלייב?
+unclear a הזום שלי מבקש סיסמה מה לשים
+unclear a תשלחו שוב את הלינק לקבוצה של המחזור
+unclear a הוספתי stop loss ונסגרתי ישר 😭
+unclear a למה ה stop שלי לא הופעל?
+unclear a איך מוחקים את הקבוצה הישנה מהווטסאפ
+unclear a תורידו אותי מהשיעור של 20:00 ותעבירו ל-21:00
+unclear a לא רוצה להפסיד את השיעור של מחר
+unclear a אני רוצה להפסיק את המנוי לזום פרו שלי, אתם יודעים איך?
+unclear a מישהו יודע מי זה המרצה של שיעור 6?
+unclear a פתחתי את הזום מוקדם
+unclear a המצגת לא נפתחת לי
+unclear a שילמו לי דיבידנד היום על המניה 😎
+unclear a העברתי את הפקודה לפתיחת המסחר
+unclear a יש לי חשבון בבנק לאומי אפשר לחבר?
+unclear a לא מעוניין בשיעור הפרטי, רק בקבוצתי
+unclear a לא רוצה לפתוח פוזיציות גדולות בהתחלה
+unclear a צריך לבטל את הקבלת הודעות בזום?
+unclear a הייתה הונאה עם המניה הזאת בעבר?
+unclear a אני מתלבט אם להשקיע באפל
+unclear a בחמישי אני בחופש אז אצפה בהקלטה
+unclear a קשה לי לקום בבוקר ללייב חח
+unclear a אפשר לקבל קבלה על הקורס?
+unclear a דיברתי עם נציג שירות של הברוקר
+unclear a מה עם השיעור? נתקע לי הוידאו
+unclear a הקהילה מעולה תודה לכם
+unclear a לא מכיר את האינדיקטור הזה, אפשר הסבר?
+unclear a זה לא אני שכתבתי את זה בקבוצה
+unclear a מספר הטלפון שלי השתנה, תעדכנו בבקשה
+#
+stop b בבקשה תפסיקו
+stop b לא רוצה הודעות
+stop b תסירו אותי מהרשימה שלכם תודה
+stop b הורידו אותי מהרשימה
+stop b אל תשלחו יותר הודעות למספר הזה
+stop b אני לא מעוניין לקבל מכם שום הודעה
+stop b מבקש לא לפנות אליי יותר
+stop b הסר!!
+stop b תפסיקו לשלוח לי כל יום את אותה הודעה
+stop b די לחפור
+#
+wrong_number c מי אתם בכלל ומה אתם רוצים
+wrong_number c לא נרשמתי לכלום
+wrong_number c טעיתם במספר, זה לא יוסי
+wrong_number c מי זה מדבר?
+#
+dispute d אני רוצה לבטל את העסקה ולקבל את הכסף בחזרה
+dispute d לא הסכמתי לשום חיוב
+dispute d אתם גונבים כסף
+dispute d אני אפנה לבנק לבטל את החיוב
+dispute d לא אשלם על זה
+dispute d בטלו לי את הכל
+#
+claims_paid e כבר העברתי לכם את הכסף
+claims_paid e שילמתי היום בבוקר
+claims_paid e התשלום כבר ירד מהחשבון שלי
+claims_paid e העברתי לפני יומיים
+#
+opened_account f יש לי חשבון כבר
+opened_account f כבר יש לי חשבון אצלם
+opened_account f פתחתי אתמול את החשבון
+opened_account f החשבון כבר נפתח
+#
+declines_open g לא מתכוון לפתוח חשבון
+declines_open g אני לא אפתח חשבון אצל אף ברוקר
+declines_open g לא רוצה לפתוח, תודה
+#
+human h אני רוצה שמישהו יתקשר אליי
+human h תדברו איתי בטלפון
+human h אפשר מישהו מהצוות?
+# my own blind set
+unclear a ההקלטה של אתמול לא עולה לי
+unclear a תפסיקו את הלייב לרגע יש רעש
+unclear a למה הלייבים הפסיקו?
+unclear a אפשר להפסיק את ההתראות מהקבוצה?
+unclear a stop loss של 2 אחוז זה מספיק?
+unclear a הסרתי את האפליקציה והתקנתי מחדש
+unclear a תורידו אותי מהקבוצה של יום שלישי ותעבירו לחמישי
+unclear a לא מכיר את המונח הזה, מה זה פיבונאצ'י
+unclear a הנציג של הברוקר אמר שזה ייקח יומיים
+unclear a שלחו לי את הלינק לזום של היום
+unclear a יש לי חשבון בבינאנס, זה בסדר?
+unclear|stuck a פתחתי את הזום ואין קול
+unclear a העברתי את הסרטון לטלפון
+unclear a לא חייבים להשתמש במנוף נכון?
+unclear a מי זה המרצה של הערב?
+stop b תפסיקו לשלוח לי הודעות בבקשה
+stop b הסירו אותי מהרשימה שלכם
+stop b לא רוצה יותר הודעות ממכם
+stop b אל תשלחו לי יותר
+stop b הסר
+stop b הסרה תודה
+stop b די עם ההודעות האלה
+stop b תמחקו את המספר שלי בבקשה
+stop b אני לא מעוניינת לקבל הודעות
+stop b stop
+wrong_number c מי זה?
+wrong_number c טעות במספר
+wrong_number c לא מכיר אתכם
+dispute d אני רוצה לבטל את ההתחייבות
+dispute d לא מגיע לכם כלום
+dispute d אני רוצה החזר כספי
+claims_paid e שילמתי אתמול בביט
+claims_paid e כבר העברתי לכם
+opened_account f פתחתי חשבון אצל הברוקר
+opened_account f החשבון שלי כבר נפתח
+declines_open g לא אפתח חשבון
+human h אפשר לדבר עם נציג?
+hardship j קשה לי לשלם החודש

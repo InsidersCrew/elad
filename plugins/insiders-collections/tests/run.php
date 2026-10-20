@@ -2440,6 +2440,27 @@ $tests['P27'] = array( 'מועד שעבר בזמן המדידה: ביום השי
 	T::check( null === $row || ! empty( $row['blockers'] ?? $row['block'] ?? array() ), 'not ready for approval before a real message and the grace period' );
 } );
 
+$tests['I01'] = array( 'סיווג הודעות נכנסות על מאגר של כ-600 הודעות אמיתיות בסגנון התלמידים: שיחה על שיעורים לא נחשבת עצירה, מחלוקת או תשלום; בקשות אמיתיות מזוהות', function () {
+	$bad = array();
+	$n   = 0;
+	foreach ( file( __DIR__ . '/fixtures/intents.tsv', FILE_IGNORE_NEW_LINES ) as $line ) {
+		if ( '' === trim( $line ) || '#' === $line[0] ) {
+			continue;
+		}
+		$p = preg_split( '/[ \t]+/', $line, 3 );
+		if ( count( $p ) < 3 ) {
+			continue;
+		}
+		++$n;
+		$got = \Insiders\Collections\Domain\Intents::classify( $p[2], 'text' )['intent'];
+		if ( ! in_array( $got, explode( '|', $p[0] ), true ) ) {
+			$bad[] = $p[0] . ' ≠ ' . $got . ': ' . $p[2];
+		}
+	}
+	T::check( $n > 500, $n . ' messages in the corpus' );
+	T::eq( array(), array_slice( $bad, 0, 10 ), count( $bad ) . ' misclassified' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );
