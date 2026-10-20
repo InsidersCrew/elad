@@ -1946,6 +1946,7 @@ $tests['P16'] = array( 'דיל שסומן lost עם סיבה אחרת: ההוד�
 	Journey::refresh_deals();
 	T::eq( 'declined', student_case( 661 )['track'], 'changing the reason to the dedicated one still moves it to the declined track' );
 	// An open deal moved to the "cancelled after purchase" stage stops the journey too.
+	Settings::set( array( 'journey_stop_stages' => 'ביטל לאחר רכישה' ) );
 	T::$pd_deals[9662]['stage_id'] = 77;
 	Journey::refresh_deals();
 	$c4 = student_case( 662 );

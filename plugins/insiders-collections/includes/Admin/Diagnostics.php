@@ -180,13 +180,21 @@ final class Diagnostics {
 			'cases'            => $Db::rows( 'SELECT phase, COALESCE(track, \'-\') AS track, workflow_state, COUNT(*) AS n FROM ' . $Db::t( 'cases' ) . " WHERE source_type = 'non_open_charge' GROUP BY phase, track, workflow_state" ),
 			'last_run'         => Runner::beats()['journey'] ?? 'עוד לא רץ',
 			// One real deal read back, to see that Pipedrive returns status, lost reason and labels as expected.
+			// &deal=<id> checks one deal: what Pipedrive returns, what is stored, where its case stands.
 			'deal_sample'      => ( static function () use ( $Db ) {
-				$deal = (int) $Db::value( 'SELECT a.pipedrive_deal_id FROM ' . $Db::t( 'agreements' ) . " a WHERE a.type = 'beginner_program' AND a.pipedrive_deal_id IS NOT NULL ORDER BY a.id DESC LIMIT 1" );
+				$asked = (int) preg_replace( '/\D/', '', (string) ( $_GET['deal'] ?? '' ) );
+				$deal  = $asked ?: (int) $Db::value( 'SELECT a.pipedrive_deal_id FROM ' . $Db::t( 'agreements' ) . " a WHERE a.type = 'beginner_program' AND a.pipedrive_deal_id IS NOT NULL ORDER BY a.id DESC LIMIT 1" );
 				if ( ! $deal || ! \Insiders\Collections\Integrations\Pipedrive\Client::configured() ) {
 					return 'אין עדיין דיל לבדיקה';
 				}
-				$r = \Insiders\Collections\Integrations\Pipedrive\Client::deals( array( $deal ) );
-				return $r['deals'][ $deal ] ?? ( 'הדיל ' . $deal . ' לא חזר מפייפדרייב' . ( empty( $r['error'] ) ? '' : ': ' . $r['error'] ) );
+				$r    = \Insiders\Collections\Integrations\Pipedrive\Client::deals( array( $deal ) );
+				$case = $Db::row( 'SELECT c.id, c.track, c.track_step, c.workflow_state, a.deal_status, a.lost_reason, a.deal_checked_at FROM ' . $Db::t( 'cases' ) . ' c JOIN ' . $Db::t( 'agreements' ) . ' a ON a.id = c.agreement_id WHERE a.pipedrive_deal_id = %d ORDER BY c.id DESC LIMIT 1', $deal );
+				return array(
+					'deal'           => $deal,
+					'as_read'        => $r['deals'][ $deal ] ?? ( 'לא חזר מפייפדרייב' . ( empty( $r['error'] ) ? '' : ': ' . $r['error'] ) ),
+					'pipedrive_raw'  => \Insiders\Collections\Integrations\Pipedrive\Client::raw_deal_fields( $deal ),
+					'stored_and_case' => $case ?: 'אין תיק לדיל הזה',
+				);
 			} )(),
 			'unresolved_within_window' => count( $would ),
 			'students'         => array_slice( $would, 0, 60 ),

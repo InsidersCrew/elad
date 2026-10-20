@@ -185,6 +185,19 @@ final class Client {
 		);
 	}
 
+	/** Diagnostics: the status and lost fields of one deal exactly as Pipedrive v2 returns them. */
+	public static function raw_deal_fields( int $id ): array {
+		if ( ! self::configured() ) {
+			return array( 'error' => 'Pipedrive לא מחובר' );
+		}
+		$r = Http::request( 'GET', add_query_arg( array( 'ids' => $id, 'api_token' => Settings::secret( 'pipedrive_token' ) ), self::base() . '/api/v2/deals' ) );
+		$d = $r['json']['data'][0] ?? null;
+		if ( ! is_array( $d ) ) {
+			return array( 'error' => 'הדיל לא חזר' . ( $r['error'] ? ': ' . mb_substr( (string) $r['error'], 0, 200 ) : '' ) );
+		}
+		return array_filter( $d, static fn( $k ) => (bool) preg_match( '/status|lost|stage|pipeline|close|won/', (string) $k ), ARRAY_FILTER_USE_KEY );
+	}
+
 	/**
 	 * Stage ids for stage names, in every pipeline (a number in the list is used as is).
 	 * The stage list is cached for a day; a failed read is not cached.
