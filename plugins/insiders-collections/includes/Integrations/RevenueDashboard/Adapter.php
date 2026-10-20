@@ -332,6 +332,23 @@ final class Adapter {
 			return; // closed without money from us (write-off, opened account): nothing to record
 		}
 		$deal = $row['pipedrive_deal_id'] ? ' #' . (int) $row['pipedrive_deal_id'] : '';
+		// A student who paid is not lost, whether the plugin marked the deal or a rep did before (Elad, 2026-10-20).
+		if ( $row['pipedrive_deal_id'] ) {
+			$live   = \Insiders\Collections\Integrations\Pipedrive\Client::deals( array( (int) $row['pipedrive_deal_id'] ) );
+			$status = $live['deals'][ (int) $row['pipedrive_deal_id'] ]['status'] ?? (string) Db::value( 'SELECT a.deal_status FROM ' . Db::t( 'agreements' ) . ' a JOIN ' . Db::t( 'cases' ) . ' c ON c.agreement_id = a.id WHERE c.id = %d', $case_id );
+			if ( 'lost' === $status ) {
+				Tasks::open(
+					'crm_reopen:' . $case_id,
+					'crm_reopen',
+					array(
+						'case_id'     => $case_id,
+						'customer_id' => (int) $row['customer_id'],
+						'priority'    => 'high',
+						'reason'      => 'התלמיד שילם ' . Money::format( $paid ) . ' ₪ על התוכנית, והדיל' . $deal . ' מסומן lost בפייפדרייב. יש להוציא אותו מ-lost (Reopen), לפני הוספת המוצר וסימון כ־won.',
+					)
+				);
+			}
+		}
 		Tasks::open(
 			'crm_record:' . $case_id,
 			'crm_record',

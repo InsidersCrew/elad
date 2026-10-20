@@ -61,6 +61,8 @@ final class Settings {
 		'ai_model'                    => 'claude-opus-5-5',
 		'ai_effort'                   => 'low',
 		'alert_email'                 => '',
+		'weekly_tasks_email'          => '',  // weekly summary of open tasks; empty = not sent
+		'weekly_tasks_day'            => 0,   // 0 = Sunday … 6 = Saturday, from 08:00
 		'support_whatsapp'            => '',
 		'pay_base_path'               => 'pay',
 		'pay_theme'                   => 'dark',  // designer: dark by default (recognition builds trust); 'light' for an A/B test

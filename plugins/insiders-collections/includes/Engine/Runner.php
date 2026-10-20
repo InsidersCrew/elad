@@ -60,6 +60,9 @@ final class Runner {
 			if ( self::daily_due() ) {
 				$r['daily'] = self::job( 'daily', static fn() => self::daily() );
 			}
+			if ( self::weekly_due() ) {
+				$r['weekly_tasks'] = self::job( 'weekly_tasks', static fn() => \Insiders\Collections\Integrations\Mailer::weekly_tasks() );
+			}
 			self::health();
 			self::beat( 'tick', 'success', $trigger );
 		} finally {
@@ -123,6 +126,19 @@ final class Runner {
 	private static function due( string $job, int $every ): bool {
 		$last = Clock::ts( self::beats()[ $job ]['attempt'] ?? null );
 		return null === $last || Clock::now() - $last >= $every;
+	}
+
+	/** The weekly task summary: the set weekday, from 08:00 local time, once a week. */
+	private static function weekly_due(): bool {
+		if ( ! is_email( (string) Settings::get( 'weekly_tasks_email' ) ) ) {
+			return false;
+		}
+		$now = Clock::local();
+		if ( (int) $now->format( 'w' ) !== (int) Settings::get( 'weekly_tasks_day' ) || (int) $now->format( 'G' ) < 8 ) {
+			return false;
+		}
+		$last = self::beats()['weekly_tasks']['success'] ?? null;
+		return null === $last || Clock::now() - (int) Clock::ts( $last ) > 2 * DAY_IN_SECONDS;
 	}
 
 	private static function daily_due(): bool {

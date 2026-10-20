@@ -1315,6 +1315,7 @@ $tests['P02'] = array( 'לחצן ״לא אפתח חשבון״: מסלול ייע
 	T::check( $link && str_contains( $link['body'], '/pay/' ) && str_contains( $link['body'], '880 ₪' ), 'payment details with our link' );
 	T::eq( 'd_t0', pending_journey( (int) $case['id'] )['step'], 'one more message, on the deadline day' );
 
+	T::$pd_deals[9611]['status'] = 'lost'; // the rep did as the task asked
 	T::as( 'collector' );
 	Payments::manual_verification( array( 'customer_id' => $cid, 'amount' => '880', 'method' => 'bank_transfer', 'evidence_ref' => 'B-611', 'allocations' => array( array( 'debt_item_id' => (int) $item['id'], 'amount' => '880' ) ) ) );
 	T::as_admin();
@@ -1324,7 +1325,17 @@ $tests['P02'] = array( 'לחצן ״לא אפתח חשבון״: מסלול ייע
 	T::check( $conf && str_contains( $conf['body'], 'זיכוי' ), 'program confirmation mentions the credit option' );
 	T::check( $conf && str_contains( $conf['body'], 'בסך 880 ₪ התקבל' ) && ! str_contains( $conf['body'], '₪ ₪' ), 'the paid amount carries its sign once: the variable has it, the template does not' );
 	T::eq( 1, T::count( 'tasks', "type = 'crm_record'" ), 'the rep records the payment on the deal' );
+	T::eq( 1, T::count( 'tasks', "type = 'crm_reopen'" ), 'and, the deal being lost, takes it out of lost first' );
 	T::eq( 0, T::count( 'scheduled_actions', "state = 'pending'" ), 'no reminders after payment' );
+	// The weekly summary of open tasks, on the set day from 08:00.
+	Settings::set( array( 'weekly_tasks_email' => 'summary@example.test', 'weekly_tasks_day' => (int) Clock::local()->format( 'w' ) ) );
+	T::$mails = array();
+	T::tick();
+	$mail = end( T::$mails );
+	T::check( $mail && str_contains( (string) $mail['to'], 'summary@example.test' ) && str_contains( (string) $mail['message'], 'הוצאת הדיל מ-lost' ), 'the weekly summary lists the open tasks' );
+	T::$mails = array();
+	T::tick();
+	T::eq( 0, count( array_filter( T::$mails, static fn( $m ) => str_contains( (string) $m['subject'], 'סיכום שבועי' ) ) ), 'once a week' );
 } );
 
 $tests['P03'] = array( 'פייפדרייב: סיבת lost ייעודית, תווית ללא דמי רישום, מחירון לפי תאריך ההסכם', function () {

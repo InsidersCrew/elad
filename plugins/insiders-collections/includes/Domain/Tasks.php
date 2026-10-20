@@ -37,6 +37,7 @@ final class Tasks {
 		'program_credit'     => array( 'label' => 'זיכוי לפי תנאי התוכנית', 'due_days' => 2 ),
 		'approve_charge'     => array( 'label' => 'אישור חיוב: התלמיד ביקש לשלם', 'due_days' => 0 ),
 		'mb_mark_handled'    => array( 'label' => 'סימון עסקה שטופלה ב-My Billing', 'due_days' => 0 ),
+		'crm_reopen'         => array( 'label' => 'הוצאת הדיל מ-lost אחרי תשלום', 'due_days' => 1 ),
 		'complete_phone'     => array( 'label' => 'השלמת מספר טלפון ללקוח', 'due_days' => 1 ),
 	);
 
