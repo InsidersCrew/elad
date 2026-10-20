@@ -1123,6 +1123,7 @@
 			program_price_table: field('program_price_table', 'מחירון לפי תאריך ההסכם', 'textarea', { value: st.program_price_table, rows: 3, wide: true, help: 'שורה לכל מחירון: תאריך תחולה, מחיר מלא, דמי רישום. לדוגמה: 2026-08-01 980 100. תלמיד משלם את המחיר שהיה בתוקף בתאריך ההסכם שלו, פחות דמי הרישום.' }),
 			no_registration_label: field('no_registration_label', 'תווית בדיל לתלמיד שלא שילם דמי רישום', 'text', { value: st.no_registration_label, help: 'השם המדויק של התווית בפייפדרייב. לתלמיד עם התווית לא מפחיתים את דמי הרישום.' }),
 			declined_lost_reasons: field('declined_lost_reasons', 'סיבות lost שמעבירות למסלול "לא יפתח חשבון"', 'textarea', { value: st.declined_lost_reasons, rows: 2, help: 'שורה לכל סיבה, בדיוק כמו בפייפדרייב. lost עם סיבה שלא מופיעה כאן ולא ברשימה הבאה עוצר את ההודעות, מעביר את התיק לנציג ופותח משימה להחליט מה לעשות.' }),
+			journey_stop_stages: field('journey_stop_stages', 'שלבים בפייפדרייב שעוצרים את הליווי', 'textarea', { value: st.journey_stop_stages, rows: 2, help: 'שורה לכל שלב, בשם המדויק בפייפדרייב. דיל באחד השלבים האלה: ההודעות נעצרות, התיק עובר לנציג ונפתחת משימה.' }),
 			journey_keep_lost_reasons: field('journey_keep_lost_reasons', 'סיבות lost שבהן ההודעות ממשיכות כרגיל', 'textarea', { value: st.journey_keep_lost_reasons, rows: 2, help: 'שורה לכל סיבה, בדיוק כמו בפייפדרייב. לדוגמה "אין מענה": התלמיד ממשיך לקבל את ההודעות כאילו הדיל פתוח.' })
 		};
 		f.program_price_table.input.setAttribute('dir', 'ltr');

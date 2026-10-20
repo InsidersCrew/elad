@@ -38,7 +38,7 @@ final class T {
 		foreach ( array_keys( Schema::tables() ) as $t ) {
 			$wpdb->query( 'TRUNCATE TABLE ' . Db::t( $t ) );
 		}
-		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner', 'icol_pd_label', 'icol_cashflow_sync', 'icol_terminal_history', 'icol_sto_failing' ) as $o ) {
+		foreach ( array( 'icol_heartbeats', 'icol_suspended', 'icol_runner_lock', 'icol_templates', 'icol_gate_owner', 'icol_pd_label', 'icol_cashflow_sync', 'icol_terminal_history', 'icol_sto_failing', 'icol_pd_stages' ) as $o ) {
 			delete_option( $o );
 		}
 		delete_option( 'icol_settings' );
@@ -333,6 +333,9 @@ add_filter(
 		if ( false !== strpos( $url, 'wati.test' ) ) {
 			++T::$wati_seq;
 			return $json( array( 'result' => true, 'receivers' => array( array( 'localMessageId' => 'wati-' . T::$wati_seq, 'waId' => '972501234567', 'isValidWhatsAppNumber' => true ) ) ) );
+		}
+		if ( false !== strpos( $url, 'pipedrive' ) && false !== strpos( $url, '/api/v2/stages' ) ) {
+			return $json( array( 'success' => true, 'data' => array( array( 'id' => 40, 'name' => 'הצטרף' ), array( 'id' => 77, 'name' => 'ביטל לאחר רכישה' ) ) ) );
 		}
 		if ( false !== strpos( $url, 'pipedrive' ) && false !== strpos( $url, '/api/v2/persons/search' ) ) {
 			parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $qq );

@@ -33,7 +33,7 @@ final class Tasks {
 		'crm_record'         => array( 'label' => 'רישום התשלום בדיל בפייפדרייב', 'due_days' => 1 ),
 		'open_call'          => array( 'label' => 'שיחה לליווי פתיחת חשבון', 'due_days' => 0 ),
 		'crm_lost'           => array( 'label' => 'סימון הדיל כ-lost בפייפדרייב', 'due_days' => 1 ),
-		'deal_lost'          => array( 'label' => 'הדיל סומן lost בפייפדרייב: להחליט על התיק', 'due_days' => 1 ),
+		'deal_lost'          => array( 'label' => 'שינוי בדיל בפייפדרייב: להחליט על התיק', 'due_days' => 1 ),
 		'program_credit'     => array( 'label' => 'זיכוי לפי תנאי התוכנית', 'due_days' => 2 ),
 		'approve_charge'     => array( 'label' => 'אישור חיוב: התלמיד ביקש לשלם', 'due_days' => 0 ),
 		'mb_mark_handled'    => array( 'label' => 'סימון עסקה שטופלה ב-My Billing', 'due_days' => 0 ),

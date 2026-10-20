@@ -1945,6 +1945,11 @@ $tests['P16'] = array( 'דיל שסומן lost עם סיבה אחרת: ההוד�
 	T::$pd_deals[9661]['lost_reason'] = 'לא מעוניין לפתוח חשבון';
 	Journey::refresh_deals();
 	T::eq( 'declined', student_case( 661 )['track'], 'changing the reason to the dedicated one still moves it to the declined track' );
+	// An open deal moved to the "cancelled after purchase" stage stops the journey too.
+	T::$pd_deals[9662]['stage_id'] = 77;
+	Journey::refresh_deals();
+	$c4 = student_case( 662 );
+	T::eq( array( 'human_review', 1 ), array( $c4['workflow_state'], T::count( 'tasks', "type = 'deal_lost' AND case_id = " . (int) $c4['id'] ) ), 'a deal in a stop stage goes to a person, messages stopped' );
 } );
 
 $tests['C01'] = array( 'תזרים צפוי לדשבורד ההכנסות: ספר הוראות הקבע, סיכון לפי תוקף כרטיס וכשל, גבייה מתוכננת, היסטוריה לפי מסוף', function () {

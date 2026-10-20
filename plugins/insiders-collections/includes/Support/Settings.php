@@ -85,6 +85,7 @@ final class Settings {
 		'no_registration_label'          => 'ללא דמי רישום',
 		'declined_lost_reasons'          => 'לא מעוניין לפתוח חשבון',
 		'journey_from_date'              => '',  // empty = the dashboard's baseline (1.8); an earlier date includes students who joined before it
+		'journey_stop_stages'            => 'ביטל לאחר רכישה', // a deal in one of these stages (any pipeline) stops the journey and goes to a person
 		'journey_keep_lost_reasons'      => 'אין מענה', // lost for these reasons: the messages go on as if the deal were open
 		'cashflow_sync'                  => 1,   // read-only: the STO book and monthly totals for the finance dashboard's forecast
 		'program_auto_charge_on_pay_request' => 0, // "אני רוצה לשלם": approve and send the link at once, without a person

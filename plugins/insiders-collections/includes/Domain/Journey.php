@@ -351,6 +351,7 @@ final class Journey {
 		$label   = Pipedrive::label_id( (string) Settings::get( 'no_registration_label' ) );
 		$reasons = self::declined_reasons();
 		$keep    = self::reasons( 'journey_keep_lost_reasons' );
+		$stop    = Pipedrive::stage_ids( preg_split( '/\R/', (string) Settings::get( 'journey_stop_stages' ) ) );
 		$declined = 0;
 		$lost     = 0;
 		foreach ( $rows as $r ) {
@@ -380,6 +381,10 @@ final class Journey {
 					Db::update( 'cases', array( 'owner_id' => $owner ), array( 'id' => (int) $r['case_id'] ) );
 				}
 			}
+			if ( $stop && in_array( (int) $d['stage_id'], $stop, true ) && self::hold_for_person( (int) $r['case_id'], 'הדיל נמצא בפייפדרייב בשלב שעוצר את הליווי (למשל ביטול אחרי רכישה)', 'אם הביטול סופי, לסגור את התיק. אם התלמיד ממשיך בתוכנית, להחזיר את הדיל לשלב רגיל ולחדש את התיק.' ) ) {
+				++$lost;
+				continue;
+			}
 			if ( 'lost' === $d['status'] && 'declined' !== $r['track'] && in_array( self::norm( $d['lost_reason'] ), $reasons, true ) ) {
 				self::decline( (int) $r['case_id'], 'pipedrive', 'הדיל סומן lost בפייפדרייב: ' . $d['lost_reason'] );
 				++$declined;
@@ -397,26 +402,34 @@ final class Journey {
 	 * case is not overruled by the next hourly read.
 	 */
 	private static function lost_other( int $case_id, string $reason ): bool {
+		$first = preg_split( '/\R/', (string) Settings::get( 'declined_lost_reasons' ) )[0] ?? '';
+		return self::hold_for_person(
+			$case_id,
+			'הדיל סומן lost בפייפדרייב' . ( '' !== trim( $reason ) ? ' עם הסיבה "' . trim( $reason ) . '"' : ' בלי סיבה' ),
+			'אם התלמיד עזב, לסגור את התיק. אם הוא לא יפתח חשבון וצריך לשלם, לשנות בפייפדרייב את הסיבה ל"' . $first . '" ולחדש את התיק. אם הוא עדיין בתהליך פתיחה, לחדש את התיק.'
+		);
+	}
+
+	/** Stop the messages and give the case to a person, once per case (a resumed case stays resumed). */
+	private static function hold_for_person( int $case_id, string $why, string $todo ): bool {
 		$case = Workflow::get( $case_id );
 		$key  = 'deal_lost:' . $case_id;
 		if ( ! $case || 'closed' === $case['workflow_state'] || Db::value( 'SELECT id FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', $key ) ) {
 			return false;
 		}
-		$why = 'הדיל סומן lost בפייפדרייב' . ( '' !== trim( $reason ) ? ' עם הסיבה "' . trim( $reason ) . '"' : ' בלי סיבה' );
 		Scheduler::cancel_for_case( $case_id, 'deal_lost' );
 		if ( 'human_review' !== $case['workflow_state'] && Workflow::can( $case['workflow_state'], 'human_review' ) ) {
 			Workflow::transition( $case_id, 'human_review', $why, null, array(), 'journey' );
 		} else {
 			Workflow::touch( $case_id, array(), 'case.deal_lost', $why );
 		}
-		$first = preg_split( '/\R/', (string) Settings::get( 'declined_lost_reasons' ) )[0] ?? '';
 		Tasks::open(
 			$key,
 			'deal_lost',
 			array(
 				'case_id'     => $case_id,
 				'customer_id' => (int) $case['customer_id'],
-				'reason'      => $why . '. ההודעות לתלמיד נעצרו. אם התלמיד עזב, לסגור את התיק. אם הוא לא יפתח חשבון וצריך לשלם, לשנות בפייפדרייב את הסיבה ל"' . $first . '" ולחדש את התיק. אם הוא עדיין בתהליך פתיחה, לחדש את התיק.',
+				'reason'      => $why . '. ההודעות לתלמיד נעצרו. ' . $todo,
 			)
 		);
 		return true;

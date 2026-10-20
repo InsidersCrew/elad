@@ -181,7 +181,40 @@ final class Client {
 			'owner_id'    => is_array( $owner ) ? (int) ( $owner['id'] ?? 0 ) : (int) $owner,
 			'person_id'   => is_array( $d['person_id'] ?? null ) ? (int) ( $d['person_id']['value'] ?? 0 ) : (int) ( $d['person_id'] ?? 0 ),
 			'title'       => (string) ( $d['title'] ?? '' ),
+			'stage_id'    => (int) ( $d['stage_id'] ?? 0 ),
 		);
+	}
+
+	/**
+	 * Stage ids for stage names, in every pipeline (a number in the list is used as is).
+	 * The stage list is cached for a day; a failed read is not cached.
+	 */
+	public static function stage_ids( array $names ): array {
+		$names = array_values( array_filter( array_map( static fn( $n ) => trim( (string) $n ), $names ) ) );
+		$ids   = array_map( 'intval', array_filter( $names, 'ctype_digit' ) );
+		$names = array_diff( $names, array_filter( $names, 'ctype_digit' ) );
+		if ( ! $names ) {
+			return $ids;
+		}
+		$cache = get_option( 'icol_pd_stages', array() );
+		if ( ! is_array( $cache ) || ( $cache['at'] ?? 0 ) < time() - DAY_IN_SECONDS ) {
+			if ( ! self::configured() ) {
+				return $ids;
+			}
+			$r    = Http::request( 'GET', add_query_arg( array( 'api_token' => Settings::secret( 'pipedrive_token' ), 'limit' => 500 ), self::base() . '/api/v2/stages' ) );
+			$list = $r['json']['data'] ?? null;
+			if ( Http::OK !== $r['outcome'] || ! is_array( $list ) ) {
+				return $ids;
+			}
+			$cache = array( 'at' => time(), 'stages' => array_map( static fn( $s ) => array( 'id' => (int) ( $s['id'] ?? 0 ), 'name' => trim( (string) ( $s['name'] ?? '' ) ) ), $list ) );
+			update_option( 'icol_pd_stages', $cache, false );
+		}
+		foreach ( (array) ( $cache['stages'] ?? array() ) as $s ) {
+			if ( in_array( $s['name'], $names, true ) ) {
+				$ids[] = (int) $s['id'];
+			}
+		}
+		return array_values( array_unique( $ids ) );
 	}
 
 	/**

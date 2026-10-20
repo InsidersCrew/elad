@@ -169,6 +169,11 @@ final class Diagnostics {
 			'price_table_errors' => \Insiders\Collections\Domain\Pricing::validate( (string) $S::get( 'program_price_table' ) ),
 			'no_fee_label'     => $label . ' → ' . ( \Insiders\Collections\Integrations\Pipedrive\Client::configured() ? ( \Insiders\Collections\Integrations\Pipedrive\Client::label_id( $label ) ?? 'לא נמצאה תווית בשם הזה בפייפדרייב' ) : 'פייפדרייב לא מחובר' ),
 			'declined_reasons' => \Insiders\Collections\Domain\Journey::declined_reasons(),
+			// The stop stages as Pipedrive knows them: an empty list means the names did not match any stage.
+			'stop_stages'      => ( static function () use ( $S ) {
+				$names = array_values( array_filter( array_map( 'trim', preg_split( '/\R/', (string) $S::get( 'journey_stop_stages' ) ) ) ) );
+				return array( 'names' => $names, 'stage_ids' => \Insiders\Collections\Integrations\Pipedrive\Client::stage_ids( $names ) );
+			} )(),
 			// Students who joined before the baseline and are in the dashboard: not in the journey unless journey_from_date reaches them.
 			'before_baseline'  => $fd::before_baseline(),
 			'finance_dashboard' => $fd::available() ? array( 'stale' => $fd::contract()['stale'], 'sync_ok_at' => $fd::contract()['sync_ok_at'], 'ledger_for_credit' => $fd::ledger_available() ) : 'לא נמצא',
