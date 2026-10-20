@@ -52,7 +52,7 @@ final class Journey {
 	);
 
 	public const STEP_LABELS = array(
-		'j_intro' => 'פתיחה (45 יום לפני)',
+		'j_intro' => 'פתיחה',
 		'j_t30'   => '30 יום לפני',
 		'j_t7'    => 'שבוע לפני',
 		'j_t0'    => 'יום המועד',
@@ -557,6 +557,10 @@ final class Journey {
 			case 'reach':
 				if ( '' === $sent ) {
 					$date = max( $after( 1 ), self::plus_days( $deadline, -(int) Settings::get( 'journey_start_days' ) ) );
+					if ( $date === $deadline ) {
+						// Entered on the deadline day itself: "today is the last day", not "there is time until today".
+						return array( 'key' => 'j_t0', 'date' => $deadline );
+					}
 					return $date <= $deadline ? array( 'key' => 'j_intro', 'date' => $date ) : null;
 				}
 				$keys = array_keys( self::REACH );

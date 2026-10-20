@@ -2149,6 +2149,18 @@ $tests['P19'] = array( 'הודעה שתלמיד שולח בנושא אחר לפ�
 	T::eq( array( true, 1 ), array( in_array( student_case( 691 )['workflow_state'], Workflow::SENDABLE, true ), T::count( 'scheduled_actions', 'case_id = ' . (int) $c['id'] . " AND state = 'pending'" ) ), 'back to an active state, with the next message planned again' );
 } );
 
+$tests['P20'] = array( 'כניסה ביום המועד עצמו: הודעת יום המועד, לא הודעת פתיחה', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'journey_from_date' => '2026-06-01' ) ); // the test clock is in October: these joined in July
+	ifd_student( 701, 9701, gmdate( 'Y-m-d', strtotime( Clock::today() . ' -90 days' ) ) ); // deadline today
+	ifd_student( 702, 9702, gmdate( 'Y-m-d', strtotime( Clock::today() . ' -86 days' ) ) ); // four days left
+	Journey::sync();
+	T::eq( array( 'j_t0', 'j_intro' ), array( pending_journey( (int) student_case( 701 )['id'] )['step'] ?? null, pending_journey( (int) student_case( 702 )['id'] )['step'] ?? null ), 'deadline today: the deadline-day message; four days left: the intro, with the real date' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";
