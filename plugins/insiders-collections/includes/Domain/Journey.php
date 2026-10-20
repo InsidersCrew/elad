@@ -955,6 +955,34 @@ final class Journey {
 		return count( $rows );
 	}
 
+	/**
+	 * Repair for the cases an unrelated inbound message moved to a person before anything was really sent
+	 * (fixed in 0.3.17): back to the state they were in, and the planned message again.
+	 */
+	public static function repair_unprompted_reviews(): int {
+		$rows = Db::rows( 'SELECT id FROM ' . Db::t( 'cases' ) . " WHERE phase = 'commitment' AND workflow_state = 'human_review'" );
+		$n    = 0;
+		foreach ( $rows as $r ) {
+			$id = (int) $r['id'];
+			if ( Messaging::reached( $id ) ) {
+				continue;
+			}
+			$last = Db::row( 'SELECT before_json, reason FROM ' . Db::t( 'audit_log' ) . " WHERE entity_type = 'case' AND entity_id = %d AND action = 'case.transition' ORDER BY id DESC LIMIT 1", $id );
+			if ( ! $last || ! str_ends_with( (string) $last['reason'], '[inbound]' ) ) {
+				continue;
+			}
+			$back = (string) ( json_decode( (string) $last['before_json'], true )['state'] ?? '' );
+			if ( ! in_array( $back, Workflow::SENDABLE, true ) ) {
+				continue;
+			}
+			$back = Workflow::can( 'human_review', $back ) ? $back : 'active'; // waiting_reply is reached from active only
+			Workflow::transition( $id, $back, 'הודעה נכנסת שלא הייתה תשובה להודעה שלנו (לא נשלח לתלמיד כלום עדיין)', null, array(), 'repair' );
+			self::plan_next( $id );
+			++$n;
+		}
+		return $n;
+	}
+
 	public static function date_he( string $ymd ): string {
 		return preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $ymd, $m ) ? $m[3] . '/' . $m[2] . '/' . $m[1] : $ymd;
 	}

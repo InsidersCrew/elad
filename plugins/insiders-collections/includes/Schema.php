@@ -674,6 +674,11 @@ final class Schema {
 			$wpdb->query( 'UPDATE ' . Db::t( 'inbox_events' ) . " SET processing_state = 'received' WHERE provider = 'tranzila' AND processing_state = 'needs_match' AND payload_redacted LIKE '%sto_external_id%'" );
 		}
 		$out['inbox.sto_requeue'] = true;
+		// v9: cases an unrelated inbound message sent to a person before anything was really sent go back.
+		if ( (int) get_option( 'icol_db_version', 0 ) < 9 ) {
+			\Insiders\Collections\Domain\Journey::repair_unprompted_reviews();
+		}
+		$out['cases.unprompted_reviews'] = true;
 		return $out;
 	}
 

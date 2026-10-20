@@ -384,6 +384,10 @@ final class Messaging {
 			return array( 'duplicate' => true, 'message_id' => -$message_id );
 		}
 		$cases = Db::rows( 'SELECT * FROM ' . Db::t( 'cases' ) . " WHERE customer_id = %d AND workflow_state NOT IN ('closed','draft')", $customer_id );
+		// A program student writes to the business number about anything (a lesson, a login). Before the
+		// deadline that is a reply to the journey only after it really sent something: a simulated message
+		// reached no one. A debt case reacts to every message, as before ("paid", "stop", "a person").
+		$cases = array_values( array_filter( $cases, static fn( $c ) => 'commitment' !== ( $c['phase'] ?? 'charge' ) || self::reached( (int) $c['id'] ) ) );
 		foreach ( $cases as $c ) {
 			Scheduler::cancel_for_case( (int) $c['id'], 'customer_replied' );
 			Db::update( 'cases', array( 'last_inbound_at' => $msg['occurred_at'] ?? Clock::utc() ), array( 'id' => (int) $c['id'] ) );
@@ -400,6 +404,11 @@ final class Messaging {
 		}
 		Intents::apply( $customer_id, $message_id, $intent, $cases, $msg );
 		return array( 'message_id' => $message_id, 'intent' => $intent['intent'], 'cases' => count( $cases ) );
+	}
+
+	/** Did this case really send the customer anything (not simulated, not failed)? */
+	public static function reached( int $case_id ): bool {
+		return (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND delivery_state NOT IN ('simulated','draft','failed','cancelled') LIMIT 1", $case_id );
 	}
 
 	/** Operator message typed in WATI (AT33): documented, counts toward quota, shapes what follows. */

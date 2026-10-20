@@ -2111,6 +2111,27 @@ $tests['P18'] = array( 'תלמידים שהצטרפו לפני 1.8 ונמצאי�
 	T::eq( array( 'late', 'reach' ), array( student_case( 681 )['track'] ?? null, student_case( 682 )['track'] ?? null ), 'with an earlier start date: a passed deadline enters the late track, an upcoming one the regular track' );
 } );
 
+$tests['P19'] = array( 'הודעה שתלמיד שולח בנושא אחר לפני שנשלח לו משהו באמת: לא תשובה לליווי, לא עוצרת ולא מעבירה לנציג; תיקון למה שכבר הועבר', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'display_only' => 1 ) );
+	ifd_student( 691, 9691, '2026-08-01' );
+	Journey::sync();
+	T::tick();
+	$c = student_case( 691 );
+	$phone = Customers::get( (int) $c['customer_id'] )['phone_e164'];
+	Messaging::handle_inbound( (int) $c['customer_id'], array( 'provider_id' => 'in-691', 'text' => 'יש לי שאלה על השיעור של מחר', 'type' => 'text', 'occurred_at' => Clock::utc() ) );
+	$c2 = student_case( 691 );
+	T::eq( array( $c['workflow_state'], 1 ), array( $c2['workflow_state'], T::count( 'scheduled_actions', 'case_id = ' . (int) $c['id'] . " AND state = 'pending'" ) ), 'the journey goes on: not a person, nothing cancelled' );
+	// What 0.3.16 did: the inbound moved the case to a person. The upgrade puts it back.
+	Workflow::transition( (int) $c['id'], 'human_review', 'שאלה', null, array(), 'inbound' );
+	Scheduler::cancel_for_case( (int) $c['id'], 'customer_replied' );
+	T::eq( 1, Journey::repair_unprompted_reviews(), 'repaired' );
+	T::eq( array( true, 1 ), array( in_array( student_case( 691 )['workflow_state'], Workflow::SENDABLE, true ), T::count( 'scheduled_actions', 'case_id = ' . (int) $c['id'] . " AND state = 'pending'" ) ), 'back to an active state, with the next message planned again' );
+} );
+
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {
 	[ $c, $case ] = program_case();
 	$short = "היי {{name}}, כאן צוות INSIDERS. חוזרים אליך לגבי תוכנית הליווי.\nהגיע מועד התשלום על התוכנית לפי הסכם ההצטרפות, והסכום מופיע בקישור המאובטח: {{link}}\nאם כבר פתחת חשבון, אפשר לכתוב לנו כאן.";
