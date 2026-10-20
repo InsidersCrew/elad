@@ -2045,7 +2045,7 @@ $tests['X15'] = array( 'תשלום מקישור בלי Notify: נמצא בדוח
 	T::eq( 0, Reconciler::incremental()['pr_from_report'], 'and found once' );
 } );
 
-$tests['X16'] = array( 'חיוב שנכשל בהוראה שלא מופתה: ההוראה נקראת מטרנזילה, ממופה ללקוח ונפתח תיק; לקוח חדש לא מאומת', function () {
+$tests['X16'] = array( 'חיוב שנכשל בהוראה שלא מופתה: ההוראה נקראת מטרנזילה, ממופה ללקוח ונפתח תיק; לקוח חדש לא מאומת; בלי טלפון, הטלפון מפייפדרייב לפי המייל', function () {
 	T::$tranzila_stos['6001'] = array( 'sto_id' => 6001, 'terminal_name' => 'insiderstok', 'sto_status' => 'active', 'charge_frequency' => 'monthly', 'charge_dom' => 11, 'first_charge_date' => '2026-01-11', 'next_charge_date' => '2026-11-11 00:00:00', 'charge_amount' => '250.0000', 'sto_payments_number' => 12, 'client' => array( 'name' => 'יעל לוי', 'email' => 'yael@example.test', 'phone_country_code' => '972', 'phone_area_code' => '052', 'phone_number' => '1112233' ), 'card' => array( 'token' => 'tokY', 'expire_month' => 1, 'expire_year' => 2030 ) );
 	T::tranzila( array( 'index' => '9901', 'sto_external_id' => '6001', 'sum' => '250.00', 'Response' => '004' ) );
 	T::tick();
@@ -2061,6 +2061,18 @@ $tests['X16'] = array( 'חיוב שנכשל בהוראה שלא מופתה: הה
 	T::tranzila( array( 'index' => '9902', 'sto_external_id' => '6002', 'sum' => '250.00', 'Response' => '004' ) );
 	T::tick();
 	T::eq( $known, (int) Db::value( 'SELECT customer_id FROM ' . Db::t( 'recurring_orders' ) . " WHERE sto_id = '6002'" ), 'linked to the student already known by phone' );
+	// An order with an email and no phone: the number comes from the student's Pipedrive person.
+	T::$pd_persons[ 7301 ] = array( 'id' => 7301, 'name' => 'רון שחר', 'first_name' => 'רון', 'emails' => array( array( 'value' => 'ron@example.test', 'primary' => true ) ), 'phones' => array( array( 'value' => '053-4445566', 'primary' => true ) ) );
+	T::$tranzila_stos['6003'] = array_merge( T::$tranzila_stos['6001'], array( 'sto_id' => 6003, 'client' => array( 'name' => 'רון שחר', 'email' => 'ron@example.test' ) ) );
+	Settings::set( array( 'sto_contact_basis' => 'טלפון מפייפדרייב של מי שמשלם בהוראת קבע' ) );
+	T::tranzila( array( 'index' => '9903', 'sto_external_id' => '6003', 'sum' => '250.00', 'Response' => '004' ) );
+	T::tick();
+	$ron = Customers::get( (int) Db::value( 'SELECT customer_id FROM ' . Db::t( 'recurring_orders' ) . " WHERE sto_id = '6003'" ) );
+	T::eq( array( '+972534445566', 7301, 'verified', true ), array( $ron['phone_e164'], (int) $ron['pipedrive_person_id'], $ron['contact_status'], (bool) Customers::permission( (int) $ron['id'], 'whatsapp' ) ), 'phone from Pipedrive by email; with a recorded basis the contact counts as verified' );
+	T::$tranzila_stos['6004'] = array_merge( T::$tranzila_stos['6001'], array( 'sto_id' => 6004, 'client' => array( 'name' => 'אין טלפון', 'email' => 'nobody@example.test' ) ) );
+	T::tranzila( array( 'index' => '9904', 'sto_external_id' => '6004', 'sum' => '250.00', 'Response' => '004' ) );
+	T::tick();
+	T::eq( 1, T::count( 'tasks', "type = 'complete_phone' AND status = 'open'" ), 'no phone anywhere: a task to complete it' );
 } );
 
 $tests['P12'] = array( 'משתנה שהוסר מהנוסח המאושר: ל-WATI נשלחים רק המשתנים שבנוסח, משתנה לא מוכר נדחה, תבנית קישור בלי {{link}} נדחית', function () {

@@ -334,6 +334,11 @@ add_filter(
 			++T::$wati_seq;
 			return $json( array( 'result' => true, 'receivers' => array( array( 'localMessageId' => 'wati-' . T::$wati_seq, 'waId' => '972501234567', 'isValidWhatsAppNumber' => true ) ) ) );
 		}
+		if ( false !== strpos( $url, 'pipedrive' ) && false !== strpos( $url, '/api/v2/persons/search' ) ) {
+			parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $qq );
+			$hits = array_values( array_filter( T::$pd_persons, static fn( $p ) => in_array( strtolower( (string) ( $qq['term'] ?? '' ) ), array_map( static fn( $e ) => strtolower( (string) $e['value'] ), $p['emails'] ?? array() ), true ) ) );
+			return $json( array( 'success' => true, 'data' => array( 'items' => array_map( static fn( $p ) => array( 'item' => array( 'id' => $p['id'], 'name' => $p['name'] ) ), $hits ) ) ) );
+		}
 		if ( false !== strpos( $url, 'pipedrive' ) && preg_match( '#/api/v2/persons/(\d+)#', $url, $pm ) ) {
 			$person = T::$pd_persons[ (int) $pm[1] ] ?? null;
 			return $person ? $json( array( 'success' => true, 'data' => $person ) ) : $json( array( 'success' => false, 'error' => 'not found' ), 404 );

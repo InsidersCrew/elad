@@ -367,7 +367,19 @@ final class Processor {
 		$local = preg_replace( '/\D/', '', (string) ( $cl['phone_area_code'] ?? '' ) . (string) ( $cl['phone_number'] ?? '' ) );
 		$phone = '972' === $cc && strlen( $local ) >= 9 ? \Insiders\Collections\Support\Phone::e164( $local ) : null;
 		$email = strtolower( trim( (string) ( $cl['email'] ?? '' ) ) );
-		$found = $phone ? \Insiders\Collections\Domain\Customers::by_phone( $phone ) : array();
+		$pd_id = null;
+		if ( ! $phone && is_email( $email ) ) {
+			// Most orders carry an email and no phone: the student's Pipedrive person has the number WhatsApp needs.
+			$pd = \Insiders\Collections\Integrations\Pipedrive\Client::person_by_email( $email );
+			if ( ! empty( $pd['ok'] ) ) {
+				$pd_id = (int) $pd['id'];
+				$phone = \Insiders\Collections\Support\Phone::e164( (string) $pd['phone'] );
+			}
+		}
+		$found = $pd_id ? Db::rows( 'SELECT * FROM ' . Db::t( 'customers' ) . ' WHERE pipedrive_person_id = %d', $pd_id ) : array();
+		if ( ! $found && $phone ) {
+			$found = \Insiders\Collections\Domain\Customers::by_phone( $phone );
+		}
 		if ( ! $found && is_email( $email ) ) {
 			$found = Db::rows( 'SELECT * FROM ' . Db::t( 'customers' ) . ' WHERE email = %s', $email );
 		}
@@ -376,6 +388,17 @@ final class Processor {
 		}
 		if ( $found ) {
 			$cid = (int) $found[0]['id'];
+			$cur = $found[0];
+			$fill = array_filter(
+				array(
+					'phone_e164'          => empty( $cur['phone_e164'] ) && $phone ? $phone : null,
+					'email'               => empty( $cur['email'] ) && is_email( $email ) ? $email : null,
+					'pipedrive_person_id' => empty( $cur['pipedrive_person_id'] ) && $pd_id ? $pd_id : null,
+				)
+			);
+			if ( $fill ) {
+				Db::update( 'customers', $fill + array( 'updated_at' => Clock::utc() ), array( 'id' => $cid ) );
+			}
 		} else {
 			$basis = trim( (string) Settings::get( 'sto_contact_basis' ) );
 			$name  = trim( (string) ( $cl['name'] ?? '' ) );
@@ -385,6 +408,7 @@ final class Processor {
 					'phone'          => (string) $phone,
 					'email'          => is_email( $email ) ? $email : '',
 					'phone_verified' => '' !== $basis,
+					'pipedrive_person_id' => $pd_id,
 				)
 			);
 			if ( '' !== $basis && $phone ) {
@@ -398,6 +422,9 @@ final class Processor {
 		if ( $total > 0 && $first && $next ) {
 			$done = ( (int) substr( $next, 0, 4 ) - (int) substr( $first, 0, 4 ) ) * 12 + (int) substr( $next, 5, 2 ) - (int) substr( $first, 5, 2 );
 			$left = max( 0, $total - max( 0, $done ) );
+		}
+		if ( ! $phone && ! Db::value( 'SELECT phone_e164 FROM ' . Db::t( 'customers' ) . ' WHERE id = %d', $cid ) ) {
+			Tasks::open( 'complete_phone:' . $cid, 'complete_phone', array( 'customer_id' => $cid, 'reason' => 'להוראת קבע ' . $sto_id . ' אין מספר טלפון, לא בטרנזילה ולא בפייפדרייב' . ( is_email( $email ) ? ' (לפי המייל ' . $email . ')' : '' ) . '. בלי מספר אי אפשר לשלוח הודעה בוואטסאפ על חיוב שנכשל.' ) );
 		}
 		$id = \Insiders\Collections\Domain\Matching::map_sto(
 			array(

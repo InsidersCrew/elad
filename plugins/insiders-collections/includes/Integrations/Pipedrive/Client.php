@@ -118,6 +118,26 @@ final class Client {
 		);
 	}
 
+	/**
+	 * The one Pipedrive person with this exact email, read in full (primary phone first).
+	 * None or several is "not found": a phone is never taken from a guess.
+	 */
+	public static function person_by_email( string $email ): array {
+		if ( ! self::configured() || ! is_email( $email ) ) {
+			return array( 'ok' => false, 'error' => 'not configured or no email' );
+		}
+		$r     = Http::request( 'GET', self::base() . '/api/v2/persons/search?term=' . rawurlencode( $email ) . '&fields=email&exact_match=true&limit=2&api_token=' . rawurlencode( Settings::secret( 'pipedrive_token' ) ) );
+		$items = $r['json']['data']['items'] ?? null;
+		if ( Http::OK !== $r['outcome'] || ! is_array( $items ) ) {
+			return array( 'ok' => false, 'error' => $r['error'] ?: 'no data' );
+		}
+		if ( 1 !== count( $items ) || empty( $items[0]['item']['id'] ) ) {
+			return array( 'ok' => false, 'error' => count( $items ) . ' matches' );
+		}
+		$id = (int) $items[0]['item']['id'];
+		return array( 'id' => $id ) + self::person( $id );
+	}
+
 	private static function base(): string {
 		return rtrim( (string) Settings::get( 'pipedrive_api_base' ), '/' );
 	}
