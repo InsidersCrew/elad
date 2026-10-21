@@ -164,6 +164,14 @@ $tests['AT07'] = array( 'תלמיד עם מספר משותף', function () {
 	T::inbound( 'תפסיקו לשלוח לי הודעות' );
 	T::tick();
 	T::eq( array( false, false ), array( Customers::permission( $a, 'whatsapp' ), Customers::permission( $b, 'whatsapp' ) ), 'a stop from a shared number blocks the number for each of them' );
+	T::inbound( 'היי, אשמח לפרטים על הקורס', '972529990000' );
+	T::tick();
+	T::eq( 0, T::count( 'exceptions', "type = 'event_without_customer'" ), 'a message from a number that is not a customer opens nothing' );
+	\Insiders\Collections\Domain\Exceptions::open( 'unknown_sender:abc', 'event_without_customer', 'low', 'הודעה ממספר שאינו מזוהה כלקוח', array() );
+	\Insiders\Collections\Domain\Exceptions::open( 'unknownXsender:keep', 'event_without_customer', 'low', 'לא נוגעים', array() );
+	update_option( 'icol_db_version', 11, false );
+	\Insiders\Collections\Schema::install();
+	T::eq( array( 'resolved', 'open', 12 ), array( Db::value( 'SELECT status FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'unknown_sender:abc'" ), Db::value( 'SELECT status FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'unknownXsender:keep'" ), (int) get_option( 'icol_db_version' ) ), 'the upgrade closes the old ones, and only them' );
 } );
 
 $tests['AT08'] = array( 'חוב ידני ללא הסכם או אישור', function () {

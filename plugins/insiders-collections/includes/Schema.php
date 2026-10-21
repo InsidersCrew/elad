@@ -687,6 +687,10 @@ final class Schema {
 		}
 		$out['cases.unprompted_reviews'] = true;
 		// v11: the first name in messages comes from the WATI contact (the team keeps it right) when it has one.
+		// v12: messages from numbers that are not customers no longer open an exception; the old ones are closed.
+		if ( (int) get_option( 'icol_db_version', 0 ) < 12 ) {
+			$wpdb->query( $wpdb->prepare( 'UPDATE ' . Db::t( 'exceptions' ) . " SET status = 'resolved', resolution = %s, resolved_at = %s WHERE status = 'open' AND exception_key LIKE 'unknown\\_sender:%%'", 'נסגר אוטומטית: הודעה ממספר שאינו לקוח במספר המשותף, אין מה לטפל', \Insiders\Collections\Support\Clock::utc() ) );
+		}
 		$out['customers.name_checked_at'] = self::ensure_column( 'customers', 'name_checked_at', 'DATETIME NULL AFTER first_name_reliable' );
 		return $out;
 	}

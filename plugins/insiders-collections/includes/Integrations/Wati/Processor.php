@@ -96,7 +96,7 @@ final class Processor {
 		}
 		$customers = self::customers_for( $p );
 		if ( ! $customers ) {
-			Exceptions::open( 'unknown_sender:' . md5( (string) ( $p['waId'] ?? '' ) ), 'event_without_customer', 'low', 'הודעה ממספר שאינו מזוהה כלקוח', array() );
+			// The number is shared with sales and onboarding: most senders are not ours. Nothing to do, nothing to flag.
 			return 'ignored';
 		}
 		if ( count( $customers ) > 1 ) {
