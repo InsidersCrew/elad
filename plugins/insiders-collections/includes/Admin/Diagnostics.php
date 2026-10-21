@@ -60,6 +60,9 @@ final class Diagnostics {
 			case 'roster':
 				self::dump( self::roster() );
 				break;
+			case 'phone_check':
+				self::dump( self::phone_check() );
+				break;
 			case 'registration_cards':
 				self::dump( self::registration_cards() );
 				break;
@@ -132,7 +135,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'wati_contact' => 'השם של איש קשר ב-WATI לפי טלפון, ואיך הוא ייכתב בהודעה (עם &phone=, קריאה בלבד)', 'registration_cards' => 'איך שילמו את דמי הרישום (Apple Pay או כרטיס) התלמידים שהמועד שלהם הכי קרוב, מדוח העסקאות של טרנזילה (עם &limit=, קריאה בלבד)', 'roster' => 'כל תלמידי התוכנית שדשבורד ההכנסות מכיר, ולמה כל אחד בליווי או לא (עם &from=YYYY-MM-DD, &persons=מזהים מפייפדרייב)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'wati_contact' => 'השם של איש קשר ב-WATI לפי טלפון, ואיך הוא ייכתב בהודעה (עם &phone=, קריאה בלבד)', 'phone_check' => 'למה מספר מסוים קיבל או לא קיבל הודעה: מצב, רשימה מדורגת, תיקים, הודעה מתוכננת, חסימות והודעות אחרונות (עם &phone=, קריאה בלבד)', 'registration_cards' => 'איך שילמו את דמי הרישום (Apple Pay או כרטיס) התלמידים שהמועד שלהם הכי קרוב, מדוח העסקאות של טרנזילה (עם &limit=, קריאה בלבד)', 'roster' => 'כל תלמידי התוכנית שדשבורד ההכנסות מכיר, ולמה כל אחד בליווי או לא (עם &from=YYYY-MM-DD, &persons=מזהים מפייפדרייב)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}
@@ -266,6 +269,67 @@ final class Diagnostics {
 	 * How the registration fee was paid (Apple Pay or a card) by the open program students whose deadline is
 	 * nearest, from Tranzila's transaction report. Read only: one report query per student.
 	 */
+	/** Why a number got (or did not get) a message: every gate on the way, read only. */
+	private static function phone_check(): array {
+		$Db   = \Insiders\Collections\Support\Db::class;
+		$S    = \Insiders\Collections\Support\Settings::class;
+		$G    = \Insiders\Collections\Domain\SendGuard::class;
+		$C    = \Insiders\Collections\Support\Clock::class;
+		$e164 = \Insiders\Collections\Support\Phone::e164( (string) ( $_GET['phone'] ?? '' ) );
+		if ( ! $e164 ) {
+			return array( 'error' => 'להוסיף לכתובת &phone= עם מספר טלפון, למשל &phone=0501234567' );
+		}
+		$policy = \Insiders\Collections\Domain\Policy::effective_or_draft();
+		$local  = static fn( $utc ) => $utc ? $C::local( (int) $C::ts( $utc ) )->format( 'd/m H:i' ) : '';
+		$out    = array(
+			'phone'   => $e164,
+			'system'  => array(
+				'display_only'       => $S::on( 'display_only' ),
+				'customer_sends_on'  => $S::on( 'cap_customer_sends' ),
+				'kill_switch'        => $S::on( 'kill_switch' ),
+				'mode'               => $G::mode(),
+				'staged_list'        => $G::allowlist() ?: 'ריקה (כולם)',
+				'number_in_list'     => ! $G::allowlist() || in_array( $e164, $G::allowlist(), true ),
+				'policy_approved'    => null !== \Insiders\Collections\Domain\Policy::current(),
+				'now_in_send_window' => \Insiders\Collections\Domain\Calendar::in_window( $C::now(), $policy ),
+				'next_window_opens'  => $C::local( \Insiders\Collections\Domain\Calendar::next_slot( $C::now(), $policy ) )->format( 'd/m H:i' ),
+				'journey_on'         => \Insiders\Collections\Domain\Journey::enabled(),
+			),
+		);
+		$customers = \Insiders\Collections\Domain\Customers::by_phone( $e164 );
+		if ( ! $customers ) {
+			$out['customers'] = 'אין לקוח עם המספר הזה בתוסף. הודעות יוצאות רק לתלמידים עם תיק, ולכן לא תצא הודעה למספר הזה';
+			return $out;
+		}
+		foreach ( $customers as $cu ) {
+			$cid  = (int) $cu['id'];
+			$item = array(
+				'customer'       => $cid,
+				'name'           => $cu['full_name'],
+				'first_name'     => $cu['first_name'] . ( (int) $cu['first_name_reliable'] ? '' : ' (לא בשימוש בהודעה)' ),
+				'contact_status' => $cu['contact_status'],
+				'whatsapp_permission' => var_export( \Insiders\Collections\Domain\Customers::permission( $cid, 'whatsapp' ), true ),
+				'conversation_owner'  => $cu['conversation_owner'],
+				'mode_for_this_number' => $G::mode( $cid ),
+				'cases'          => array(),
+			);
+			foreach ( $Db::rows( 'SELECT id, phase, track, track_step, workflow_state, state_reason FROM ' . $Db::t( 'cases' ) . ' WHERE customer_id = %d ORDER BY id DESC LIMIT 5', $cid ) as $c ) {
+				$id     = (int) $c['id'];
+				$guard  = $G::check( $id, array( 'is_reminder' => true ) );
+				$item['cases'][ $id ] = array(
+					'state'    => \Insiders\Collections\Domain\Workflow::label( $c['workflow_state'] ) . ( $c['state_reason'] ? ': ' . $c['state_reason'] : '' ),
+					'phase'    => $c['phase'] . ( $c['track'] ? ' / ' . $c['track'] : '' ) . ( $c['track_step'] ? ' / אחרון: ' . $c['track_step'] : '' ),
+					'next_step' => 'commitment' === $c['phase'] ? ( \Insiders\Collections\Domain\Journey::next_step( \Insiders\Collections\Domain\Workflow::get( $id ) ) ?: 'אין שלב נוסף לפני המועד' ) : '',
+					'planned'  => array_map( static fn( $a ) => $a['type'] . ' ' . ( json_decode( (string) $a['payload'], true )['step'] ?? '' ) . ' ב-' . $local( $a['run_at'] ) . ' (' . $a['state'] . ( $a['result'] ? ': ' . $a['result'] : '' ) . ')', $Db::rows( 'SELECT type, run_at, state, result, payload FROM ' . $Db::t( 'scheduled_actions' ) . ' WHERE case_id = %d ORDER BY id DESC LIMIT 5', $id ) ),
+					'blockers_now' => $guard['blockers'] ? array_map( static fn( $b ) => $b['code'] . ' (' . $b['scope'] . '): ' . $b['message'], $guard['blockers'] ) : 'אין',
+				);
+			}
+			$item['last_messages'] = array_map( static fn( $m ) => $local( $m['occurred_at'] ) . ' ' . $m['direction'] . ' ' . ( $m['template_key'] ?: $m['kind'] ) . ': ' . $m['delivery_state'], $Db::rows( 'SELECT occurred_at, direction, template_key, kind, delivery_state FROM ' . $Db::t( 'messages' ) . ' WHERE customer_id = %d ORDER BY id DESC LIMIT 8', $cid ) );
+			$out['customers'][] = $item;
+		}
+		return $out;
+	}
+
 	private static function registration_cards(): array {
 		$Db    = \Insiders\Collections\Support\Db::class;
 		$limit = max( 1, min( 60, (int) ( $_GET['limit'] ?? 20 ) ) );

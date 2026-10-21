@@ -2557,6 +2557,25 @@ $tests['A01'] = array( 'Apple Pay: כברירת מחדל ישר לקישור ת�
 	T::eq( array( array( (int) student_case( 831 )['id'] ), array( (int) student_case( 832 )['id'] ) ), array( array_column( $r['apple_pay'], 'case' ), array_column( $r['card'], 'case' ) ), 'the diagnostic splits them by how they paid' );
 } );
 
+$tests['D01'] = array( 'כלי האבחון phone_check: לכל מספר, כל שער בדרך להודעה', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	ifd_student( 841, 9841, '2026-08-01' );
+	Journey::sync();
+	$m = new \ReflectionMethod( \Insiders\Collections\Admin\Diagnostics::class, 'phone_check' );
+	$m->setAccessible( true );
+	$_GET['phone'] = student_phone( 841 );
+	$r = $m->invoke( null );
+	$_GET['phone'] = '0529998888';
+	$none = $m->invoke( null );
+	unset( $_GET['phone'] );
+	$case = reset( $r['customers'][0]['cases'] );
+	T::check( is_array( $case['next_step'] ) && 'j_intro' === $case['next_step']['key'] && ! empty( $case['planned'] ), 'the case, its next step and what is planned' );
+	T::check( is_string( $none['customers'] ) && str_contains( $none['customers'], 'אין לקוח' ), 'a number with no customer says so' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );
