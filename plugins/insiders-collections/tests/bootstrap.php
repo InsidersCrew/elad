@@ -28,6 +28,7 @@ final class T {
 	public static array $mails = array();         // wp_mail calls (captured, never sent)
 	public static array $fail_next = array();    // url-substring => 'timeout'|'500'|'401'
 	public static int $wati_seq = 0;
+	public static array $wati_contacts = array(); // wa id (digits) => saved name
 	public static ?string $ai_reply = null;
 	public static array $pd_persons = array(); // person_id => v2 person
 	public static array $pd_deals = array();   // deal_id => v2 deal
@@ -44,6 +45,7 @@ final class T {
 		delete_option( 'icol_settings' );
 		Settings::flush();
 		self::$http_log = array();
+		self::$wati_contacts = array();
 		self::$tranzila_tx = array();
 		self::$charges     = array();
 		self::$mails       = array();
@@ -329,6 +331,17 @@ add_filter(
 				return $json( array( 'error_code' => 20404, 'message' => 'לא נבחרה אפשרות שליחת דואר אלקטרוני או הודעת טקסט' ) );
 			}
 			return $json( array( 'error_code' => 0, 'message' => 'ok', 'pr_id' => 'PR' . wp_rand( 1000, 9999 ), 'pr_link' => 'https://direct.tranzila.com/pr/' . wp_generate_password( 12, false ) ) );
+		}
+		if ( false !== strpos( $url, 'wati.test' ) && false !== strpos( $url, 'getContacts' ) ) {
+			parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $qq );
+			$want = (string) ( json_decode( (string) ( $qq['attribute'] ?? '[]' ), true )[0]['value'] ?? '' );
+			$list = array();
+			foreach ( T::$wati_contacts as $wa => $name ) {
+				if ( '' === $want || str_contains( (string) $wa, $want ) ) {
+					$list[] = array( 'wAid' => (string) $wa, 'fullName' => $name, 'phone' => (string) $wa );
+				}
+			}
+			return $json( array( 'result' => 'success', 'contact_list' => $list ) );
 		}
 		if ( false !== strpos( $url, 'wati.test' ) ) {
 			++T::$wati_seq;

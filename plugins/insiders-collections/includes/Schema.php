@@ -27,6 +27,7 @@ final class Schema {
 				full_name VARCHAR(190) NOT NULL DEFAULT '',
 				first_name VARCHAR(100) NULL,
 				first_name_reliable TINYINT(1) NOT NULL DEFAULT 0,
+				name_checked_at DATETIME NULL,
 				phone_e164 VARCHAR(20) NULL,
 				email VARCHAR(190) NULL,
 				contact_status VARCHAR(20) NOT NULL DEFAULT 'unverified',
@@ -685,6 +686,8 @@ final class Schema {
 			}
 		}
 		$out['cases.unprompted_reviews'] = true;
+		// v11: the first name in messages comes from the WATI contact (the team keeps it right) when it has one.
+		$out['customers.name_checked_at'] = self::ensure_column( 'customers', 'name_checked_at', 'DATETIME NULL AFTER first_name_reliable' );
 		return $out;
 	}
 

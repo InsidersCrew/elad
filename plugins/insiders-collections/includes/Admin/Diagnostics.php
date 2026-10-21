@@ -60,6 +60,17 @@ final class Diagnostics {
 			case 'roster':
 				self::dump( self::roster() );
 				break;
+			case 'wati_contact':
+				$e164 = \Insiders\Collections\Support\Phone::e164( (string) ( $_GET['phone'] ?? '' ) );
+				if ( ! $e164 ) {
+					echo "להוסיף לכתובת &phone= עם מספר טלפון, למשל &phone=0501234567\n";
+					break;
+				}
+				$r = Wati::contact_name( $e164 );
+				$first = trim( (string) ( preg_split( '/\s+/u', $r['name'] )[0] ?? '' ), " \t.,!?:;()\"" );
+				$r['first_name_in_messages'] = $r['found'] && preg_match( '/^[\p{L}\p{M}\'\-]{2,30}$/u', $first ) ? $first : 'לא שמיש: נשאר השם מפייפדרייב, או "היי לך"';
+				self::dump( $r );
+				break;
 			case 'tranzila_auth':
 				self::tranzila_auth();
 				break;
@@ -118,7 +129,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'roster' => 'כל תלמידי התוכנית שדשבורד ההכנסות מכיר, ולמה כל אחד בליווי או לא (עם &from=YYYY-MM-DD, &persons=מזהים מפייפדרייב)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'wati_contact' => 'השם של איש קשר ב-WATI לפי טלפון, ואיך הוא ייכתב בהודעה (עם &phone=, קריאה בלבד)', 'roster' => 'כל תלמידי התוכנית שדשבורד ההכנסות מכיר, ולמה כל אחד בליווי או לא (עם &from=YYYY-MM-DD, &persons=מזהים מפייפדרייב)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}
@@ -281,6 +292,7 @@ final class Diagnostics {
 			'before_baseline'  => $fd::before_baseline(),
 			// Cases the upgrade repairs put back into the journey (an unrelated message had moved them to a person).
 			'repaired'         => $Db::rows( 'SELECT entity_id AS case_id, occurred_at, reason FROM ' . $Db::t( 'audit_log' ) . " WHERE action = 'case.transition' AND reason LIKE %s ORDER BY id DESC LIMIT 50", '%[repair]' ),
+			'names_from_wati'  => array( 'checked' => (int) $Db::value( 'SELECT COUNT(*) FROM ' . $Db::t( 'customers' ) . ' WHERE name_checked_at IS NOT NULL' ), 'changed' => (int) $Db::value( 'SELECT COUNT(*) FROM ' . $Db::t( 'audit_log' ) . " WHERE action = 'customer.name_from_wati'" ) ),
 			'team_messages'    => (int) $Db::value( 'SELECT COUNT(*) FROM ' . $Db::t( 'messages' ) . " WHERE kind = 'team_message'" ),
 			'collections_operators' => '' !== trim( (string) $S::get( 'wati_collections_operators' ) ) ? 'מוגדר' : 'לא מוגדר: הודעה שמוקלדת ב-WATI עוצרת כל תיק אחרי המועד (גם כשכתב אותה צוות אחר). מומלץ למלא בהגדרות',
 			'finance_dashboard' => $fd::available() ? array( 'stale' => $fd::contract()['stale'], 'sync_ok_at' => $fd::contract()['sync_ok_at'], 'ledger_for_credit' => $fd::ledger_available() ) : 'לא נמצא',

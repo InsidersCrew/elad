@@ -2510,6 +2510,25 @@ $tests['R01'] = array( 'כלי האבחון roster: כל תלמיד שהדשבו
 	T::check( str_contains( (string) ( $r['not_in_dashboard'][799] ?? '' ), 'לא נמצא' ), 'a person the dashboard does not have is explained' );
 } );
 
+$tests['N01'] = array( 'השם בהודעות: מאיש הקשר ב-WATI כשיש שם שמיש, אחרת השם מפייפדרייב', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'display_only' => 1 ) );
+	T::$wati_contacts = array( '972500000811' => 'Tali Cohen', '972500000812' => '🌸🌸', '972500000899' => 'Other Person' );
+	foreach ( array( 811, 812, 813 ) as $p ) {
+		ifd_student( $p, 9000 + $p, '2026-08-01' );
+	}
+	Journey::sync();
+	T::tick();
+	$first = static fn( int $p ) => Customers::get( (int) student_case( $p )['customer_id'] )['first_name'];
+	T::eq( array( 'Tali', 'נועם', 'נועם' ), array( $first( 811 ), $first( 812 ), $first( 813 ) ), 'WATI name when usable; an emoji or no contact keeps the Pipedrive name' );
+	$body = (string) Db::value( 'SELECT body FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'j_intro'", (int) student_case( 811 )['id'] );
+	T::check( str_contains( $body, 'Tali' ), 'the first message already uses it' );
+	T::eq( 0, (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'customers' ) . ' WHERE name_checked_at IS NULL AND phone_e164 IS NOT NULL' ), 'each looked up once' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

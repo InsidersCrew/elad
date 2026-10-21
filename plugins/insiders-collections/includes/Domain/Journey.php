@@ -92,6 +92,7 @@ final class Journey {
 		$out = array( 'enabled' => self::enabled(), 'stale' => false );
 		if ( self::enabled() ) {
 			$out['enrolled'] = self::enroll_due();
+			$out['names']    = self::refresh_names(); // before the first message of a new student is rendered
 		}
 		$out['imported']  = ProgramCharges::enroll_imported( max( 1, (int) Settings::get( 'journey_batch' ) ) );
 		$out['deals']     = self::refresh_deals();
@@ -153,6 +154,45 @@ final class Journey {
 			null === $id ? ++$fail : ++$n;
 		}
 		return array( 'candidates' => count( $rows ), 'enrolled' => $n, 'failed' => $fail, 'skipped' => $skip );
+	}
+
+	/**
+	 * The first name in messages comes from the WATI contact when it has a usable one (the team keeps those
+	 * right; Pipedrive has what the lead typed). Once per customer; a name edited later by hand stays.
+	 */
+	public static function refresh_names( int $limit = 20 ): array {
+		if ( ! Settings::has_secret( 'wati_token' ) || '' === (string) Settings::get( 'wati_api_base' ) || \Insiders\Collections\Engine\Runner::integration_suspended( 'wati' ) ) {
+			return array( 'skipped' => 'wati' );
+		}
+		$rows = Db::rows(
+			'SELECT DISTINCT u.id, u.phone_e164, u.first_name FROM ' . Db::t( 'customers' ) . ' u JOIN ' . Db::t( 'cases' ) . " c ON c.customer_id = u.id
+			 WHERE c.workflow_state <> 'closed' AND u.phone_e164 IS NOT NULL AND u.phone_e164 <> '' AND u.name_checked_at IS NULL LIMIT %d",
+			$limit
+		);
+		$out = array( 'checked' => 0, 'updated' => 0, 'not_found' => 0, 'unusable' => 0 );
+		foreach ( $rows as $u ) {
+			$r = \Insiders\Collections\Integrations\Wati\Client::contact_name( (string) $u['phone_e164'] );
+			if ( ! $r['ok'] ) {
+				$out['error'] = $r['error'] ?? 'wati';
+				break; // WATI did not answer: the rest wait for the next run
+			}
+			++$out['checked'];
+			$first = (string) ( preg_split( '/\s+/u', $r['name'] )[0] ?? '' );
+			$first = trim( $first, " \t.,!?:;()\"" );
+			$usable = $r['found'] && (bool) preg_match( '/^[\p{L}\p{M}\'\-]{2,30}$/u', $first );
+			$set    = array( 'name_checked_at' => Clock::utc() );
+			if ( $usable ) {
+				if ( $first !== (string) $u['first_name'] ) {
+					$set = array_merge( $set, array( 'first_name' => $first, 'first_name_reliable' => 1, 'updated_at' => Clock::utc() ) );
+					Audit::log( 'customer.name_from_wati', 'customer', (int) $u['id'], array( 'first_name' => $u['first_name'] ), array( 'first_name' => $first ), 'השם הפרטי בהודעות נלקח מאיש הקשר ב-WATI' );
+					++$out['updated'];
+				}
+			} else {
+				++$out[ $r['found'] ? 'unusable' : 'not_found' ]; // the Pipedrive name stays (or "היי לך" when it is not a name)
+			}
+			Db::update( 'customers', $set, array( 'id' => (int) $u['id'] ) );
+		}
+		return $out;
 	}
 
 	/** Three failed contact reads today: the person is tried once a day from now on. */

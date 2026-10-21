@@ -178,6 +178,31 @@ final class Client {
 		return array( 'outcome' => Http::UNKNOWN === $r['outcome'] ? Http::RETRYABLE : $r['outcome'], 'error' => $r['error'] );
 	}
 
+	/**
+	 * The name of the WATI contact with this number, as the team saved it. Read only. Only a contact whose
+	 * number is exactly this one counts: if WATI ignored the filter, another contact's name is never taken.
+	 *
+	 * @return array{ok:bool, found:bool, name:string, error?:string}
+	 */
+	public static function contact_name( string $e164 ): array {
+		$wa = Phone::wa_id( $e164 );
+		if ( '' === $wa ) {
+			return array( 'ok' => true, 'found' => false, 'name' => '' );
+		}
+		$r = self::call( 'GET', '/api/v1/getContacts', array( 'pageSize' => '5', 'pageNumber' => '1', 'attribute' => wp_json_encode( array( array( 'name' => 'phone', 'operator' => 'contain', 'value' => $wa ) ) ) ), null, false );
+		if ( Http::OK !== $r['outcome'] || ! is_array( $r['json'] ) ) {
+			return array( 'ok' => false, 'found' => false, 'name' => '', 'error' => (string) ( $r['error'] ?? 'no json' ) );
+		}
+		foreach ( (array) ( $r['json']['contact_list'] ?? $r['json']['contacts'] ?? array() ) as $c ) {
+			$num = preg_replace( '/\D/', '', (string) ( $c['wAid'] ?? $c['phone'] ?? '' ) );
+			if ( $num === $wa ) {
+				$name = trim( (string) ( $c['fullName'] ?? $c['name'] ?? $c['firstName'] ?? '' ) );
+				return array( 'ok' => true, 'found' => true, 'name' => $name );
+			}
+		}
+		return array( 'ok' => true, 'found' => false, 'name' => '' );
+	}
+
 	/** Harmless read used by the health page. */
 	public static function ping(): array {
 		$r = self::call( 'GET', '/api/v1/getContacts', array( 'pageSize' => '1', 'pageNumber' => '1' ), null, false );
