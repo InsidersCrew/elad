@@ -1904,7 +1904,7 @@ $tests['P14'] = array( 'חיוב מהכרטיס בלי תשובה מטרנזיל
 	T::eq( 1, count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], 'credit_card/create' ) ) ), 'the charge call was made once and never repeated' );
 } );
 
-$tests['P15'] = array( 'חיוב מהכרטיס: הודעה שלא נמסרה בוואטסאפ יוצאת במייל והחיוב מתבצע, Apple Pay נוסה כברירת מחדל, בלי וואטסאפ ההודעה יוצאת במייל', function () {
+$tests['P15'] = array( 'חיוב מהכרטיס: הודעה שלא נמסרה בוואטסאפ יוצאת במייל והחיוב מתבצע, Apple Pay נוסה כשבוחרים 0, בלי וואטסאפ ההודעה יוצאת במייל', function () {
 	if ( $e = program_env() ) {
 		T::check( false, $e );
 		return;
@@ -1917,7 +1917,7 @@ $tests['P15'] = array( 'חיוב מהכרטיס: הודעה שלא נמסרה ב
 	T::tick();
 	pday( '2026-11-01', '09:30' );
 	T::tick();
-	Settings::set( array( 'cap_card_charge' => 1 ) );
+	Settings::set( array( 'cap_card_charge' => 1, 'apple_pay_token_days' => 0 ) ); // trying the Apple Pay token is now an explicit choice
 	// 673 refused WhatsApp: the notice goes by email.
 	$c3 = student_case( 673 );
 	\Insiders\Collections\Domain\Customers::set_permission( (int) $c3['customer_id'], 'whatsapp', false, 'test: asked to stop WhatsApp' );
@@ -2535,6 +2535,26 @@ $tests['N01'] = array( 'השם בהודעות: מאיש הקשר ב-WATI כשי�
 	$body = (string) Db::value( 'SELECT body FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'j_intro'", (int) student_case( 811 )['id'] );
 	T::check( str_contains( $body, 'Tali' ), 'the first message already uses it' );
 	T::eq( 0, (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'customers' ) . ' WHERE name_checked_at IS NULL AND phone_e164 IS NOT NULL' ), 'each looked up once' );
+} );
+
+$tests['A01'] = array( 'Apple Pay: כברירת מחדל ישר לקישור תשלום, בלי ניסיון חיוב מהטוקן; כלי האבחון מראה מי שילם ב-Apple Pay', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'journey_from_date' => '2026-06-01', 'cap_card_charge' => 1 ) );
+	ifd_student( 831, 9831, '2026-08-01' );
+	ifd_student( 832, 9832, '2026-08-01' );
+	T::$tranzila_tx['ap831'] = array( 'terminal' => 'insiders', 'index' => 'ap831', 'amount' => 10000, 'currency' => '1', 'processor_response_code' => '000', 'txn_type' => 'DEBIT', 'tranmode' => 'A', 'transaction_date' => '2026-08-01', 'transaction_time' => '12:00:00', 'credit_card_token' => 'Ap1a2b3c4d5e6f78311', 'expiration_month' => '12', 'expiration_year' => '29', 'broker' => 'APPLE_PAY', 'user_defined_5' => student_phone( 831 ) );
+	T::$tranzila_tx['cc832'] = array( 'terminal' => 'insiders', 'index' => 'cc832', 'amount' => 10000, 'currency' => '1', 'processor_response_code' => '000', 'txn_type' => 'DEBIT', 'tranmode' => 'A', 'transaction_date' => '2026-08-01', 'transaction_time' => '12:00:00', 'credit_card_token' => 'Zc1a2b3c4d5e6f78322', 'expiration_month' => '12', 'expiration_year' => '29', 'broker' => '', 'user_defined_5' => student_phone( 832 ) );
+	Journey::sync();
+	$found = \Insiders\Collections\Domain\CardCharge::find_card( (int) student_case( 831 )['id'], '2026-11-05' );
+	T::check( null === $found['card'] && str_contains( $found['reason'], 'Apple Pay' ), 'Apple Pay: no charge from the token, the link instead (' . $found['reason'] . ')' );
+	T::check( null !== \Insiders\Collections\Domain\CardCharge::find_card( (int) student_case( 832 )['id'], '2026-11-05' )['card'], 'an ordinary card is still charged' );
+	$m = new \ReflectionMethod( \Insiders\Collections\Admin\Diagnostics::class, 'registration_cards' );
+	$m->setAccessible( true );
+	$r = $m->invoke( null );
+	T::eq( array( array( (int) student_case( 831 )['id'] ), array( (int) student_case( 832 )['id'] ) ), array( array_column( $r['apple_pay'], 'case' ), array_column( $r['card'], 'case' ) ), 'the diagnostic splits them by how they paid' );
 } );
 
 foreach ( $tests as $id => [ $title, $fn ] ) {

@@ -60,6 +60,9 @@ final class Diagnostics {
 			case 'roster':
 				self::dump( self::roster() );
 				break;
+			case 'registration_cards':
+				self::dump( self::registration_cards() );
+				break;
 			case 'wati_contact':
 				$e164 = \Insiders\Collections\Support\Phone::e164( (string) ( $_GET['phone'] ?? '' ) );
 				if ( ! $e164 ) {
@@ -129,7 +132,7 @@ final class Diagnostics {
 
 	private static function tools(): void {
 		echo "INSIDERS Collections, כלי אבחון (" . ICOL_VERSION . ")\nסדר מומלץ אחרי העלאה: syntax → schema → health\n\n";
-		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'wati_contact' => 'השם של איש קשר ב-WATI לפי טלפון, ואיך הוא ייכתב בהודעה (עם &phone=, קריאה בלבד)', 'roster' => 'כל תלמידי התוכנית שדשבורד ההכנסות מכיר, ולמה כל אחד בליווי או לא (עם &from=YYYY-MM-DD, &persons=מזהים מפייפדרייב)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
+		foreach ( array( 'genkey' => 'יצירת מפתח הצפנה ל-wp-config.php (פעם אחת, לפני חיבור ספקים)', 'syntax' => 'בדיקת תחביר לכל קבצי התוסף (token_get_all)', 'schema' => 'טבלאות ומנוע InnoDB', 'health' => 'חותמות זמן, תורים וחיבורים', 'gate' => 'שער הסריקה: בעל המערכת, טלפונים וחיבורים', 'revenue_probe' => 'מה תוסף דשבורד ההכנסות חושף באתר', 'revenue_candidates' => 'מועמדים לפי המיפוי הנוכחי', 'program' => 'תוכנית למתחילים: הגדרות, מחירון, תווית, ומי ייכנס לליווי (בלי לכתוב דבר)', 'wati_contact' => 'השם של איש קשר ב-WATI לפי טלפון, ואיך הוא ייכתב בהודעה (עם &phone=, קריאה בלבד)', 'registration_cards' => 'איך שילמו את דמי הרישום (Apple Pay או כרטיס) התלמידים שהמועד שלהם הכי קרוב, מדוח העסקאות של טרנזילה (עם &limit=, קריאה בלבד)', 'roster' => 'כל תלמידי התוכנית שדשבורד ההכנסות מכיר, ולמה כל אחד בליווי או לא (עם &from=YYYY-MM-DD, &persons=מזהים מפייפדרייב)', 'tranzila_auth' => 'בדיקת חתימת HMAC מול קריאה בטוחה (שתי האפשרויות)', 'tranzila_txn' => 'עסקה מדוח העסקאות: האם יש טוקן ותוקף (עם &index= או &from=&to=, קריאה בלבד)', 'tranzila_samples' => 'חמש ההודעות האחרונות שהתקבלו מטרנזילה, בלי פרטי כרטיס', 'card_charge_stats' => 'חיובים מהכרטיס השמור: הצלחות וסירובים, Apple Pay מול כרטיס רגיל', 'cashflow' => 'תזרים צפוי כפי שדשבורד ההכנסות מקבל אותו (עם &sync=1 מושך עכשיו מטרנזילה)', 'wati_ping' => 'קריאה בטוחה ל-WATI', 'tick' => 'הרצת מחזור עבודה אחד עכשיו' ) as $t => $label ) {
 			echo str_pad( $t, 20 ) . $label . "\n  " . self::link( $t ) . "\n";
 		}
 	}
@@ -257,6 +260,51 @@ final class Diagnostics {
 			'not_in_dashboard' => $extra ?: 'אפשר להוסיף &persons= עם מזהי אנשי קשר מפייפדרייב של תלמידים שחסרים, כדי לראות למה',
 			'students'     => $rows,
 		);
+	}
+
+	/**
+	 * How the registration fee was paid (Apple Pay or a card) by the open program students whose deadline is
+	 * nearest, from Tranzila's transaction report. Read only: one report query per student.
+	 */
+	private static function registration_cards(): array {
+		$Db    = \Insiders\Collections\Support\Db::class;
+		$limit = max( 1, min( 60, (int) ( $_GET['limit'] ?? 20 ) ) );
+		$rows  = $Db::rows(
+			'SELECT c.id, c.phase, c.workflow_state, u.full_name, u.phone_e164, a.signed_at, a.joined_at, a.account_open_deadline FROM ' . $Db::t( 'cases' ) . ' c JOIN ' . $Db::t( 'customers' ) . ' u ON u.id = c.customer_id JOIN ' . $Db::t( 'agreements' ) . " a ON a.id = c.agreement_id
+			 WHERE c.source_type = 'non_open_charge' AND c.workflow_state <> 'closed' AND a.no_registration_fee = 0 ORDER BY a.account_open_deadline, c.id LIMIT %d",
+			$limit
+		);
+		$terminal = (string) \Insiders\Collections\Support\Settings::get( 'tranzila_registration_terminal', 'insiders' );
+		$apple    = array();
+		$card     = array();
+		$none     = array();
+		foreach ( $rows as $r ) {
+			$signed = $r['signed_at'] ?: $r['joined_at'];
+			$line   = array( 'case' => (int) $r['id'], 'name' => (string) $r['full_name'], 'deadline' => (string) $r['account_open_deadline'], 'state' => \Insiders\Collections\Domain\Workflow::label( $r['workflow_state'] ) );
+			if ( ! $signed || empty( $r['phone_e164'] ) ) {
+				$none[] = $line + array( 'why' => 'אין תאריך הסכם או טלפון' );
+				continue;
+			}
+			$from = gmdate( 'Y-m-d', strtotime( $signed . ' UTC' ) - 10 * DAY_IN_SECONDS );
+			$to   = min( \Insiders\Collections\Support\Clock::today(), gmdate( 'Y-m-d', strtotime( $signed . ' UTC' ) + 40 * DAY_IN_SECONDS ) );
+			$res  = Tranzila::card_payments_by_phone( $terminal, (string) $r['phone_e164'], $from, $to );
+			if ( ! $res['ok'] ) {
+				$none[] = $line + array( 'why' => 'דוח העסקאות לא זמין: ' . $res['error'] );
+				continue;
+			}
+			if ( ! $res['rows'] ) {
+				$none[] = $line + array( 'why' => 'לא נמצא תשלום בכרטיס סביב תאריך ההסכם' );
+				continue;
+			}
+			$p    = $res['rows'][0];
+			$line = $line + array( 'paid_on' => substr( (string) $p['date'], 0, 10 ), 'amount' => number_format( (int) $p['amount_minor'] / 100, 2 ), 'transaction' => (string) $p['index'] );
+			if ( 'APPLE_PAY' === $p['broker'] ) {
+				$apple[] = $line;
+			} else {
+				$card[] = $line + array( 'expiry' => (string) $p['expiry'] );
+			}
+		}
+		return array( 'checked' => count( $rows ), 'apple_pay' => $apple, 'card' => $card, 'not_found' => $none );
 	}
 
 	private static function program(): array {
