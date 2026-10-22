@@ -48,6 +48,40 @@ final class Classifier {
 		Outbox::enqueue( 'ai_suggest', 'message', $message_id, 'ai_suggest:' . $message_id, array( 'case_id' => $case_id, 'message_id' => $message_id ) );
 	}
 
+	/** Diagnostics: one tiny request with the saved key and model. Nothing is stored. */
+	public static function ping(): array {
+		$key = Settings::secret( 'anthropic_api_key' );
+		if ( '' === $key ) {
+			return array( 'ok' => false, 'error' => 'אין מפתח שמור (לשונית חיבורים)' );
+		}
+		if ( ! self::sdk_available() ) {
+			return array( 'ok' => false, 'error' => 'ספריית ה-SDK חסרה בתיקיית vendor של התוסף' );
+		}
+		$started = microtime( true );
+		try {
+			$factory  = new \Nyholm\Psr7\Factory\Psr17Factory();
+			$client   = new \Anthropic\Client(
+				apiKey: $key,
+				requestOptions: \Anthropic\RequestOptions::with(
+					transporter: new WpHttpClient(),
+					uriFactory: $factory,
+					streamFactory: $factory,
+					requestFactory: $factory,
+				),
+			);
+			$response = $client->beta->messages->create(
+				maxTokens: 16,
+				messages: array( array( 'role' => 'user', 'content' => 'Reply with the single word: ok' ) ),
+				model: (string) Settings::get( 'ai_model' ),
+				fallbacks: 'default',
+				betas: array( 'server-side-fallback-2026-07-01' ),
+			);
+		} catch ( \Throwable $e ) {
+			return array( 'ok' => false, 'model' => (string) Settings::get( 'ai_model' ), 'error' => mb_substr( $e->getMessage(), 0, 300 ) );
+		}
+		return array( 'ok' => true, 'model' => (string) ( $response->model ?? Settings::get( 'ai_model' ) ), 'stop_reason' => (string) ( $response->stopReason ?? '' ), 'ms' => (int) round( ( microtime( true ) - $started ) * 1000 ) );
+	}
+
 	/** Outbox handler. Returns an outbox outcome array. */
 	public static function suggest( int $case_id, int $message_id ): array {
 		if ( ! Settings::on( 'cap_ai_suggestions' ) ) {

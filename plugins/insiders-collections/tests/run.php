@@ -2631,6 +2631,15 @@ $tests['T01'] = array( 'משימה מהמייל: הקישור פותח את המ
 	T::check( $m && str_contains( (string) $m['message'], '#/cases/' . $case ) && str_contains( (string) $m['message'], 'תלמיד/ה:' ), 'the email names the student and links the case' );
 } );
 
+$tests['AI1'] = array( 'כלי האבחון ai_ping: בקשה קטנה עם המפתח השמור; מפתח שנדחה מדווח כשגיאה', function () {
+	Settings::set_secret( 'anthropic_api_key', 'sk-ant-test' );
+	T::$ai_reply = 'ok';
+	$yes = \Insiders\Collections\Integrations\Ai\Classifier::ping();
+	T::$fail_next['api.anthropic.com'] = '401';
+	$no = \Insiders\Collections\Integrations\Ai\Classifier::ping();
+	T::eq( array( true, false ), array( $yes['ok'], $no['ok'] ), 'a working key answers; a refused one says so (' . mb_substr( (string) ( $no['error'] ?? '' ), 0, 80 ) . ')' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );
