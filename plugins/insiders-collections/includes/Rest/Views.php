@@ -312,8 +312,15 @@ final class Views {
 	}
 
 	public static function tasks( \WP_REST_Request $r ): array {
-		$mine = 'me' === Http::str( $r, 'owner' );
-		$rows = Db::rows( 'SELECT t.*, u.full_name FROM ' . Db::t( 'tasks' ) . ' t LEFT JOIN ' . Db::t( 'customers' ) . " u ON u.id = t.customer_id WHERE t.status = 'open'" . ( $mine ? ' AND (t.assigned_to = %d OR t.assigned_to IS NULL)' : '' ) . ' ORDER BY t.priority = "high" DESC, t.due_at LIMIT 300', ...( $mine ? array( get_current_user_id() ) : array() ) );
+		$one  = Http::int( $r, 'id' );
+		// A rep sees their own tasks and the general queue; whoever manages the system sees every open task.
+		$mine = 'me' === Http::str( $r, 'owner' ) && ! current_user_can( 'icol_admin' ) && ! current_user_can( 'manage_options' );
+		if ( $one ) {
+			// The link in an alert email: that task, whoever it is assigned to and whatever its status.
+			$rows = Db::rows( 'SELECT t.*, u.full_name FROM ' . Db::t( 'tasks' ) . ' t LEFT JOIN ' . Db::t( 'customers' ) . ' u ON u.id = t.customer_id WHERE t.id = %d', $one );
+		} else {
+			$rows = Db::rows( 'SELECT t.*, u.full_name FROM ' . Db::t( 'tasks' ) . ' t LEFT JOIN ' . Db::t( 'customers' ) . " u ON u.id = t.customer_id WHERE t.status = 'open'" . ( $mine ? ' AND (t.assigned_to = %d OR t.assigned_to IS NULL)' : '' ) . ' ORDER BY t.priority = "high" DESC, t.due_at LIMIT 300', ...( $mine ? array( get_current_user_id() ) : array() ) );
+		}
 		return array_map(
 			static function ( $t ) {
 				$t['type_label'] = Tasks::TYPES[ $t['type'] ]['label'] ?? $t['type'];

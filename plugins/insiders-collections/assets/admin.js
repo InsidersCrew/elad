@@ -283,6 +283,7 @@
 		if (r.path === '/cards') { return viewCards(); }
 		if (r.path === '/candidates') { return viewCandidates(); }
 		if (r.path.indexOf('/program') === 0) { return viewProgram(r.path.split('/')[2] || 'queue'); }
+		if ((m = r.path.match(/^\/tasks\/(\d+)$/))) { return viewTasks(Number(m[1])); }
 		if (r.path.indexOf('/tasks') === 0) { return viewTasks(); }
 		if (r.path.indexOf('/settings') === 0) { return viewSettings(r.path.split('/')[2] || 'health'); }
 		if (r.path === '/security') { return viewSecurity(); }
@@ -1032,10 +1033,22 @@
 	}
 
 	/* ---------- tasks ---------- */
-	function viewTasks() {
-		api.get('/tasks', { owner: 'me' }).then(function (rows) {
+	function viewTasks(one) {
+		Promise.all([api.get('/tasks', { owner: 'me' }), one ? api.get('/tasks', { id: one }) : Promise.resolve([])]).then(function (res) {
+			var rows = res[0], picked = res[1][0];
 			clear(page);
-			add(page, pageHead('המשימות שלי', 'משימות שהוקצו לי ומשימות בתור הכללי.'));
+			add(page, pageHead('משימות', 'משימות פתוחות. מנהל רואה את כל המשימות, נציג רואה את שלו ואת התור הכללי.'));
+			if (one && !picked) { add(page, h('div', { class: 'icol-banner warn', text: 'משימה #' + one + ' לא נמצאה.' })); }
+			if (picked) {
+				add(page, h('div', { class: 'icol-card', style: 'margin-bottom:12px' },
+					h('h3', { text: 'משימה #' + picked.id + ': ' + picked.type_label + (picked.status !== 'open' ? ' (בוצעה)' : '') }),
+					h('p', { text: picked.reason || '' }),
+					h('div', { class: 'muted', text: 'יעד: ' + picked.due_local + ' · אחראי: ' + (picked.assignee || 'תור כללי') }),
+					h('div', { class: 'icol-actions', style: 'margin-top:10px' },
+						picked.case_id ? h('a', { class: 'icol-btn', href: '#/cases/' + picked.case_id, text: 'לתיק' + (picked.full_name ? ': ' + picked.full_name : ' #' + picked.case_id) }) : null,
+						picked.status === 'open' && picked.type !== 'card_update' ? h('button', { class: 'icol-btn primary', text: 'בוצע', onclick: function () { completeTask(picked.id, route); } }) : null)));
+				rows = rows.filter(function (t) { return t.id !== picked.id; });
+			}
 			add(page, table([
 				['type', 'סוג', function (t) { return h('span', {}, t.type_label, t.repeat_count > 0 ? h('span', { class: 'sub', text: 'התראה חוזרת ×' + t.repeat_count }) : null); }],
 				['customer', 'לקוח', function (t) { return t.case_id ? h('a', { href: '#/cases/' + t.case_id, text: t.full_name || ('תיק #' + t.case_id) }) : (t.full_name || null); }],

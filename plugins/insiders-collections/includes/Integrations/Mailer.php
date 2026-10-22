@@ -18,7 +18,8 @@ final class Mailer {
 			return array( 'outcome' => Http::PERMANENT, 'error' => 'no task or recipient' );
 		}
 		$label = Tasks::TYPES[ $t['type'] ]['label'] ?? $t['type'];
-		$body  = $label . "\n" . preg_replace( '/\b\d{8,}\b/', '•••', (string) $t['reason'] ) . "\n\nמועד יעד: " . Clock::display( $t['due_at'] ) . "\nלפתיחת המשימה: " . admin_url( 'admin.php?page=icol#/tasks/' . $task_id );
+		$who   = $t['customer_id'] ? (string) Db::value( 'SELECT full_name FROM ' . Db::t( 'customers' ) . ' WHERE id = %d', (int) $t['customer_id'] ) : '';
+		$body  = $label . ( '' !== $who ? "\nתלמיד/ה: " . $who : '' ) . ( $t['case_id'] ? ' (תיק #' . (int) $t['case_id'] . ')' : '' ) . "\n" . preg_replace( '/\b\d{8,}\b/', '•••', (string) $t['reason'] ) . "\n\nמועד יעד: " . Clock::display( $t['due_at'] ) . "\nלפתיחת המשימה: " . admin_url( 'admin.php?page=icol#/tasks/' . $task_id ) . ( $t['case_id'] ? "\nלתיק: " . admin_url( 'admin.php?page=icol#/cases/' . (int) $t['case_id'] ) : '' );
 		$ok    = wp_mail( $to, '[INSIDERS תשלומים] ' . $label, $body );
 		return array( 'outcome' => $ok ? Http::OK : Http::RETRYABLE, 'error' => $ok ? '' : 'wp_mail returned false' );
 	}

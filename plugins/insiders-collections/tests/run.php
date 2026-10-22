@@ -2618,6 +2618,19 @@ $tests['P29'] = array( 'רכש קורס מתקדם (מוצר בדיל התוכנ
 	T::check( str_contains( (string) student_case( 862 )['state_reason'], 'קורס מתקדם' ), 'with the reason on the case' );
 } );
 
+$tests['T01'] = array( 'משימה מהמייל: הקישור פותח את המשימה גם כשהיא של נציג אחר, והמייל כולל את שם התלמיד וקישור לתיק', function () {
+	[ $c, $case ] = program_case();
+	$rep = wp_insert_user( array( 'user_login' => 'rep_t01', 'user_pass' => wp_generate_password(), 'role' => 'subscriber' ) );
+	$tid = \Insiders\Collections\Domain\Tasks::open( 'deal_lost:t01', 'deal_lost', array( 'case_id' => $case, 'customer_id' => $c, 'assigned_to' => $rep, 'reason' => 'הדיל סומן lost בפייפדרייב עם הסיבה "אין כסף"' ) );
+	T::as_admin();
+	T::eq( array( $tid ), array_map( 'intval', array_column( T::api( 'GET', '/tasks', array( 'id' => $tid ) )->get_data(), 'id' ) ), 'the task by its id' );
+	T::check( in_array( $tid, array_map( 'intval', array_column( T::api( 'GET', '/tasks', array( 'owner' => 'me' ) )->get_data(), 'id' ) ), true ), 'an admin sees it in the list, though it is assigned to a rep' );
+	Settings::set( array( 'alert_email' => 'alerts@example.test' ) );
+	\Insiders\Collections\Integrations\Mailer::task_alert( $tid );
+	$m = end( T::$mails );
+	T::check( $m && str_contains( (string) $m['message'], '#/cases/' . $case ) && str_contains( (string) $m['message'], 'תלמיד/ה:' ), 'the email names the student and links the case' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );
