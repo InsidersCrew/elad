@@ -225,6 +225,15 @@ final class Journey {
 			self::candidate_row( $pc, $r, $key, 'drafted', (array) ( $pc ? json_decode( (string) $pc['snapshot'], true ) : $r ), $existing, $source );
 			return null;
 		}
+		if ( $deal && self::excluded_products() ) {
+			$prod = Pipedrive::deal_products( array( $deal ) );
+			$hit  = array_intersect( $prod['products'][ $deal ] ?? array(), self::excluded_products() );
+			if ( $prod['ok'] && $hit ) {
+				self::candidate_row( $pc, $r, $key, 'dismissed', (array) ( $pc ? json_decode( (string) $pc['snapshot'], true ) : $r ), null, $source );
+				Audit::log( 'journey.skip_product', 'candidate', 0, null, array( 'deal' => $deal, 'products' => array_values( $hit ) ), 'רכש קורס מתקדם: לא נכנס לתוכנית' );
+				return null;
+			}
+		}
 		$same_person = $person ? (int) Db::value( 'SELECT c.id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'customers' ) . " u ON u.id = c.customer_id WHERE u.pipedrive_person_id = %d AND c.source_type = 'non_open_charge' AND c.phase = 'commitment' AND c.workflow_state <> 'closed' LIMIT 1", $person ) : 0;
 		if ( $same_person ) {
 			// Two enrollment deals for one student would mean two journeys at once: a person decides. The candidate
@@ -395,6 +404,8 @@ final class Journey {
 		if ( ! $res['ok'] && ! $res['deals'] ) {
 			return array( 'deals' => 0, 'error' => $res['error'] ?? '' );
 		}
+		$excl    = self::excluded_products();
+		$prods   = $excl ? Pipedrive::deal_products( array_column( $rows, 'pipedrive_deal_id' ) ) : array( 'ok' => false, 'products' => array() );
 		$label   = Pipedrive::label_id( (string) Settings::get( 'no_registration_label' ) );
 		$reasons = self::declined_reasons();
 		$keep    = self::reasons( 'journey_keep_lost_reasons' );
@@ -428,6 +439,11 @@ final class Journey {
 					Db::update( 'cases', array( 'owner_id' => $owner ), array( 'id' => (int) $r['case_id'] ) );
 				}
 			}
+			$hit = array_intersect( $prods['products'][ (int) $r['pipedrive_deal_id'] ] ?? array(), $excl );
+			if ( $hit && self::leave_program( (int) $r['case_id'], array_values( $hit ) ) ) {
+				++$lost;
+				continue;
+			}
 			if ( $stop && in_array( (int) $d['stage_id'], $stop, true ) && self::hold_for_person( (int) $r['case_id'], 'הדיל נמצא בפייפדרייב בשלב שעוצר את הליווי (למשל ביטול אחרי רכישה)', 'אם הביטול סופי, לסגור את התיק. אם התלמיד ממשיך בתוכנית, להחזיר את הדיל לשלב רגיל ולחדש את התיק.' ) ) {
 				++$lost;
 				continue;
@@ -457,6 +473,27 @@ final class Journey {
 		);
 	}
 
+	/**
+	 * Bought the advanced course: out of the program. Nothing approved yet: the case closes. A charge already
+	 * approved (money may be on its way) is a person's call: the case stops and a task says why.
+	 */
+	private static function leave_program( int $case_id, array $products ): bool {
+		$case = Workflow::get( $case_id );
+		if ( ! $case || 'closed' === $case['workflow_state'] ) {
+			return false;
+		}
+		$why      = 'בדיל התוכנית יש מוצר של קורס מתקדם (' . implode( ',', $products ) . ')';
+		$approved = (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d AND approved_at IS NOT NULL', $case_id );
+		if ( $approved ) {
+			return self::hold_for_person( $case_id, $why . ', אבל החיוב כבר אושר', 'לבדוק אם לבטל את החיוב (זיכוי או ביטול הפריט) ולסגור את התיק.' );
+		}
+		Scheduler::cancel_for_case( $case_id, 'advanced_course' );
+		Db::exec( 'DELETE FROM ' . Db::t( 'debt_items' ) . ' WHERE case_id = %d AND approved_at IS NULL', $case_id );
+		Workflow::transition( $case_id, 'closed', 'רכש קורס מתקדם: יצא מהתוכנית למתחילים (' . $why . ')', null, array(), 'journey' );
+		Db::exec( 'UPDATE ' . Db::t( 'program_candidates' ) . " SET status = 'dismissed', note = %s, updated_at = %s WHERE case_id = %d", 'רכש קורס מתקדם', Clock::utc(), $case_id );
+		return true;
+	}
+
 	/** Stop the messages and give the case to a person, once per case (a resumed case stays resumed). */
 	private static function hold_for_person( int $case_id, string $why, string $todo ): bool {
 		$case = Workflow::get( $case_id );
@@ -482,6 +519,11 @@ final class Journey {
 			)
 		);
 		return true;
+	}
+
+	/** Product ids that take a student out of the program (the advanced course on the program deal). */
+	public static function excluded_products(): array {
+		return array_values( array_filter( array_map( 'intval', preg_split( '/[\s,]+/', (string) Settings::get( 'journey_exclude_products' ) ) ) ) );
 	}
 
 	private static function norm( string $s ): string {

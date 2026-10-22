@@ -91,6 +91,7 @@ final class Settings {
 		'journey_from_date'              => '',  // empty = the dashboard's baseline (1.8); an earlier date includes students who joined before it
 		'journey_stop_stages'            => '', // a deal in one of these stages (any pipeline) stops the journey and goes to a person
 		'journey_restart_spread_minutes' => 3, // minutes between the first live messages when real sending starts
+		'journey_exclude_products'       => '2,3,4,24,25', // Pipedrive product ids on the program deal: bought the advanced course, out of the program
 		'journey_keep_lost_reasons'      => 'אין מענה', // lost for these reasons: the messages go on as if the deal were open
 		'cashflow_sync'                  => 1,   // read-only: the STO book and monthly totals for the finance dashboard's forecast
 		'program_auto_charge_on_pay_request' => 0, // "אני רוצה לשלם": approve and send the link at once, without a person

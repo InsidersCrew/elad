@@ -32,6 +32,7 @@ final class T {
 	public static ?string $ai_reply = null;
 	public static array $pd_persons = array(); // person_id => v2 person
 	public static array $pd_deals = array();   // deal_id => v2 deal
+	public static array $pd_products = array(); // deal_id => product ids
 	public static array $pd_labels = array( array( 'id' => 55, 'label' => 'ללא דמי רישום' ), array( 'id' => 56, 'label' => 'VIP' ) );
 
 	public static function reset(): void {
@@ -53,6 +54,7 @@ final class T {
 		self::$fail_next = array();
 		self::$pd_persons = array();
 		self::$pd_deals   = array();
+		self::$pd_products = array();
 		\Insiders\Collections\Integrations\RevenueDashboard\FinanceDashboard::flush();
 		Clock::freeze( Clock::local_to_ts( '2026-10-11', '10:00' ) ); // Sunday, business day
 		Settings::set(
@@ -346,6 +348,16 @@ add_filter(
 		if ( false !== strpos( $url, 'wati.test' ) ) {
 			++T::$wati_seq;
 			return $json( array( 'result' => true, 'receivers' => array( array( 'localMessageId' => 'wati-' . T::$wati_seq, 'waId' => '972501234567', 'isValidWhatsAppNumber' => true ) ) ) );
+		}
+		if ( false !== strpos( $url, 'pipedrive' ) && false !== strpos( $url, '/api/v2/deals/products' ) ) {
+			parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $qq );
+			$data = array();
+			foreach ( array_filter( array_map( 'intval', explode( ',', (string) ( $qq['deal_ids'] ?? '' ) ) ) ) as $d ) {
+				foreach ( T::$pd_products[ $d ] ?? array() as $pid ) {
+					$data[] = array( 'id' => $d * 100 + $pid, 'deal_id' => $d, 'product_id' => $pid );
+				}
+			}
+			return $json( array( 'success' => true, 'data' => $data ) );
 		}
 		if ( false !== strpos( $url, 'pipedrive' ) && false !== strpos( $url, '/api/v2/stages' ) ) {
 			return $json( array( 'success' => true, 'data' => array( array( 'id' => 40, 'name' => 'הצטרף' ), array( 'id' => 77, 'name' => 'ביטל לאחר רכישה' ) ) ) );

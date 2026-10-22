@@ -424,6 +424,8 @@ final class Diagnostics {
 					'deal'           => $deal,
 					'as_read'        => $r['deals'][ $deal ] ?? ( 'לא חזר מפייפדרייב' . ( empty( $r['error'] ) ? '' : ': ' . $r['error'] ) ),
 					'pipedrive_raw'  => \Insiders\Collections\Integrations\Pipedrive\Client::raw_deal_fields( $deal ),
+					'products'       => \Insiders\Collections\Integrations\Pipedrive\Client::deal_products( array( $deal ) ),
+					'excluded_products' => \Insiders\Collections\Domain\Journey::excluded_products(),
 					'stored_and_case' => $case ?: 'אין תיק לדיל הזה',
 				);
 			} )(),

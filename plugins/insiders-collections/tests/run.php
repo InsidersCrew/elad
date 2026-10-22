@@ -2597,6 +2597,23 @@ $tests['P28'] = array( 'שינוי "ימים לפני המועד" אחרי שה�
 	T::eq( '2026-11-12', substr( (string) ( pending_journey( (int) $c['id'] )['local'] ?? '' ), 0, 10 ), 'planned again for the new day' );
 } );
 
+$tests['P29'] = array( 'רכש קורס מתקדם (מוצר בדיל התוכנית): לא נכנס לליווי, ותיק פתוח נסגר', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	T::$pd_products = array( 9861 => array( 7, 24 ) );           // advanced course before enrollment
+	ifd_student( 861, 9861, '2026-08-01' );
+	ifd_student( 862, 9862, '2026-08-01' );
+	Journey::sync();
+	T::eq( array( null, true ), array( student_case( 861 ), (bool) student_case( 862 ) ), 'the advanced-course student does not enter; the other does' );
+	T::$pd_products[9862] = array( 3 );                           // bought it after enrolling
+	Runner::beat( 'journey', 'attempt' );
+	Journey::sync();
+	T::eq( array( 'closed', 0 ), array( student_case( 862 )['workflow_state'], T::count( 'scheduled_actions', 'case_id = ' . (int) student_case( 862 )['id'] . " AND state = 'pending'" ) ), 'an open case closes, nothing planned' );
+	T::check( str_contains( (string) student_case( 862 )['state_reason'], 'קורס מתקדם' ), 'with the reason on the case' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

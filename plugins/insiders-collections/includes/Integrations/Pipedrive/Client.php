@@ -185,6 +185,50 @@ final class Client {
 		);
 	}
 
+	/**
+	 * Product ids attached to each deal. API v2 answers for many deals at once; when it does not (an older
+	 * account), API v1 is asked per deal, at most 25 a call (the rest on the next run).
+	 *
+	 * @return array{ok:bool, error?:string, products:array<int,int[]>}
+	 */
+	public static function deal_products( array $ids ): array {
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+		if ( ! self::configured() || ! $ids ) {
+			return array( 'ok' => self::configured(), 'error' => self::configured() ? '' : 'Pipedrive לא מחובר', 'products' => array() );
+		}
+		$pid = static fn( $row ) => (int) ( $row['product_id'] ?? ( is_array( $row['product'] ?? null ) ? ( $row['product']['id'] ?? 0 ) : 0 ) );
+		$out = array();
+		$v2  = true;
+		foreach ( array_chunk( $ids, 100 ) as $chunk ) {
+			$r = Http::request( 'GET', add_query_arg( array( 'deal_ids' => implode( ',', $chunk ), 'limit' => 500, 'api_token' => Settings::secret( 'pipedrive_token' ) ), self::base() . '/api/v2/deals/products' ) );
+			if ( Http::OK !== $r['outcome'] || ! is_array( $r['json']['data'] ?? null ) ) {
+				$v2 = false;
+				break;
+			}
+			foreach ( $chunk as $d ) {
+				$out[ $d ] = array();
+			}
+			foreach ( $r['json']['data'] as $row ) {
+				$deal = (int) ( $row['deal_id'] ?? 0 );
+				if ( $deal && $pid( $row ) ) {
+					$out[ $deal ][] = $pid( $row );
+				}
+			}
+		}
+		if ( $v2 ) {
+			return array( 'ok' => true, 'products' => $out );
+		}
+		$out = array();
+		foreach ( array_slice( $ids, 0, 25 ) as $d ) {
+			$r = Http::request( 'GET', add_query_arg( array( 'api_token' => Settings::secret( 'pipedrive_token' ) ), self::base() . '/api/v1/deals/' . $d . '/products' ) );
+			if ( Http::OK !== $r['outcome'] || ! is_array( $r['json'] ) || empty( $r['json']['success'] ) ) {
+				return array( 'ok' => false, 'error' => $r['error'] ?: 'products not read', 'products' => $out );
+			}
+			$out[ $d ] = array_values( array_filter( array_map( $pid, (array) ( $r['json']['data'] ?? array() ) ) ) );
+		}
+		return array( 'ok' => true, 'products' => $out );
+	}
+
 	/** Diagnostics: the status and lost fields of one deal exactly as Pipedrive v2 returns them. */
 	public static function raw_deal_fields( int $id ): array {
 		if ( ! self::configured() ) {
