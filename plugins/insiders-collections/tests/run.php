@@ -2477,6 +2477,7 @@ $tests['L01'] = array( 'שיגור מדורג: רק המספרים ברשימה 
 	Settings::set( array( 'display_only' => 1 ) );
 	ifd_student( 781, 9781, '2026-08-01' );
 	ifd_student( 782, 9782, '2026-08-01' );
+	ifd_student( 783, 9783, '2026-08-01' );
 	Journey::sync();
 	T::tick();
 	$in  = student_case( 781 );
@@ -2490,12 +2491,15 @@ $tests['L01'] = array( 'שיגור מדורג: רק המספרים ברשימה 
 	T::eq( 1, count( $sent ), 'one real message went out' );
 	T::check( $sent && str_contains( $sent[0]['url'], $wa_in ), 'to the number on the list' );
 	T::eq( array( 1, 0 ), array( T::count( 'messages', 'case_id = ' . (int) $in['id'] . " AND template_key = 'j_intro' AND delivery_state NOT IN ('simulated','cancelled','failed')" ), T::count( 'messages', 'case_id = ' . (int) $out['id'] . " AND delivery_state NOT IN ('simulated','cancelled','failed','draft')" ) ), 'the other student only simulated, as in the measurement' );
-	T::api( 'POST', '/settings', array( 'settings' => array( 'live_allowlist' => '' ) ) );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'live_allowlist' => student_phone( 781 ) . ',' . student_phone( 782 ) ) ) );
 	$c = student_case( 782 );
-	T::eq( array( null, 'j_intro' ), array( $c['track_step'], pending_journey( (int) $c['id'] )['step'] ?? null ), 'emptying the list: the others start from the first message, for real' );
+	T::eq( array( null, 'j_intro' ), array( $c['track_step'], pending_journey( (int) $c['id'] )['step'] ?? null ), 'adding a number: that student starts from the first message, for real' );
 	T::settle( 3 );
 	T::eq( 1, T::count( 'messages', 'case_id = ' . (int) $c['id'] . " AND template_key = 'j_intro' AND delivery_state NOT IN ('simulated','cancelled','failed')" ), 'and get it' );
 	T::eq( 1, T::count( 'messages', 'case_id = ' . (int) $in['id'] . " AND template_key = 'j_intro' AND delivery_state NOT IN ('simulated','cancelled','failed')" ), 'the first student does not get the intro twice' );
+	T::eq( 'j_intro', student_case( 783 )['track_step'], 'a number still outside the list keeps its simulated track' );
+	T::api( 'POST', '/settings', array( 'settings' => array( 'live_allowlist' => '' ) ) );
+	T::eq( array( null, 'j_intro' ), array( student_case( 783 )['track_step'], pending_journey( (int) student_case( 783 )['id'] )['step'] ?? null ), 'emptying the list: everyone else starts from the first message' );
 } );
 
 $tests['R01'] = array( 'כלי האבחון roster: כל תלמיד שהדשבורד מכיר, ולמה הוא בליווי או לא', function () {

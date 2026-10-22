@@ -305,8 +305,11 @@ final class Api {
 	 * on, kill switch off (by whichever was last), or the staged go-live list emptied (everyone now).
 	 */
 	private static function after_mode_change( string $before, array $list_before = array() ): void {
-		$live = 'live' === \Insiders\Collections\Domain\SendGuard::mode();
-		if ( $live && ( 'simulate' === $before || ( $list_before && ! \Insiders\Collections\Domain\SendGuard::allowlist() ) ) ) {
+		$live  = 'live' === \Insiders\Collections\Domain\SendGuard::mode();
+		$after = \Insiders\Collections\Domain\SendGuard::allowlist();
+		// Numbers added to the staged list, or the list emptied: those students start from their first message.
+		$grew  = $list_before && ( ! $after || array_diff( $after, $list_before ) );
+		if ( $live && ( 'simulate' === $before || $grew ) ) {
 			\Insiders\Collections\Domain\Journey::restart_after_measurement();
 		}
 	}

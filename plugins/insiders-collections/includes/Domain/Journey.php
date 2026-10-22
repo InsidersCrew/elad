@@ -1088,6 +1088,9 @@ final class Journey {
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))
 			 ORDER BY a.account_open_deadline IS NULL, a.account_open_deadline, c.id"
 		);
+		// A staged go-live: only the students now getting real messages start again; the others keep their
+		// simulated track until their number is added or the list is emptied (each calls this again).
+		$rows = array_values( array_filter( $rows, static fn( $r ) => SendGuard::allowed( (int) $r['customer_id'] ) ) );
 		// Not all at once: the first live messages leave a few minutes apart (WATI rate, and the replies
 		// that come back reach the reps gradually).
 		$spread = max( 1, (int) Settings::get( 'journey_restart_spread_minutes' ) ) * MINUTE_IN_SECONDS;
@@ -1106,16 +1109,20 @@ final class Journey {
 			}
 		}
 		// After the deadline: a debt case whose reminders were all simulated starts from its first reminder.
-		foreach ( Db::rows( 'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'charge' AND c.workflow_state = 'human_review' AND c.state_reason = %s
+		foreach ( Db::rows( 'SELECT c.id, c.customer_id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'charge' AND c.workflow_state = 'human_review' AND c.state_reason = %s
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))", 'שלוש פניות ללא תשובה, העברה לנציג' ) as $r ) {
+			if ( ! SendGuard::allowed( (int) $r['customer_id'] ) ) {
+				continue;
+			}
 			// "Three messages, no answer": none of them was real.
 			Workflow::transition( (int) $r['id'], 'active', 'השליחה האמיתית התחילה: הפניות הקודמות היו מדומות', null, array(), 'journey' );
 			Tasks::close_by_key( 'no_reply:' . $r['id'], 'הפניות היו מדומות, הרצף מתחיל מחדש' );
 		}
 		$charge = Db::rows(
-			'SELECT c.id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'charge' AND c.workflow_state IN ('active','waiting_reply') AND c.sequence_step > 0
+			'SELECT c.id, c.customer_id FROM ' . Db::t( 'cases' ) . " c WHERE c.phase = 'charge' AND c.workflow_state IN ('active','waiting_reply') AND c.sequence_step > 0
 			 AND NOT EXISTS (SELECT 1 FROM " . Db::t( 'messages' ) . " m WHERE m.case_id = c.id AND m.direction = 'out' AND m.counts_toward_quota = 1 AND m.delivery_state NOT IN ('simulated','failed','cancelled','draft'))"
 		);
+		$charge = array_values( array_filter( $charge, static fn( $r ) => SendGuard::allowed( (int) $r['customer_id'] ) ) );
 		foreach ( $charge as $r ) {
 			Scheduler::cancel_for_case( (int) $r['id'], 'measurement_ended' );
 			Db::update( 'cases', array( 'sequence_step' => 0, 'sequence_started_at' => Clock::utc() ), array( 'id' => (int) $r['id'] ) );
