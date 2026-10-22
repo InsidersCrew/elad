@@ -2576,6 +2576,27 @@ $tests['D01'] = array( 'כלי האבחון phone_check: לכל מספר, כל �
 	T::check( is_string( $none['customers'] ) && str_contains( $none['customers'], 'אין לקוח' ), 'a number with no customer says so' );
 } );
 
+$tests['P28'] = array( 'שינוי "ימים לפני המועד" אחרי שהודעה כבר תוכננה: ההודעה לא יוצאת לפני היום החדש שלה', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'journey_start_days' => 45 ) );
+	ifd_student( 851, 9851, '2026-09-25' ); // deadline 24/12: intro on 09/11 with 45; with 40 on 14/11, a Saturday, so Thursday 12/11
+	T::at( '2026-11-09', '07:00' );
+	ifd_fresh();
+	Journey::sync();
+	$c = student_case( 851 );
+	T::eq( '2026-11-09', substr( (string) ( pending_journey( (int) $c['id'] )['local'] ?? '' ), 0, 10 ), 'planned with 45 days' );
+	Settings::set( array( 'journey_start_days' => 40 ) );
+	T::at( '2026-11-09', '11:00' );
+	ifd_fresh();
+	T::tick();
+	T::eq( 0, T::count( 'messages', 'case_id = ' . (int) $c['id'] ), 'not sent on the old date' );
+	Journey::sync();
+	T::eq( '2026-11-12', substr( (string) ( pending_journey( (int) $c['id'] )['local'] ?? '' ), 0, 10 ), 'planned again for the new day' );
+} );
+
 foreach ( $tests as $id => [ $title, $fn ] ) {
 	if ( '' === $filter || str_contains( $id, $filter ) ) {
 		T::test( $id, $title, $fn );

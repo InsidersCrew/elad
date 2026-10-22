@@ -776,6 +776,10 @@ final class Journey {
 		if ( ! $next || $next['key'] !== $step ) {
 			return 'cancel:stale_step'; // the runner re-plans from the current state
 		}
+		if ( self::send_day( $next['date'], Policy::effective_or_draft() ) > Clock::today() ) {
+			// Planned before a setting changed (the first message moved later, say): not before its day.
+			return 'cancel:stale_step'; // the hourly run plans it again for its date
+		}
 		$comp  = self::compose( $case_id, $step, false );
 		$guard = SendGuard::check( $case_id, array( 'template' => $comp['template'], 'action_created_at' => $action['created_at'], 'is_reminder' => true ) );
 		if ( $comp['missing'] ) {
