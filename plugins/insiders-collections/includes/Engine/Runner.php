@@ -66,6 +66,16 @@ final class Runner {
 			if ( self::daily_due() ) {
 				$r['daily'] = self::job( 'daily', static fn() => self::daily() );
 			}
+			if ( Settings::on( 'cap_pipedrive_tasks' ) && self::digest_due() ) {
+				$since = self::beats()['pipedrive_digest']['success'] ?? Clock::utc( Clock::now() - DAY_IN_SECONDS );
+				$r['pipedrive_digest'] = self::job( 'pipedrive_digest', static function () use ( $since ) {
+					$res = \Insiders\Collections\Integrations\Pipedrive\Client::push_digest( (string) $since );
+					if ( ! empty( $res['errors'] ) || ! empty( $res['error'] ) ) {
+						throw new \RuntimeException( 'digest: ' . wp_json_encode( $res ) ); // not a success: the students left out go again
+					}
+					return $res;
+				} );
+			}
 			if ( self::weekly_due() ) {
 				$r['weekly_tasks'] = self::job( 'weekly_tasks', static fn() => \Insiders\Collections\Integrations\Mailer::weekly_tasks() );
 			}
@@ -132,6 +142,21 @@ final class Runner {
 	private static function due( string $job, int $every ): bool {
 		$last = Clock::ts( self::beats()[ $job ]['attempt'] ?? null );
 		return null === $last || Clock::now() - $last >= $every;
+	}
+
+	/** The daily Pipedrive summary: from the set local hour, once a day; after an error, again an hour later. */
+	private static function digest_due(): bool {
+		$hour = trim( (string) Settings::raw( 'pipedrive_digest_hour' ) );
+		if ( '' === $hour || ! ctype_digit( $hour ) || (int) Clock::local()->format( 'G' ) < (int) $hour ) {
+			return false;
+		}
+		$b    = self::beats()['pipedrive_digest'] ?? array();
+		$last = Clock::ts( $b['success'] ?? null );
+		if ( null !== $last && Clock::local_date( $last ) === Clock::today() ) {
+			return false;
+		}
+		$try = Clock::ts( $b['error'] ?? null );
+		return null === $try || $try > Clock::now() || Clock::now() - $try >= HOUR_IN_SECONDS;
 	}
 
 	/** The weekly task summary: the set weekday, from 08:00 local time, once a week. */

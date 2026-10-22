@@ -864,7 +864,7 @@ $tests['X09'] = array( 'דשבורד ההכנסות (insiders-finance-dashboard)
 		$wpdb->query( 'TRUNCATE TABLE ' . $fd::table( $t ) );
 	}
 	Settings::set_secret( 'pipedrive_token', 'pd-test' );
-	Settings::set( array( 'pipedrive_api_base' => 'https://insiders.pipedrive.test', 'cap_pipedrive_tasks' => 1 ) );
+	Settings::set( array( 'pipedrive_api_base' => 'https://insiders.pipedrive.test', 'cap_pipedrive_tasks' => 1, 'pipedrive_digest_hour' => '' ) ); // an activity per task, at once
 	update_option( 'ifd_penalty_product_id', 77 );
 	update_option( 'ifd_penalty_price', array( 'gross' => 1180, 'tax' => 18, 'currency' => 'ILS', 'label' => 'קנס אי פתיחה', 'product_id' => 77, 'fetched_at' => '2026-11-01 00:00:00' ) );
 	T::at( '2026-11-05', '10:00' );
@@ -2638,6 +2638,29 @@ $tests['AI1'] = array( 'כלי האבחון ai_ping: בקשה קטנה עם המ
 	T::$fail_next['api.anthropic.com'] = '401';
 	$no = \Insiders\Collections\Integrations\Ai\Classifier::ping();
 	T::eq( array( true, false ), array( $yes['ok'], $no['ok'] ), 'a working key answers; a refused one says so (' . mb_substr( (string) ( $no['error'] ?? '' ), 0, 80 ) . ')' );
+} );
+
+$tests['D02'] = array( 'כמה הודעות מאותו תלמיד: משימה אחת שמצטברת, ובפייפדרייב פעילות אחת לתלמיד בסוף היום', function () {
+	[ $c, $case ] = program_case();
+	Settings::set_secret( 'pipedrive_token', 'pd-test' );
+	Settings::set( array( 'pipedrive_api_base' => 'https://insiders.pipedrive.test', 'cap_pipedrive_tasks' => 1, 'pipedrive_digest_hour' => '20' ) );
+	T::at( '2026-10-11', '10:00' );
+	T::inbound( 'רגע, יש לי שאלה' );
+	T::tick();
+	T::inbound( 'מתי השיעור הבא?' );
+	T::tick();
+	T::inbound( 'ועוד משהו' );
+	T::tick();
+	$acts = static fn() => count( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], '/api/v2/activities' ) && 'POST' === $h['method'] ) );
+	T::eq( array( 1, 0 ), array( T::count( 'tasks', "task_key = 'reply:" . $case . "' AND status = 'open'" ), $acts() ), 'one task for the student, nothing in Pipedrive during the day' );
+	T::check( str_contains( (string) Db::value( 'SELECT reason FROM ' . Db::t( 'tasks' ) . " WHERE task_key = 'reply:" . $case . "'" ), 'ועוד משהו' ), 'the newest message is in the task' );
+	T::at( '2026-10-11', '20:05' );
+	T::tick();
+	T::tick();
+	T::eq( 1, $acts(), 'at 20:00 one activity for the student, once' );
+	$b = (string) ( array_values( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], '/api/v2/activities' ) ) )[0]['body'] ?? '' );
+	$j = (array) json_decode( $b, true );
+	T::check( str_contains( (string) ( $j['subject'] ?? '' ), 'סיכום יומי' ) && str_contains( (string) ( $j['note'] ?? '' ), '#/cases/' . $case ), 'a daily summary with the case link' );
 } );
 
 foreach ( $tests as $id => [ $title, $fn ] ) {

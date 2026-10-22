@@ -43,6 +43,23 @@ final class Tasks {
 
 	public static function open( string $task_key, string $type, array $opts = array() ): int {
 		$existing = Db::row( 'SELECT * FROM ' . Db::t( 'tasks' ) . ' WHERE task_key = %s', $task_key );
+		if ( $existing && ! empty( $opts['append'] ) ) {
+			// One task per student for their messages: the newest first, the earlier ones after it.
+			$rank   = array( 'low' => 0, 'normal' => 1, 'high' => 2 );
+			$prio   = $opts['priority'] ?? 'normal';
+			$reason = (string) ( $opts['reason'] ?? '' );
+			if ( 'open' === $existing['status'] ) {
+				Db::update( 'tasks', array( 'reason' => mb_substr( $reason . ( '' !== (string) $existing['reason'] ? ' | ' . $existing['reason'] : '' ), 0, 500 ), 'repeat_count' => (int) $existing['repeat_count'] + 1, 'priority' => ( $rank[ $prio ] ?? 1 ) > ( $rank[ $existing['priority'] ] ?? 1 ) ? $prio : $existing['priority'], 'updated_at' => Clock::utc() ), array( 'id' => (int) $existing['id'] ) );
+				return (int) $existing['id'];
+			}
+			// Done before: a new message makes it a task again.
+			$days = $opts['due_days'] ?? ( self::TYPES[ $type ]['due_days'] ?? 1 );
+			$pol  = Policy::effective_or_draft();
+			$due  = $days > 0 ? Clock::local_to_ts( Calendar::add_business_days( Clock::today(), (int) $days, $pol ), $pol['window_end'] ) : Clock::now();
+			Db::update( 'tasks', array( 'status' => 'open', 'reason' => mb_substr( $reason, 0, 500 ), 'priority' => $prio, 'repeat_count' => 0, 'resolution_note' => null, 'resolved_by' => null, 'resolved_at' => null, 'due_at' => Clock::utc( $due ), 'updated_at' => Clock::utc() ), array( 'id' => (int) $existing['id'] ) );
+			self::fan_out( (int) $existing['id'], true );
+			return (int) $existing['id'];
+		}
 		if ( $existing ) {
 			if ( 'open' === $existing['status'] ) {
 				Db::update( 'tasks', array( 'repeat_count' => (int) $existing['repeat_count'] + 1, 'updated_at' => Clock::utc() ), array( 'id' => (int) $existing['id'] ) );
@@ -85,12 +102,14 @@ final class Tasks {
 	}
 
 	/** Copies to email / Pipedrive go through the outbox with keys derived from the task key. */
-	private static function fan_out( int $task_id ): void {
+	private static function fan_out( int $task_id, bool $reopened = false ): void {
 		$task = Db::row( 'SELECT * FROM ' . Db::t( 'tasks' ) . ' WHERE id = %d', $task_id );
+		$tag  = $reopened ? ':' . Clock::utc() : '';
 		if ( Settings::on( 'cap_email_alerts' ) && '' !== (string) Settings::get( 'alert_email' ) ) {
-			Outbox::enqueue( 'email_alert', 'task', $task_id, 'email:' . $task['task_key'], array( 'task_id' => $task_id ) );
+			Outbox::enqueue( 'email_alert', 'task', $task_id, 'email:' . $task['task_key'] . $tag, array( 'task_id' => $task_id ) );
 		}
-		if ( Settings::on( 'cap_pipedrive_tasks' ) && 'alert' !== $task['type'] ) {
+		// With a daily summary hour, Pipedrive gets one activity per student at that hour (Pipedrive\Client::push_digest).
+		if ( Settings::on( 'cap_pipedrive_tasks' ) && 'alert' !== $task['type'] && '' === trim( (string) Settings::raw( 'pipedrive_digest_hour' ) ) && ! $reopened ) {
 			Outbox::enqueue( 'pipedrive_activity', 'task', $task_id, 'pipedrive:' . $task['task_key'], array( 'task_id' => $task_id ) );
 		}
 	}

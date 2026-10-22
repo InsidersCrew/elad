@@ -444,7 +444,7 @@ final class Messaging {
 				// Worth a look, not an action: the words may be about anything. One task a day per student.
 				$labels = array( 'opened_account' => 'כתב/ה על פתיחת חשבון', 'declines_open' => 'כתב/ה שלא יפתח/תפתח חשבון', 'dispute' => 'אולי בקשת ביטול או מחלוקת', 'claims_paid' => 'כתב/ה על תשלום', 'wrong_number' => 'אולי מספר שגוי', 'human' => 'ביקש/ה נציג' );
 				$why    = $owner_ok ? 'הודעה מתלמיד/ה, אולי בנושא אחר' : 'הודעה בזמן שהשיחה בבעלות ' . $customer['conversation_owner'];
-				Tasks::open( 'unreached_reply:' . $customer_id . ':' . $message_id, 'reply_review', array( 'case_id' => (int) $about, 'customer_id' => $customer_id, 'priority' => $button ? 'high' : 'low', 'reason' => $why . ' (' . ( $button ? 'לחיצה על כפתור בהודעת הליווי' : ( $labels[ $intent['intent'] ] ?? $intent['intent'] ) ) . '): ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
+				Tasks::open( 'unreached_reply:' . $customer_id, 'reply_review', array( 'append' => true, 'case_id' => (int) $about, 'customer_id' => $customer_id, 'priority' => $button ? 'high' : 'low', 'reason' => $why . ' (' . ( $button ? 'לחיצה על כפתור בהודעת הליווי' : ( $labels[ $intent['intent'] ] ?? $intent['intent'] ) ) . '): ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
 			}
 			return array( 'message_id' => $message_id, 'intent' => $owner_ok ? $intent['intent'] : 'not_owner', 'cases' => count( $cases ), 'recorded_only' => true );
 		}

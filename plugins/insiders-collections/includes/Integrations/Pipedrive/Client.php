@@ -82,6 +82,62 @@ final class Client {
 	}
 
 	/**
+	 * The daily summary: one activity per student with every task opened or updated since the last summary,
+	 * instead of an activity per event. Idempotent per student and day (marker), so a retry never doubles it.
+	 */
+	public static function push_digest( string $since ): array {
+		if ( ! self::configured() ) {
+			return array( 'error' => 'Pipedrive לא מחובר' );
+		}
+		$rows   = Db::rows( 'SELECT * FROM ' . Db::t( 'tasks' ) . " WHERE status = 'open' AND type <> 'alert' AND COALESCE(updated_at, created_at) >= %s ORDER BY id", $since );
+		$groups = array();
+		foreach ( $rows as $t ) {
+			$groups[ $t['case_id'] ? 'case' . $t['case_id'] : 'cust' . (int) $t['customer_id'] ][] = $t;
+		}
+		$day = Clock::today();
+		$out = array( 'students' => 0, 'tasks' => count( $rows ), 'errors' => 0 );
+		foreach ( $groups as $g => $tasks ) {
+			$key = 'digest:' . $day . ':' . $g;
+			if ( Db::value( 'SELECT external_task_id FROM ' . Db::t( 'integration_tasks' ) . " WHERE destination = 'pipedrive' AND internal_task_key = %s AND external_task_id <> ''", $key ) ) {
+				continue; // already sent today
+			}
+			$first    = $tasks[0];
+			$customer = $first['customer_id'] ? Customers::get( (int) $first['customer_id'] ) : null;
+			$lines    = array();
+			foreach ( $tasks as $t ) {
+				$lines[] = '• ' . ( Tasks::TYPES[ $t['type'] ]['label'] ?? $t['type'] ) . ( 'high' === $t['priority'] ? ' (דחוף)' : '' ) . ': ' . mb_substr( (string) $t['reason'], 0, 300 ) . ' ' . admin_url( 'admin.php?page=icol#/tasks/' . (int) $t['id'] );
+			}
+			$body = array(
+				'subject'  => mb_substr( 'סיכום יומי מהגבייה: ' . count( $tasks ) . ' משימות [icol:' . substr( md5( $key ), 0, 10 ) . ']', 0, 250 ),
+				'type'     => 'task',
+				'due_date' => $day,
+				'note'     => mb_substr( implode( "\n", $lines ), 0, 3500 ) . ( $first['case_id'] ? "\n\nהתיק: " . admin_url( 'admin.php?page=icol#/cases/' . (int) $first['case_id'] ) : '' ),
+			);
+			$owner = $first['assigned_to'] ? (int) get_user_meta( (int) $first['assigned_to'], 'icol_pipedrive_user_id', true ) : 0;
+			if ( $owner ) {
+				$body['owner_id'] = $owner;
+			}
+			if ( $customer && ! empty( $customer['pipedrive_person_id'] ) ) {
+				$body['participants'] = array( array( 'person_id' => (int) $customer['pipedrive_person_id'], 'primary' => true ) );
+			}
+			$deal = $first['case_id'] ? (int) Db::value( 'SELECT a.pipedrive_deal_id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'agreements' ) . ' a ON a.id = c.agreement_id WHERE c.id = %d', (int) $first['case_id'] ) : 0;
+			if ( $deal ) {
+				$body['deal_id'] = $deal;
+			}
+			$r  = Http::request( 'POST', self::base() . '/api/v2/activities?api_token=' . rawurlencode( Settings::secret( 'pipedrive_token' ) ), array( 'headers' => array( 'Content-Type' => 'application/json' ), 'body' => wp_json_encode( $body ) ), true );
+			$id = $r['json']['data']['id'] ?? null;
+			if ( Http::OK !== $r['outcome'] || ! $id ) {
+				++$out['errors'];
+				continue; // the next run tries this student again
+			}
+			global $wpdb;
+			$wpdb->query( $wpdb->prepare( 'INSERT INTO ' . Db::t( 'integration_tasks' ) . " (destination, internal_task_key, external_task_id, status, created_at, updated_at) VALUES ('pipedrive', %s, %s, 'created', %s, %s) ON DUPLICATE KEY UPDATE external_task_id = VALUES(external_task_id), status = 'created', updated_at = VALUES(updated_at)", $key, (string) $id, Clock::utc(), Clock::utc() ) );
+			++$out['students'];
+		}
+		return $out;
+	}
+
+	/**
 	 * Contact details of one person. v2 returns emails[]/phones[] of {value, primary};
 	 * v1 returned email[]/phone[] of the same shape, so both are read. The primary
 	 * entry wins, then the first one.

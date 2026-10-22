@@ -210,7 +210,7 @@ final class Intents {
 						continue;
 					}
 					$to_review( $c, self::LABELS[ $name ] ?? 'הודעה נכנסת' );
-					Tasks::open( 'reply:' . $c['id'] . ':' . $message_id, 'reply_review', array( 'case_id' => (int) $c['id'], 'customer_id' => $customer_id, 'reason' => ( self::LABELS[ $name ] ?? 'הודעה נכנסת' ) . ': ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
+					Tasks::open( 'reply:' . $c['id'], 'reply_review', array( 'append' => true, 'case_id' => (int) $c['id'], 'customer_id' => $customer_id, 'reason' => ( self::LABELS[ $name ] ?? 'הודעה נכנסת' ) . ': ' . mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 ) ) );
 				}
 				if ( $first && in_array( $name, array( 'human', 'voice' ), true ) ) {
 					Messaging::service_reply( (int) $first['id'], 'handoff' );

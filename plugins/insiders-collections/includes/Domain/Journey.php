@@ -996,7 +996,7 @@ final class Journey {
 					break;
 				case 'question':
 					$review( $c, 'התלמיד ביקש לשאול שאלה' );
-					Tasks::open( 'reply:' . $id . ':' . $message_id, 'reply_review', array( 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'התלמיד לחץ "' . self::BTN_QUESTION . '". לחזור אליו בוואטסאפ ולענות.' ) );
+					Tasks::open( 'reply:' . $id, 'reply_review', array( 'append' => true, 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'התלמיד לחץ "' . self::BTN_QUESTION . '". לחזור אליו בוואטסאפ ולענות.' ) );
 					$reply = 'j_question_ack';
 					break;
 				case 'declines_open':
@@ -1007,7 +1007,7 @@ final class Journey {
 					} else {
 						// Free text is not a decision: "not now" and "never" read alike.
 						$review( $c, 'נראה שהתלמיד לא מתכוון לפתוח חשבון, לבדיקת נציג' );
-						Tasks::open( 'reply:' . $id . ':' . $message_id, 'reply_review', array( 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'נראה שהתלמיד לא מתכוון לפתוח חשבון: "' . $text . '". אם זה סופי, לסמן את הדיל כ-lost עם הסיבה הייעודית והמערכת תעביר למסלול המתאים.' ) );
+						Tasks::open( 'reply:' . $id, 'reply_review', array( 'append' => true, 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'נראה שהתלמיד לא מתכוון לפתוח חשבון: "' . $text . '". אם זה סופי, לסמן את הדיל כ-lost עם הסיבה הייעודית והמערכת תעביר למסלול המתאים.' ) );
 					}
 					break;
 				case 'wants_to_pay':
@@ -1041,7 +1041,7 @@ final class Journey {
 					break;
 				default: // promise / link_request before any charge exists: a person answers
 					$review( $c, 'הודעה מהתלמיד לפני המועד, לבדיקת נציג' );
-					Tasks::open( 'reply:' . $id . ':' . $message_id, 'reply_review', array( 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'הודעה מהתלמיד: "' . $text . '"' ) );
+					Tasks::open( 'reply:' . $id, 'reply_review', array( 'append' => true, 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'הודעה מהתלמיד: "' . $text . '"' ) );
 			}
 		}
 		if ( $reply ) {

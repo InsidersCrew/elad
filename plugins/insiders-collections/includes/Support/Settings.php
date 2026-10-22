@@ -57,7 +57,8 @@ final class Settings {
 		'tranzila_report_base'        => 'https://report.tranzila.com',
 		'wati_api_base'               => '',
 		'wati_conversation_attr'      => 'conversation_owner',
-		'live_allowlist'              => '', // staged go-live: while not empty, only these phone numbers get real messages
+		'live_allowlist'              => '',
+		'pipedrive_digest_hour'       => '20', // one Pipedrive activity per student a day, at this local hour; empty = an activity per task at once
 		'wati_collections_operators'  => '', // emails or names of the collections reps in WATI; empty = any typed message pauses a case after the deadline
 		'pipedrive_api_base'          => 'https://api.pipedrive.com',
 		'ai_model'                    => 'claude-opus-5-5',
@@ -116,6 +117,12 @@ final class Settings {
 			return $default;
 		}
 		return self::DEFAULTS[ $key ] ?? null;
+	}
+
+	/** The stored value as is, where an empty value means "off" rather than "use the default". */
+	public static function raw( string $key ) {
+		$all = self::all();
+		return array_key_exists( $key, $all ) && null !== $all[ $key ] ? $all[ $key ] : ( self::DEFAULTS[ $key ] ?? null );
 	}
 
 	public static function on( string $key ): bool {
