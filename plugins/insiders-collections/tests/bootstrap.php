@@ -29,10 +29,12 @@ final class T {
 	public static array $fail_next = array();    // url-substring => 'timeout'|'500'|'401'
 	public static int $wati_seq = 0;
 	public static array $wati_contacts = array(); // wa id (digits) => saved name
+	public static array $wati_invalid = array();  // wa ids (digits) WATI answers "not a WhatsApp number" for
 	public static ?string $ai_reply = null;
 	public static array $pd_persons = array(); // person_id => v2 person
 	public static array $pd_deals = array();   // deal_id => v2 deal
 	public static array $pd_products = array(); // deal_id => product ids
+	public static array $pd_users = array();    // Pipedrive user id => email
 	public static array $pd_labels = array( array( 'id' => 55, 'label' => 'ללא דמי רישום' ), array( 'id' => 56, 'label' => 'VIP' ) );
 
 	public static function reset(): void {
@@ -345,6 +347,9 @@ add_filter(
 			}
 			return $json( array( 'result' => 'success', 'contact_list' => $list ) );
 		}
+		if ( false !== strpos( $url, 'wati.test' ) && preg_match( '/whatsappNumber=(\d+)/', $url, $wm ) && in_array( $wm[1], T::$wati_invalid, true ) ) {
+			return $json( array( 'result' => true, 'validWhatsAppNumber' => false, 'receivers' => array( array( 'waId' => $wm[1], 'isValidWhatsAppNumber' => false ) ) ) );
+		}
 		if ( false !== strpos( $url, 'wati.test' ) ) {
 			++T::$wati_seq;
 			return $json( array( 'result' => true, 'receivers' => array( array( 'localMessageId' => 'wati-' . T::$wati_seq, 'waId' => '972501234567', 'isValidWhatsAppNumber' => true ) ) ) );
@@ -358,6 +363,10 @@ add_filter(
 				}
 			}
 			return $json( array( 'success' => true, 'data' => $data ) );
+		}
+		if ( false !== strpos( $url, 'pipedrive' ) && preg_match( '#/api/v1/users/(\d+)#', $url, $um ) ) {
+			$mail = T::$pd_users[ (int) $um[1] ] ?? null;
+			return $mail ? $json( array( 'success' => true, 'data' => array( 'id' => (int) $um[1], 'email' => $mail, 'name' => 'Rep' ) ) ) : $json( array( 'success' => false, 'error' => 'not found' ), 404 );
 		}
 		if ( false !== strpos( $url, 'pipedrive' ) && false !== strpos( $url, '/api/v2/stages' ) ) {
 			return $json( array( 'success' => true, 'data' => array( array( 'id' => 40, 'name' => 'הצטרף' ), array( 'id' => 77, 'name' => 'ביטל לאחר רכישה' ) ) ) );

@@ -39,8 +39,10 @@ final class Processor {
 				if ( $r ) {
 					$mid = self::find_message( $p );
 					if ( $mid ) {
+						$cust  = (int) Db::value( 'SELECT customer_id FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', (int) $mid );
+						$moved = $cust && Client::says_no_whatsapp( (string) ( $p['failedDetail'] ?? '' ) . ' ' . (string) ( $p['failedCode'] ?? '' ) ) && Customers::mark_no_whatsapp( $cust, 'WATI: ' . mb_substr( (string) ( $p['failedDetail'] ?? '' ), 0, 200 ) ) && 'email' === Customers::channel( $cust );
 						\Insiders\Collections\Domain\CardCharge::on_notice_failed( (int) $mid );
-						\Insiders\Collections\Domain\Journey::on_send_failed( (int) $mid );
+						\Insiders\Collections\Domain\Journey::on_send_failed( (int) $mid, ! $moved ); // moved to email: the step goes again there, no strike
 					}
 					Exceptions::open( 'delivery_failed:' . $mid, 'integration_failure', 'medium', 'WATI דיווח על כשל מסירה: ' . mb_substr( (string) ( $p['failedDetail'] ?? $p['failedCode'] ?? '' ), 0, 200 ), array( 'entity_type' => 'message', 'entity_id' => (int) $mid ) );
 				}

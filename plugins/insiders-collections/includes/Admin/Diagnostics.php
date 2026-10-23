@@ -314,6 +314,7 @@ final class Diagnostics {
 				'whatsapp_permission' => var_export( \Insiders\Collections\Domain\Customers::permission( $cid, 'whatsapp' ), true ),
 				'conversation_owner'  => $cu['conversation_owner'],
 				'mode_for_this_number' => $G::mode( $cid ),
+				'channel'        => \Insiders\Collections\Domain\Customers::channel( $cid ) . ( $cu['whatsapp_missing_at'] ? ' (אין וואטסאפ מאז ' . $local( $cu['whatsapp_missing_at'] ) . ')' : '' ),
 				'cases'          => array(),
 			);
 			foreach ( $Db::rows( 'SELECT id, phase, track, track_step, workflow_state, state_reason FROM ' . $Db::t( 'cases' ) . ' WHERE customer_id = %d ORDER BY id DESC LIMIT 5', $cid ) as $c ) {

@@ -70,6 +70,11 @@ final class Api {
 
 		// Customers.
 		$r( 'POST', '/customers', 'icol_create_draft', static fn( $q ) => array( 'customer_id' => Customers::create( (array) $q->get_json_params() ) ), true );
+		$r( 'POST', "/customers/$id/whatsapp", 'icol_work_case', static function ( $q ) {
+			$cid = Http::int( $q, 'id' );
+			'missing' === Http::str( $q, 'state' ) ? Customers::mark_no_whatsapp( $cid, 'סומן על ידי נציג', 'manual' ) : Customers::clear_no_whatsapp( $cid, 'סומן על ידי נציג' );
+			return array( 'ok' => true, 'channel' => Customers::channel( $cid ) );
+		}, true );
 		$r( 'POST', "/customers/$id/verify-contact", 'icol_approve_debt', static function ( $q ) { Customers::verify_contact( Http::int( $q, 'id' ), Http::str( $q, 'note' ) ); return array( 'ok' => true ); }, true );
 		$r( 'POST', "/customers/$id/permission", 'icol_work_case', static function ( $q ) {
 			$src = Http::str( $q, 'source' );
@@ -360,7 +365,8 @@ final class Api {
 		$before = get_user_meta( $uid, 'icol_role', true );
 		'' === $role ? delete_user_meta( $uid, 'icol_role' ) : update_user_meta( $uid, 'icol_role', $role );
 		if ( '' !== Http::str( $q, 'pipedrive_user_id' ) ) {
-			update_user_meta( $uid, 'icol_pipedrive_user_id', (int) Http::str( $q, 'pipedrive_user_id' ) );
+			$pd = (int) Http::str( $q, 'pipedrive_user_id' );
+			$pd > 0 ? update_user_meta( $uid, 'icol_pipedrive_user_id', $pd ) : delete_user_meta( $uid, 'icol_pipedrive_user_id' );
 		}
 		Audit::log( 'user.role', 'user', $uid, array( 'role' => $before ), array( 'role' => $role ), '' );
 		return array( 'ok' => true );

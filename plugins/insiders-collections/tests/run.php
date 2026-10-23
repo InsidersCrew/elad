@@ -171,7 +171,7 @@ $tests['AT07'] = array( 'תלמיד עם מספר משותף', function () {
 	\Insiders\Collections\Domain\Exceptions::open( 'unknownXsender:keep', 'event_without_customer', 'low', 'לא נוגעים', array() );
 	update_option( 'icol_db_version', 11, false );
 	\Insiders\Collections\Schema::install();
-	T::eq( array( 'resolved', 'open', 12 ), array( Db::value( 'SELECT status FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'unknown_sender:abc'" ), Db::value( 'SELECT status FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'unknownXsender:keep'" ), (int) get_option( 'icol_db_version' ) ), 'the upgrade closes the old ones, and only them' );
+	T::eq( array( 'resolved', 'open', ICOL_DB_VERSION ), array( Db::value( 'SELECT status FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'unknown_sender:abc'" ), Db::value( 'SELECT status FROM ' . Db::t( 'exceptions' ) . " WHERE exception_key = 'unknownXsender:keep'" ), (int) get_option( 'icol_db_version' ) ), 'the upgrade closes the old ones, and only them' );
 } );
 
 $tests['AT08'] = array( 'חוב ידני ללא הסכם או אישור', function () {
@@ -2266,7 +2266,7 @@ $tests['P22'] = array( 'הודעת ליווי שלא נמסרה: השלב לא �
 	$c = student_case( 731 );
 	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'j_intro'", (int) $c['id'] );
 	T::eq( array( 'j_intro', 'accepted' ), array( $c['track_step'], $m['delivery_state'] ?? null ), 'the intro went out' );
-	T::wati( array( 'eventType' => 'templateMessageFailed', 'id' => 'f-731', 'localMessageId' => (string) $m['provider_id'], 'failedDetail' => 'not a WhatsApp number' ) );
+	T::wati( array( 'eventType' => 'templateMessageFailed', 'id' => 'f-731', 'localMessageId' => (string) $m['provider_id'], 'failedDetail' => 'Message undeliverable', 'failedCode' => '131026' ) );
 	\Insiders\Collections\Engine\Inbox::process( 10 );
 	$c = student_case( 731 );
 	$p = pending_journey( (int) $c['id'] );
@@ -2277,7 +2277,7 @@ $tests['P22'] = array( 'הודעת ליווי שלא נמסרה: השלב לא �
 	T::settle( 2 );
 	$m2 = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'j_intro' AND id > %d", (int) $c['id'], (int) $m['id'] );
 	T::check( (bool) $m2, 'sent again' );
-	T::wati( array( 'eventType' => 'templateMessageFailed', 'id' => 'f2-731', 'localMessageId' => (string) ( $m2['provider_id'] ?? '' ), 'failedDetail' => 'not a WhatsApp number' ) );
+	T::wati( array( 'eventType' => 'templateMessageFailed', 'id' => 'f2-731', 'localMessageId' => (string) ( $m2['provider_id'] ?? '' ), 'failedDetail' => 'Message undeliverable', 'failedCode' => '131026' ) );
 	\Insiders\Collections\Engine\Inbox::process( 10 );
 	T::eq( array( 'human_review', 1 ), array( student_case( 731 )['workflow_state'], T::count( 'tasks', "task_key LIKE 'journey_send_failed:%'" ) ), 'the second failure goes to a person' );
 } );
@@ -2661,6 +2661,93 @@ $tests['D02'] = array( 'כמה הודעות מאותו תלמיד: משימה א
 	$b = (string) ( array_values( array_filter( T::$http_log, static fn( $h ) => str_contains( $h['url'], '/api/v2/activities' ) ) )[0]['body'] ?? '' );
 	$j = (array) json_decode( $b, true );
 	T::check( str_contains( (string) ( $j['subject'] ?? '' ), 'סיכום יומי' ) && str_contains( (string) ( $j['note'] ?? '' ), '#/cases/' . $case ), 'a daily summary with the case link' );
+} );
+
+$tests['R01'] = array( 'משימות לנציג של הדיל: קישור אוטומטי לפי מייל, העברת המשימות הפתוחות, ופעילות בפייפדרייב אצל בעל הדיל גם בלי קישור', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	$admin = get_user_by( 'login', 'admin' )->ID;
+	$rep   = T::user( 'collector' );
+	delete_user_meta( $rep, 'icol_pipedrive_user_id' );
+	Settings::set_secret( 'pipedrive_token', 'pd-test' );
+	Settings::set( array( 'pipedrive_api_base' => 'https://insiders.pipedrive.test', 'cap_pipedrive_tasks' => 1, 'pipedrive_digest_hour' => '', 'fallback_owner_id' => $admin ) );
+	ifd_student( 681, 9681, '2026-08-01' );
+	ifd_student( 682, 9682, '2026-08-02' );
+	T::$pd_deals[9681]['owner_id'] = 31; // the rep, same email here
+	T::$pd_deals[9682]['owner_id'] = 32; // a rep with no user here
+	T::$pd_users[31] = 'ICOL_collector@example.test';
+	Journey::sync();
+	$c1 = student_case( 681 );
+	$c2 = student_case( 682 );
+	Db::update( 'cases', array( 'owner_id' => null ), array( 'id' => (int) $c1['id'] ) );
+	$t1 = \Insiders\Collections\Domain\Tasks::open( 'reply:' . $c1['id'], 'reply_review', array( 'case_id' => (int) $c1['id'], 'customer_id' => (int) $c1['customer_id'], 'reason' => 'שאלה' ) );
+	T::eq( $admin, (int) Db::value( 'SELECT assigned_to FROM ' . Db::t( 'tasks' ) . ' WHERE id = %d', $t1 ), 'before the rep is known the task goes to the main user' );
+	Journey::refresh_deals();
+	T::eq( array( $rep, 31, $rep ), array( (int) student_case( 681 )['owner_id'], (int) get_user_meta( $rep, 'icol_pipedrive_user_id', true ), (int) Db::value( 'SELECT assigned_to FROM ' . Db::t( 'tasks' ) . ' WHERE id = %d', $t1 ) ), 'the rep is linked by email, owns the case and gets the open task' );
+	T::eq( 32, (int) Db::value( 'SELECT a.pipedrive_owner_id FROM ' . Db::t( 'agreements' ) . ' a JOIN ' . Db::t( 'cases' ) . ' c ON c.agreement_id = a.id WHERE c.id = %d', (int) $c2['id'] ), 'the deal owner is kept even without a user here' );
+	T::$http_log = array();
+	\Insiders\Collections\Domain\Tasks::open( 'reply:' . $c2['id'], 'reply_review', array( 'case_id' => (int) $c2['id'], 'customer_id' => (int) $c2['customer_id'], 'reason' => 'שאלה' ) );
+	\Insiders\Collections\Domain\Tasks::open( 'open_call:' . $c1['id'], 'open_call', array( 'case_id' => (int) $c1['id'], 'customer_id' => (int) $c1['customer_id'], 'reason' => 'שיחה' ) );
+	T::settle( 3 );
+	$owners = array();
+	foreach ( T::$http_log as $h ) {
+		if ( str_contains( $h['url'], '/api/v2/activities' ) && 'POST' === $h['method'] ) {
+			$j        = (array) json_decode( (string) $h['body'], true );
+			$owners[] = (int) ( $j['owner_id'] ?? 0 );
+		}
+	}
+	sort( $owners );
+	T::eq( array( 31, 31, 32 ), $owners, 'each activity (the first task too, sent after the move) opens at the rep who owns the deal, not at the main account' );
+} );
+
+$tests['E01'] = array( 'תלמיד בלי וואטסאפ: WATI אומר שהמספר לא בוואטסאפ, ההודעות עוברות למייל, כפתור במייל נרשם כמו בוואטסאפ, והודעה בוואטסאפ מחזירה אותו', function () {
+	if ( $e = program_env() ) {
+		T::check( false, $e );
+		return;
+	}
+	Settings::set( array( 'journey_email_reply_to' => 'team@example.test' ) );
+	ifd_student( 741, 9741, '2026-08-01' );
+	T::$wati_invalid = array( '972500000741' );
+	Journey::sync();
+	T::settle( 2 );
+	$c    = student_case( 741 );
+	$cust = (int) $c['customer_id'];
+	T::eq( array( true, 'email', null ), array( Customers::no_whatsapp( $cust ), Customers::channel( $cust ), $c['track_step'] ), 'WATI said "not on WhatsApp": the student moves to email and the intro is not counted' );
+	T::eq( 0, T::count( 'exceptions', "exception_key LIKE 'send_failed:%'" ), 'no failure exception for a student who simply has email instead' );
+	T::eq( 'j_intro', pending_journey( (int) $c['id'] )['step'] ?? null, 'the intro is planned again' );
+	T::$mails = array();
+	Clock::freeze( Clock::now() + 3 * HOUR_IN_SECONDS );
+	ifd_fresh();
+	T::settle( 2 );
+	$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND template_key = 'j_intro' AND channel = 'email'", (int) $c['id'] );
+	T::eq( array( 'accepted', 'j_intro', 1 ), array( $m['delivery_state'] ?? null, student_case( 741 )['track_step'], count( T::$mails ) ), 'the intro went by email, once' );
+	$mail = T::$mails[0] ?? array();
+	T::check( 's741@example.test' === ( $mail['to'] ?? '' ) && str_contains( (string) ( $mail['subject'] ?? '' ), 'התוכנית למתחילים' ) && in_array( 'Reply-To: team@example.test', (array) ( $mail['headers'] ?? array() ), true ), 'to the student, a clear subject, replies to the team' );
+	preg_match_all( '/icol_reply=([0-9a-f.\-]+)/', (string) ( $mail['message'] ?? '' ), $mm );
+	T::eq( 2, count( $mm[1] ), 'the two buttons of the intro are links in the email' );
+	T::check( ! str_contains( (string) $m['body'], 'לכתוב לנו כאן' ), 'WhatsApp wording adapted for email' );
+	T::eq( 'not_found', \Insiders\Collections\Front\ReplyPage::press( substr( $mm[1][0], 0, -1 ) . ( str_ends_with( $mm[1][0], 'a' ) ? 'b' : 'a' ) )['state'], 'a changed link records nothing' );
+	$r = \Insiders\Collections\Front\ReplyPage::press( $mm[1][0] ); // "אני רוצה לפתוח חשבון"
+	$c = student_case( 741 );
+	T::eq( array( 'done', 'human_review', 1 ), array( $r['state'], $c['workflow_state'], T::count( 'tasks', "type = 'open_call' AND case_id = " . (int) $c['id'] ) ), 'the press works like the WhatsApp button: a rep calls' );
+	T::check( str_contains( $r['ack'], 'נציג' ), 'the page shows the answer WhatsApp would have sent' );
+	T::eq( 1, T::count( 'messages', "customer_id = $cust AND direction = 'in' AND channel = 'email'" ), 'recorded on the case as an email reply' );
+	T::eq( 'again', \Insiders\Collections\Front\ReplyPage::press( $mm[1][0] )['state'], 'a second press is not recorded twice' );
+	T::eq( 0, T::count( 'messages', "customer_id = $cust AND direction = 'out' AND channel = 'whatsapp' AND delivery_state IN ('queued','accepted')" ), 'nothing was sent on WhatsApp for the answer' );
+	T::inbound( 'היי', '972500000741' );
+	T::tick();
+	T::eq( array( false, 'whatsapp' ), array( Customers::no_whatsapp( $cust ), Customers::channel( $cust ) ), 'a message from the student on WhatsApp brings them back to WhatsApp' );
+	// Many "not on WhatsApp" answers at once is WATI's problem: after five, no one else is moved.
+	$ids = array();
+	for ( $i = 1; $i <= 6; $i++ ) {
+		$ids[] = T::customer( array( 'full_name' => 'בדיקה ' . $i, 'phone' => '05099900' . $i . '0', 'email' => 'b' . $i . '@example.test' ) );
+	}
+	$moved = array_map( static fn( $id ) => Customers::mark_no_whatsapp( $id, 'WATI: not a WhatsApp number' ), $ids );
+	T::eq( array( true, true, true, true, true, false ), $moved, 'the sixth within three hours is not moved' );
+	T::eq( 1, T::count( 'exceptions', "exception_key LIKE 'no_whatsapp_burst:%'" ), 'and an exception says WATI should be checked' );
+	T::$wati_invalid = array();
 } );
 
 foreach ( $tests as $id => [ $title, $fn ] ) {

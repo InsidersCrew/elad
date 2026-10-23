@@ -397,6 +397,7 @@
 		contact.push(chip(cu.permission === true ? 'הרשאת וואטסאפ' : (cu.permission === false ? 'ביקש להפסיק הודעות' : 'אין הרשאת קשר מתועדת'), cu.permission === true ? 'ok' : 'bad'));
 		if (cu.conversation_owner && cu.conversation_owner !== 'none') { contact.push(chip('בעלות שיחה: ' + ({ collections: 'גבייה', onboarding: 'סוכן ההרשמה', human: 'נציג' }[cu.conversation_owner] || cu.conversation_owner), cu.conversation_owner === 'collections' ? 'info' : 'warn')); }
 		if (cu.in_service_window) { contact.push(chip('חלון שירות 24ש׳ פתוח', 'info')); }
+		if (cu.no_whatsapp) { contact.push(chip(cu.channel === 'email' ? 'אין וואטסאפ: ההודעות במייל' : 'אין וואטסאפ ואין מייל תקין', cu.channel === 'email' ? 'info' : 'bad')); }
 		var stateChips = [chip(L.state[c.workflow_state] || c.workflow_state, 'violet'), chip(L.source[c.source_type] + (c.entry_mode === 'handover' ? ' · המשך טיפול' : ''))];
 		if (Number(c.dispute_open)) { stateChips.push(chip('מחלוקת פתוחה', 'bad')); }
 		if (Number(c.claims_account_opened)) { stateChips.push(chip('טענת פתיחת חשבון', 'warn')); }
@@ -526,6 +527,7 @@
 				h('div', { class: 'icol-actions', style: 'margin-top:12px' },
 					can('icol_approve_debt') && cu.contact_status !== 'verified' ? h('button', { class: 'icol-btn sm', text: 'אימות מספר וזהות', onclick: function () { simpleModal('אימות מספר וזהות', 'מאשרים שהמספר שייך ללקוח הזה. במספר משותף זה גם אישור זהות.', [field('note', 'איך אומת', 'textarea', { required: true })], function (fs) { return api.post('/customers/' + cu.id + '/verify-contact', { note: val(fs[0]) }); }, d); } }) : null,
 					can('icol_work_case') ? h('button', { class: 'icol-btn sm', text: cu.permission === true ? 'חסימת וואטסאפ' : 'רישום הרשאת וואטסאפ', onclick: function () { simpleModal(cu.permission === true ? 'חסימת פניות בוואטסאפ' : 'רישום הרשאת קשר', 'נשמר מקור ההחלטה.', [field('source', 'מקור (לדוגמה: סעיף בהסכם, בקשת הלקוח)', 'text', { required: true })], function (fs) { return api.post('/customers/' + cu.id + '/permission', { allowed: cu.permission !== true, source: val(fs[0]) }); }, d); } }) : null,
+					can('icol_work_case') ? h('button', { class: 'icol-btn sm', text: cu.no_whatsapp ? 'יש וואטסאפ: חזרה לוואטסאפ' : 'אין וואטסאפ: מעבר למייל', onclick: function () { api.post('/customers/' + cu.id + '/whatsapp', { state: cu.no_whatsapp ? 'present' : 'missing' }).then(function (r) { toast(r.channel === 'email' ? 'ההודעות הבאות יישלחו במייל' : (cu.no_whatsapp ? 'ההודעות חוזרות לוואטסאפ' : 'אין מייל תקין: נפתחה משימה לפנות בטלפון'), 'ok'); reload(d); }).catch(fail); } }) : null,
 					can('icol_work_case') ? h('button', { class: 'icol-btn sm', text: 'בעלות על השיחה', onclick: function () { var s = field('owner', 'בעלות', 'select', { value: cu.conversation_owner, options: [['none', 'ללא'], ['collections', 'גבייה'], ['onboarding', 'סוכן ההרשמה'], ['human', 'נציג']] }); simpleModal('בעלות על השיחה', 'רק בעל השיחה רשאי לענות ללקוח. הערך מסונכרן ל-WATI.', [s, field('note', 'סיבה', 'text')], function (fs) { return api.post('/customers/' + cu.id + '/conversation-owner', { owner: val(fs[0]), note: val(fs[1]) }); }, d); } }) : null)),
 			h('div', { class: 'icol-card' }, h('h3', { text: 'הסכם' }), d.agreement ? kv([['תוכנית', d.agreement.program], ['אסמכתה', d.agreement.reference], ['מסמך', d.agreement.document_ref], ['הצטרפות', d.agreement.joined_at], ['מועד אחרון לפתיחת חשבון', d.agreement.account_open_deadline], ['הארכות', d.agreement.extensions_json], ['בדיקת סטטוס', d.agreement.status_checked_at]]) : h('div', { class: 'muted', text: 'לא הוזן הסכם' }))
 		));
@@ -1160,7 +1162,7 @@
 			['tranzila_cycle_strategy', 'זיהוי מחזור', [['manual', 'ידני (בטוח)'], ['schedule', 'לפי לוח החיובים של ההוראה'], ['field', 'לפי שדה שאושר']]], ['tranzila_cycle_field', 'שדה מחזור (אם אושר)'],
 			['tranzila_charge_tranmodes', 'קידומות tranmode של חיוב'], ['tranzila_pr_match_field', 'שדה pr_id ב-Notify'], ['tranzila_hmac_order', 'סדר HMAC', [['secret_time_nonce', 'secret+time+nonce'], ['time_nonce_secret', 'time+nonce+secret']]], ['tranzila_report_amount_unit', 'יחידת סכום בדוחות', [['minor', 'אגורות (כך הדוח של טרנזילה מחזיר)'], ['major', 'שקלים']]],
 			['wati_api_base', 'כתובת API של WATI'], ['wati_channel_number', 'channel_number ב-WATI'], ['wati_conversation_attr', 'שם מאפיין בעלות השיחה'], ['pipedrive_digest_hour', 'שעת הסיכום היומי בפייפדרייב: פעילות אחת לכל תלמיד, עם כל המשימות שלו מאותו יום (למשל 20). ריק = פעילות לכל משימה מיד'], ['live_allowlist', 'שיגור מדורג: מספרי טלפון שמקבלים הודעות אמיתיות (מופרדים בפסיקים). כל השאר נשארים במצב תצוגה. ריק = כולם'], ['wati_collections_operators', 'נציגי הגבייה ב-WATI: מייל או שם, מופרדים בפסיקים (הודעה שמישהו אחר מקליד לא עוצרת את התיק; ריק = כל הודעה מוקלדת עוצרת תיק אחרי המועד)'],
-			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['weekly_tasks_email', 'מייל לסיכום שבועי של משימות פתוחות (ריק = לא נשלח)'], ['weekly_tasks_day', 'יום הסיכום השבועי', [['0', 'ראשון'], ['1', 'שני'], ['2', 'שלישי'], ['3', 'רביעי'], ['4', 'חמישי'], ['5', 'שישי'], ['6', 'שבת']]], ['tranzila_pr_fallback_email', 'מייל שטרנזילה שולחים אליו כל בקשת תשלום (ריק = מייל מנהל האתר)'], ['sto_contact_basis', 'בסיס לפנייה בוואטסאפ ללקוח שנוצר מהוראת קבע (ריק = נציג מאשר כל מספר)'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['pay_theme', 'מראה דף התשלום', [['dark', 'כהה (מומלץ)'], ['light', 'בהיר']]], ['accessibility_url', 'קישור להצהרת הנגישות באתר'], ['fallback_owner_id', 'מי מקבל משימות ותיקים בלי נציג', ownerOptions],
+			['pipedrive_api_base', 'כתובת פייפדרייב'], ['alert_email', 'מייל להתראות'], ['journey_email_reply_to', 'מייל לתשובות של תלמידים בלי וואטסאפ (מקבלים את ההודעות במייל; ריק = מייל ההתראות)'], ['weekly_tasks_email', 'מייל לסיכום שבועי של משימות פתוחות (ריק = לא נשלח)'], ['weekly_tasks_day', 'יום הסיכום השבועי', [['0', 'ראשון'], ['1', 'שני'], ['2', 'שלישי'], ['3', 'רביעי'], ['4', 'חמישי'], ['5', 'שישי'], ['6', 'שבת']]], ['tranzila_pr_fallback_email', 'מייל שטרנזילה שולחים אליו כל בקשת תשלום (ריק = מייל מנהל האתר)'], ['sto_contact_basis', 'בסיס לפנייה בוואטסאפ ללקוח שנוצר מהוראת קבע (ריק = נציג מאשר כל מספר)'], ['support_whatsapp', 'מספר וואטסאפ לדף התשלום'], ['pay_theme', 'מראה דף התשלום', [['dark', 'כהה (מומלץ)'], ['light', 'בהיר']]], ['accessibility_url', 'קישור להצהרת הנגישות באתר'], ['fallback_owner_id', 'מי מקבל משימות ותיקים בלי נציג', ownerOptions],
 			['ai_model', 'מודל AI'], ['ai_effort', 'עומק חשיבה', [['low', 'low'], ['medium', 'medium'], ['high', 'high']]],
 			['revenue_meta_deadline', 'דשבורד הכנסות: מפתח מועד אחרון'], ['revenue_meta_opened', 'דשבורד הכנסות: מפתח חשבון נפתח'], ['revenue_meta_joined', 'דשבורד הכנסות: מפתח הצטרפות'], ['revenue_meta_extension', 'דשבורד הכנסות: מפתח הארכה'], ['revenue_meta_phone', 'מפתח טלפון במשתמש'], ['revenue_candidate_horizon_days', 'ימים קדימה למועמדים'], ['revenue_max_staleness_hours', 'דשבורד הכנסות: שעות מרביות מהסנכרון האחרון']
 		];
@@ -1220,13 +1222,22 @@
 				users.forEach(function (u) { add(results, h('div', { class: 'icol-filters' }, h('span', { text: u.name + ' · ' + (u.email || '') }), roleSelect(u.id, ''))); });
 			}).catch(fail);
 		});
+		function pdInput(u) {
+			var inp = h('input', { type: 'text', inputmode: 'numeric', value: u.pipedrive_user_id || '', style: 'width:110px', placeholder: 'לא מקושר' });
+			inp.addEventListener('change', function () {
+				if (!/^\d*$/.test(inp.value.trim())) { toast('מספר בלבד', 'err'); return; }
+				api.post('/users/' + u.id + '/role', { role: u.role, pipedrive_user_id: inp.value.trim() === '' ? '0' : inp.value.trim() }).then(function () { u.pipedrive_user_id = inp.value.trim(); toast('המזהה עודכן', 'ok'); }).catch(fail);
+			});
+			return inp;
+		}
 		function roleSelect(uid, cur) {
 			var sel = field('role', 'תפקיד', 'select', { value: cur, options: [['', 'ללא גישה']].concat(Object.keys(s.roles).map(function (k) { return [k, s.roles[k]]; })) }).input;
 			sel.addEventListener('change', function () { api.post('/users/' + uid + '/role', { role: sel.value }).then(function () { toast('התפקיד עודכן', 'ok'); }).catch(fail); });
 			return sel;
 		}
 		add(body, h('div', { class: 'icol-card' }, h('h3', { text: 'צוות' }), h('p', { class: 'muted', text: 'התפקידים במערכת הגבייה נשמרים בנפרד מתפקידי וורדפרס, כדי לא לשנות את הסיווג של המשתמש בתוספים אחרים. מנהלי אתר מקבלים הרשאות מנהל אוטומטית.' }),
-			table([['name', 'שם'], ['email', 'מייל'], ['role', 'תפקיד', function (u) { return roleSelect(u.id, u.role); }], ['pd', 'מזהה בפייפדרייב', 'pipedrive_user_id']], s.users),
+			h('p', { class: 'muted', text: 'מזהה בפייפדרייב: משימות של תיק עוברות לנציג שהדיל שלו, וגם הפעילות בפייפדרייב נפתחת אצלו. משתמש שהמייל שלו כאן זהה למייל שלו בפייפדרייב מקושר אוטומטית; אפשר גם להזין את המספר ידנית (בפייפדרייב: הגדרות ← ניהול משתמשים, המספר בכתובת של המשתמש).' }),
+			table([['name', 'שם'], ['email', 'מייל'], ['role', 'תפקיד', function (u) { return roleSelect(u.id, u.role); }], ['pd', 'מזהה בפייפדרייב', function (u) { return pdInput(u); }]], s.users),
 			h('div', { class: 'icol-section-title', style: 'margin:14px 0 8px', text: 'הוספת משתמש' }), search, results));
 	}
 	function settingsCodes(body, s) {

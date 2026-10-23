@@ -217,6 +217,8 @@ final class Views {
 				'contact_status'  => $customer['contact_status'],
 				'shares_phone'    => Customers::shares_phone( $customer ),
 				'permission'      => Customers::permission( (int) $customer['id'], 'whatsapp' ),
+				'no_whatsapp'     => ! empty( $customer['whatsapp_missing_at'] ),
+				'channel'         => Customers::channel( (int) $customer['id'] ),
 				'conversation_owner' => $customer['conversation_owner'],
 				'wp_user_id'      => $customer['wp_user_id'],
 				'in_service_window' => SendGuard::in_service_window( (int) $customer['id'] ),

@@ -47,20 +47,17 @@ final class Client {
 		);
 	}
 
-	/** Outbox handler. Re-checks the cheap "is this still right?" conditions just before sending. */
-	public static function deliver_message( int $message_id ): array {
-		$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', $message_id );
-		if ( ! $m || 'queued' !== $m['delivery_state'] ) {
-			return array( 'outcome' => Http::OK, 'result' => array( 'skipped' => $m['delivery_state'] ?? 'missing' ) );
-		}
-		$customer = Customers::get( (int) $m['customer_id'] );
-		$case     = $m['case_id'] ? Workflow::get( (int) $m['case_id'] ) : null;
+	/**
+	 * The cheap "is this still right?" conditions just before a message goes, for WhatsApp and for the
+	 * email a student without WhatsApp gets. Empty when it may go, otherwise why it is voided.
+	 */
+	public static function void_reason( array $m, ?array $case, string $channel ): string {
 		$void     = '';
 		if ( Settings::on( 'kill_switch' ) || Settings::on( 'display_only' ) ) {
 			$void = 'kill_switch';
 		} elseif ( ! \Insiders\Collections\Domain\SendGuard::allowed( (int) $m['customer_id'] ) ) {
 			$void = 'not_in_allowlist';
-		} elseif ( false === Customers::permission( (int) $m['customer_id'], 'whatsapp' ) ) {
+		} elseif ( false === Customers::permission( (int) $m['customer_id'], $channel ) ) {
 			$void = 'opted_out';
 		} elseif ( 'commitment_reminder' === $m['kind'] && ( Clock::ts( $m['created_at'] ) ?? 0 ) < Clock::now() - 3 * HOUR_IN_SECONDS ) {
 			$void = 'stale'; // queued hours ago (WATI was down): planned again from the current date and window
@@ -71,6 +68,23 @@ final class Client {
 			: (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE customer_id = %d AND direction = 'in' AND occurred_at > %s", (int) $m['customer_id'], $m['created_at'] ) ) ) {
 			$void = 'customer_replied'; // AT12
 		}
+		return $void;
+	}
+
+	/** WATI's words for a number that has no WhatsApp account (not a general "undeliverable"). */
+	public static function says_no_whatsapp( string $text ): bool {
+		return (bool) preg_match( '/not\s+(a\s+)?(valid\s+)?whats\s?app|not\s+on\s+whats\s?app|isn.?t\s+on\s+whats\s?app|invalid\s+whats\s?app|no\s+whats\s?app\s+account|אינו מחובר לוואטסאפ|לא מחובר לוואטסאפ/iu', $text );
+	}
+
+	/** Outbox handler. Re-checks the cheap "is this still right?" conditions just before sending. */
+	public static function deliver_message( int $message_id ): array {
+		$m = Db::row( 'SELECT * FROM ' . Db::t( 'messages' ) . ' WHERE id = %d', $message_id );
+		if ( ! $m || 'queued' !== $m['delivery_state'] ) {
+			return array( 'outcome' => Http::OK, 'result' => array( 'skipped' => $m['delivery_state'] ?? 'missing' ) );
+		}
+		$customer = Customers::get( (int) $m['customer_id'] );
+		$case     = $m['case_id'] ? Workflow::get( (int) $m['case_id'] ) : null;
+		$void     = self::void_reason( $m, $case, 'whatsapp' );
 		if ( '' !== $void ) {
 			Db::update( 'messages', array( 'delivery_state' => 'cancelled', 'updated_at' => Clock::utc() ), array( 'id' => $message_id ) );
 			\Insiders\Collections\Domain\Journey::on_send_failed( $message_id, false ); // a journey step that did not go is not taken
@@ -127,9 +141,14 @@ final class Client {
 			array( 'id' => $message_id )
 		);
 		if ( 'failed' === $state ) {
-			\Insiders\Collections\Domain\Exceptions::open( 'send_failed:' . $message_id, 'integration_failure', 'medium', 'שליחת הודעה נכשלה, אין שליחה חוזרת עיוורת', array( 'entity_type' => 'message', 'entity_id' => $message_id, 'customer_id' => (int) $m['customer_id'] ) );
+			// "Not on WhatsApp": the student moves to email and this step goes again there, no strike.
+			$no_wa = false === $valid || ( Http::PERMANENT === $r['outcome'] && self::says_no_whatsapp( (string) ( $r['error'] ?? '' ) ) );
+			$moved = $no_wa && Customers::mark_no_whatsapp( (int) $m['customer_id'], 'WATI: ' . (string) ( $r['error'] ?? '' ) ) && 'email' === Customers::channel( (int) $m['customer_id'] );
+			if ( ! $moved ) {
+				\Insiders\Collections\Domain\Exceptions::open( 'send_failed:' . $message_id, 'integration_failure', 'medium', 'שליחת הודעה נכשלה, אין שליחה חוזרת עיוורת', array( 'entity_type' => 'message', 'entity_id' => $message_id, 'customer_id' => (int) $m['customer_id'] ) );
+			}
 			// A refused token is the account's problem, not this student's number: no strike.
-			\Insiders\Collections\Domain\Journey::on_send_failed( $message_id, Http::PERMANENT === $r['outcome'] );
+			\Insiders\Collections\Domain\Journey::on_send_failed( $message_id, ! $moved && Http::PERMANENT === $r['outcome'] );
 		}
 		return array( 'outcome' => $r['outcome'], 'error' => $r['error'] ?? '', 'retry_after' => $r['retry_after'] ?? null, 'result' => array( 'provider_id' => $provider_id ) );
 	}

@@ -102,6 +102,19 @@ final class Tasks {
 	}
 
 	/** Copies to email / Pipedrive go through the outbox with keys derived from the task key. */
+	/**
+	 * The case's owner became known (the rep on the Pipedrive deal): open tasks that went to the general
+	 * queue or to the fallback user move to them. A task someone handed to a specific person stays.
+	 * updated_at is left alone, so the move alone does not put a task in tonight's Pipedrive summary.
+	 */
+	public static function reassign_case( int $case_id, int $owner ): int {
+		$fallback = (int) Settings::get( 'fallback_owner_id', 0 );
+		if ( $owner <= 0 || $owner === $fallback ) {
+			return 0;
+		}
+		return (int) Db::exec( 'UPDATE ' . Db::t( 'tasks' ) . " SET assigned_to = %d WHERE case_id = %d AND status = 'open' AND (assigned_to IS NULL OR assigned_to = %d)", $owner, $case_id, $fallback );
+	}
+
 	private static function fan_out( int $task_id, bool $reopened = false ): void {
 		$task = Db::row( 'SELECT * FROM ' . Db::t( 'tasks' ) . ' WHERE id = %d', $task_id );
 		$tag  = $reopened ? ':' . Clock::utc() : '';

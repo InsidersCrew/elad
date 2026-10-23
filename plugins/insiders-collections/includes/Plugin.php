@@ -64,8 +64,9 @@ final class Plugin {
 		add_action( 'template_redirect', array( Front\GatePage::class, 'maybe_render' ), 0 );
 		add_filter( 'rest_pre_serve_request', array( self::class, 'plain_ok' ), 10, 4 );
 		add_action( 'init', array( Front\PayPage::class, 'rewrite' ) );
-		add_filter( 'query_vars', static fn( $v ) => array_merge( $v, array( 'icol_pay', 'icol_pay_return', 'icol_gate' ) ) );
+		add_filter( 'query_vars', static fn( $v ) => array_merge( $v, array( 'icol_pay', 'icol_pay_return', 'icol_gate', 'icol_reply' ) ) );
 		add_action( 'template_redirect', array( Front\PayPage::class, 'maybe_render' ), 0 );
+		add_action( 'template_redirect', array( Front\ReplyPage::class, 'maybe_render' ), 0 );
 		if ( is_admin() ) {
 			Admin\Admin::register();
 			add_action( 'admin_init', array( Admin\Diagnostics::class, 'maybe_run' ) );

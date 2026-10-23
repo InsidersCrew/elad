@@ -78,6 +78,9 @@ final class SendGuard {
 			return self::result( $b, self::mode() );
 		}
 		$mode = self::mode( (int) $customer['id'] );
+		// A student without WhatsApp gets the same messages by email: the WhatsApp-only checks do not apply.
+		$channel     = (string) ( $ctx['channel'] ?? Customers::channel( (int) $customer['id'] ) );
+		$email       = 'email' === $channel;
 		$is_reminder = $ctx['is_reminder'] ?? true;
 		$tpl         = $ctx['template'] ?? null;
 		$policy      = Policy::current();
@@ -96,13 +99,13 @@ final class SendGuard {
 		if ( $tpl && 'approved' !== $tpl['approval_state'] ) {
 			$add( 'template_not_approved', 'setup', 'התבנית ' . $tpl['key'] . ' לא אושרה' );
 		}
-		if ( $tpl && 'whatsapp_template' === $tpl['channel'] && '' === (string) $tpl['provider_name'] ) {
+		if ( ! $email && $tpl && 'whatsapp_template' === $tpl['channel'] && '' === (string) $tpl['provider_name'] ) {
 			$add( 'template_unmapped', 'setup', 'התבנית לא משויכת לתבנית מאושרת ב-WATI' );
 		}
-		if ( ! Settings::has_secret( 'wati_token' ) || '' === (string) Settings::get( 'wati_api_base' ) ) {
+		if ( ! $email && ( ! Settings::has_secret( 'wati_token' ) || '' === (string) Settings::get( 'wati_api_base' ) ) ) {
 			$add( 'wati_not_configured', 'setup', 'WATI לא מחובר' );
 		}
-		if ( Runner::integration_suspended( 'wati' ) ) {
+		if ( ! $email && Runner::integration_suspended( 'wati' ) ) {
 			$add( 'wati_suspended', 'setup', 'חיבור WATI מושעה בגלל שגיאת הרשאה' );
 		}
 
@@ -143,19 +146,20 @@ final class SendGuard {
 		}
 
 		// Identity and permission.
-		if ( empty( $customer['phone_e164'] ) ) {
+		if ( empty( $customer['phone_e164'] ) && ! $email ) {
 			$add( 'no_phone', 'case', 'אין מספר טלפון' );
 		} elseif ( 'verified' !== $customer['contact_status'] ) {
 			$add( 'identity', 'case', 'זהות או מספר לא אומתו (' . $customer['contact_status'] . ')' );
 		}
-		if ( Customers::shares_phone( $customer ) && 'verified' !== $customer['contact_status'] ) {
+		if ( ! $email && Customers::shares_phone( $customer ) && 'verified' !== $customer['contact_status'] ) {
 			$add( 'shared_phone', 'case', 'המספר משותף לכמה לקוחות' );
 		}
-		$perm = Customers::permission( (int) $customer['id'], 'whatsapp' );
-		if ( true !== $perm ) {
+		// Email: the address from the enrollment, unless the student asked to stop (as the card-charge notice).
+		$perm = Customers::permission( (int) $customer['id'], $email ? 'email' : 'whatsapp' );
+		if ( $email ? false === $perm : true !== $perm ) {
 			$add( false === $perm ? 'opted_out' : 'no_permission', 'case', false === $perm ? 'הלקוח ביקש להפסיק הודעות בערוץ' : 'אין הרשאת קשר מתועדת' );
 		}
-		if ( ! in_array( $customer['conversation_owner'], array( 'none', 'collections' ), true ) ) {
+		if ( ! $email && ! in_array( $customer['conversation_owner'], array( 'none', 'collections' ), true ) ) {
 			$add( 'conversation_owner', 'case', 'השיחה בבעלות ' . $customer['conversation_owner'] );
 		}
 
@@ -192,7 +196,9 @@ final class SendGuard {
 		}
 
 		// Template variables / service window are validated by the caller after rendering.
-		return self::result( $b, $mode );
+		$res            = self::result( $b, $mode );
+		$res['channel'] = $channel;
+		return $res;
 	}
 
 	private static function result( array $b, string $mode ): array {

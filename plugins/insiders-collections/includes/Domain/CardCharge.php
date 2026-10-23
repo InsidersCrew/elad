@@ -119,7 +119,7 @@ final class CardCharge {
 		$guard = SendGuard::check( $case_id, array( 'template' => $tpl, 'is_reminder' => false ) );
 		// Same hard blocks as a reply with payment details; setup gaps block only a live send (display-only records a simulation).
 		$hard  = array_filter( $guard['blocking'], static fn( $b ) => in_array( $b['code'], array( 'opted_out', 'identity', 'shared_phone', 'no_phone', 'conversation_owner', 'delivery_unknown', 'no_permission' ), true ) || ( 'setup' === $b['scope'] && 'live' === $guard['mode'] ) );
-		$wa_ok = ! $missing && ! $hard;
+		$wa_ok = ! $missing && ! $hard && 'email' !== Customers::channel( (int) $case['customer_id'] ); // no WhatsApp: the email notice
 		if ( ! $wa_ok && ! self::email_address( $case ) ) {
 			// No notice by any channel, no charge: the card is never charged without telling the student first.
 			self::note( $case_id, 'הודעת החיוב מהכרטיס לא יכולה לצאת בוואטסאפ ואין מייל (' . implode( ', ', $missing ?: array_column( $hard, 'message' ) ) . '). ממשיכים בקישור תשלום.' );

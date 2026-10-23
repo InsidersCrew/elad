@@ -64,6 +64,7 @@ final class Settings {
 		'ai_model'                    => 'claude-opus-5-5',
 		'ai_effort'                   => 'low',
 		'alert_email'                 => '',
+		'journey_email_reply_to'      => '', // where students without WhatsApp reply; empty = alert_email
 		'weekly_tasks_email'          => '',  // weekly summary of open tasks; empty = not sent
 		'weekly_tasks_day'            => 0,   // 0 = Sunday … 6 = Saturday, from 08:00
 		'support_whatsapp'            => '',

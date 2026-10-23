@@ -85,6 +85,8 @@ final class Outbox {
 				return Pipedrive::push_task( (int) $payload['task_id'] );
 			case 'email_alert':
 				return Mailer::task_alert( (int) $payload['task_id'] );
+			case 'email_send':
+				return Mailer::deliver_customer( (int) $payload['message_id'] );
 			case 'wati_owner':
 				return Wati::set_owner_attribute( (int) $payload['customer_id'], (string) $payload['owner'] );
 			case 'ai_suggest':
@@ -129,7 +131,7 @@ final class Outbox {
 	 * it would look pending forever. Failed gives the journey step back; unknown blocks further sends.
 	 */
 	private static function message_outcome( array $ev, string $state ): void {
-		if ( 'wati_send' !== $ev['event_type'] ) {
+		if ( ! in_array( $ev['event_type'], array( 'wati_send', 'email_send' ), true ) ) {
 			return;
 		}
 		$id = (int) ( json_decode( (string) $ev['payload'], true )['message_id'] ?? 0 );

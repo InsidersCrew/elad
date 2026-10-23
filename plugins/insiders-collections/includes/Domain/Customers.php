@@ -146,6 +146,55 @@ final class Customers {
 		return $row ? (bool) $row['allowed'] : null;
 	}
 
+	/** WATI said the number is not on WhatsApp (or a rep marked it): messages go by email instead. */
+	public static function no_whatsapp( int $id ): bool {
+		return '' !== (string) Db::value( 'SELECT whatsapp_missing_at FROM ' . Db::t( 'customers' ) . ' WHERE id = %d', $id );
+	}
+
+	/** The address journey emails go to: a valid one the student did not ask to stop. */
+	public static function journey_email( int $id ): string {
+		$mail = trim( (string) Db::value( 'SELECT email FROM ' . Db::t( 'customers' ) . ' WHERE id = %d', $id ) );
+		return ( is_email( $mail ) && false !== self::permission( $id, 'email' ) ) ? $mail : '';
+	}
+
+	/** 'email' for a student without WhatsApp who has an email address; 'whatsapp' otherwise. */
+	public static function channel( int $id ): string {
+		return self::no_whatsapp( $id ) && '' !== self::journey_email( $id ) ? 'email' : 'whatsapp';
+	}
+
+	/**
+	 * The number is not on WhatsApp. From WATI's answer this happens automatically, but many students at
+	 * once is WATI's problem (the account, the sending number), not theirs: after five in three hours no more
+	 * are moved, and an exception says why. Without an email address a person reaches the student by phone.
+	 */
+	public static function mark_no_whatsapp( int $id, string $why, string $source = 'wati' ): bool {
+		$c = self::get( $id );
+		if ( ! $c ) {
+			return false;
+		}
+		if ( ! empty( $c['whatsapp_missing_at'] ) ) {
+			return true;
+		}
+		if ( 'wati' === $source && (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'customers' ) . ' WHERE whatsapp_missing_at >= %s', Clock::utc( Clock::now() - 3 * HOUR_IN_SECONDS ) ) >= 5 ) {
+			Exceptions::open( 'no_whatsapp_burst:' . Clock::today(), 'integration_failure', 'high', 'WATI ענה "המספר לא מחובר לוואטסאפ" לחמישה תלמידים או יותר בשלוש שעות. כנראה בעיה בחשבון או במספר השולח ב-WATI, לא אצל התלמידים, ולכן תלמידים נוספים לא עוברים למייל אוטומטית. ההודעות שלהם יתוכננו שוב', array() );
+			return false;
+		}
+		Db::update( 'customers', array( 'whatsapp_missing_at' => Clock::utc(), 'updated_at' => Clock::utc() ), array( 'id' => $id ) );
+		Audit::log( 'customer.no_whatsapp', 'customer', $id, null, array( 'source' => $source ), mb_substr( $why, 0, 250 ) );
+		if ( '' === self::journey_email( $id ) ) {
+			$case = (int) Db::value( 'SELECT id FROM ' . Db::t( 'cases' ) . " WHERE customer_id = %d AND workflow_state <> 'closed' ORDER BY id DESC LIMIT 1", $id );
+			Tasks::open( 'no_whatsapp:' . $id, 'reply_review', array( 'case_id' => $case ?: null, 'customer_id' => $id, 'priority' => 'high', 'reason' => 'למספר של התלמיד/ה אין וואטסאפ, ואין מייל תקין בכרטיס. לפנות בטלפון, ולהוסיף מייל בכרטיס הלקוח כדי שההודעות יעברו למייל.' ) );
+		}
+		return true;
+	}
+
+	/** WhatsApp after all (the student wrote on it, or a rep says so): back to WhatsApp. */
+	public static function clear_no_whatsapp( int $id, string $why ): void {
+		if ( 1 === Db::exec( 'UPDATE ' . Db::t( 'customers' ) . ' SET whatsapp_missing_at = NULL, updated_at = %s WHERE id = %d AND whatsapp_missing_at IS NOT NULL', Clock::utc(), $id ) ) {
+			Audit::log( 'customer.whatsapp_back', 'customer', $id, null, null, mb_substr( $why, 0, 250 ) );
+		}
+	}
+
 	/** Greeting rule (§9): first name only when reliable, otherwise "היי". */
 	public static function greeting_name( array $c ): string {
 		return ( ! empty( $c['first_name_reliable'] ) && ! empty( $c['first_name'] ) ) ? (string) $c['first_name'] : '';

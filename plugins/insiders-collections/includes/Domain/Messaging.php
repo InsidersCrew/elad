@@ -301,19 +301,25 @@ final class Messaging {
 	 * Write the message row (and, when live, the outbox entry) in one transaction.
 	 * In display-only mode the row is 'simulated' — the record of what would have gone out.
 	 */
-	public static function record_outbound( array $case, array $tpl, string $text, string $mode, string $author_type, ?int $author_id = null, array $vars = array() ): int {
+	public static function record_outbound( array $case, array $tpl, string $text, string $mode, string $author_type, ?int $author_id = null, array $vars = array(), ?string $channel = null ): int {
+		// A student without WhatsApp gets the same message by email (the wording adapted: "here" is the email).
+		$channel = $channel ?? Customers::channel( (int) $case['customer_id'] );
+		$email   = 'email' === $channel;
+		if ( $email ) {
+			$text = \Insiders\Collections\Integrations\Mailer::adapt( $text );
+		}
 		return Db::transaction(
-			function () use ( $case, $tpl, $text, $mode, $author_type, $author_id, $vars ) {
+			function () use ( $case, $tpl, $text, $mode, $author_type, $author_id, $vars, $email ) {
 				$local = Ids::uuid();
 				$id    = Db::insert(
 					'messages',
 					array(
 						'customer_id'         => (int) $case['customer_id'],
 						'case_id'             => (int) $case['id'],
-						'provider'            => 'wati',
+						'provider'            => $email ? 'wp_mail' : 'wati',
 						'local_id'            => $local,
 						'direction'           => 'out',
-						'channel'             => 'whatsapp',
+						'channel'             => $email ? 'email' : 'whatsapp',
 						'kind'                => $tpl['kind'],
 						'template_key'        => $tpl['key'],
 						'template_version'    => (int) $tpl['version'],
@@ -329,18 +335,28 @@ final class Messaging {
 					)
 				);
 				if ( 'live' === $mode ) {
-					Outbox::enqueue( 'wati_send', 'message', $id, 'wati_send:' . $local, array( 'message_id' => $id ) );
+					$job = $email ? 'email_send' : 'wati_send';
+					Outbox::enqueue( $job, 'message', $id, $job . ':' . $local, array( 'message_id' => $id ) );
 				}
 				return $id;
 			}
 		);
 	}
 
+	/** What a student who pressed a button in an email sees on the page instead of a WhatsApp reply. */
+	public static string $email_ack = '';
+
 	/** Service reply (ack, handoff, bot answer). Never counted as a reminder, never bypasses the pause. */
 	public static function service_reply( int $case_id, string $template_key ): ?int {
 		$case = Workflow::get( $case_id );
 		$tpl  = Templates::get( $template_key );
 		if ( ! $case || ! $tpl ) {
+			return null;
+		}
+		if ( 'email' === Customers::channel( (int) $case['customer_id'] ) ) {
+			// No WhatsApp: the answer is shown on the page the button opened, no message is sent.
+			[ $text ]        = Templates::render( $tpl, self::variables( $case, null ) );
+			self::$email_ack = \Insiders\Collections\Integrations\Mailer::adapt( $text );
 			return null;
 		}
 		$g = SendGuard::check( $case_id, array( 'template' => $tpl, 'is_reminder' => false ) );
@@ -363,7 +379,8 @@ final class Messaging {
 	public static function handle_inbound( int $customer_id, array $msg ): array {
 		$message_id = Db::transaction(
 			function () use ( $customer_id, $msg ) {
-				$existing = ! empty( $msg['provider_id'] ) ? Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE provider = 'wati' AND provider_id = %s", $msg['provider_id'] ) : null;
+				$provider = (string) ( $msg['provider'] ?? 'wati' ); // 'email': a button pressed in a journey email
+				$existing = ! empty( $msg['provider_id'] ) ? Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . ' WHERE provider = %s AND provider_id = %s', $provider, $msg['provider_id'] ) : null;
 				if ( $existing ) {
 					return -1 * (int) $existing; // duplicate delivery
 				}
@@ -371,11 +388,11 @@ final class Messaging {
 					'messages',
 					array(
 						'customer_id'    => $customer_id,
-						'provider'       => 'wati',
+						'provider'       => $provider,
 						'provider_id'    => $msg['provider_id'] ?? null,
 						'local_id'       => Ids::uuid(),
 						'direction'      => 'in',
-						'channel'        => 'whatsapp',
+						'channel'        => 'email' === $provider ? 'email' : 'whatsapp',
 						'kind'           => 'customer_message',
 						'body'           => mb_substr( (string) ( $msg['text'] ?? '' ), 0, 10000 ),
 						'author_type'    => 'customer',
@@ -386,6 +403,9 @@ final class Messaging {
 					)
 				);
 				Db::update( 'customers', array( 'last_inbound_at' => $msg['occurred_at'] ?? Clock::utc() ), array( 'id' => $customer_id ) );
+				if ( 'email' !== $provider ) {
+					Customers::clear_no_whatsapp( $customer_id, 'התלמיד/ה כתב/ה בוואטסאפ' ); // a message on WhatsApp: the number is on it
+				}
 				return $id;
 			}
 		);
@@ -454,13 +474,13 @@ final class Messaging {
 
 	/** When this case last wrote to the customer on WhatsApp for real (ts), or null. A message on its way counts. */
 	public static function last_reach( int $case_id ): ?int {
-		return Clock::ts( Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND channel = 'whatsapp' AND is_internal = 0 AND kind <> 'team_message' AND delivery_state IN ('queued','accepted','sent','delivered','read','unknown')", $case_id ) );
+		return Clock::ts( Db::value( 'SELECT MAX(occurred_at) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND channel IN ('whatsapp','email') AND is_internal = 0 AND kind <> 'team_message' AND delivery_state IN ('queued','accepted','sent','delivered','read','unknown')", $case_id ) );
 	}
 
 	/** Did this case really send the customer anything (not simulated, not failed)? */
 	public static function reached( int $case_id ): bool {
 		// A message another team typed in WATI is theirs, not ours: it does not open the conversation for this case.
-		return (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND channel = 'whatsapp' AND is_internal = 0 AND kind <> 'team_message' AND delivery_state IN ('accepted','sent','delivered','read','unknown') LIMIT 1", $case_id );
+		return (bool) Db::value( 'SELECT id FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND channel IN ('whatsapp','email') AND is_internal = 0 AND kind <> 'team_message' AND delivery_state IN ('accepted','sent','delivered','read','unknown') LIMIT 1", $case_id );
 	}
 
 	/** Operator message typed in WATI (AT33): documented, counts toward quota, shapes what follows. */

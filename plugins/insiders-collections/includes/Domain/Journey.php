@@ -429,15 +429,20 @@ final class Journey {
 					'price_total_minor'   => $q['total'] ?? null,
 					'fee_credit_minor'    => $q['credit'] ?? null,
 					'deal_checked_at'     => Clock::utc(),
+					'pipedrive_owner_id'  => $d['owner_id'] ?: null,
 					'updated_at'          => Clock::utc(),
 				),
 				array( 'id' => (int) $r['id'] )
 			);
-			if ( ! $r['owner_id'] ) {
-				$owner = Pipedrive::wp_user_for_owner( (int) $d['owner_id'] );
+			$owner = (int) $r['owner_id'];
+			if ( ! $owner ) {
+				$owner = (int) Pipedrive::wp_user_for_owner( (int) $d['owner_id'] );
 				if ( $owner ) {
 					Db::update( 'cases', array( 'owner_id' => $owner ), array( 'id' => (int) $r['case_id'] ) );
 				}
+			}
+			if ( $owner ) {
+				Tasks::reassign_case( (int) $r['case_id'], $owner ); // tasks opened before the rep was known
 			}
 			$hit = array_intersect( $prods['products'][ (int) $r['pipedrive_deal_id'] ] ?? array(), $excl );
 			if ( $hit && self::leave_program( (int) $r['case_id'], array_values( $hit ) ) ) {
@@ -979,6 +984,7 @@ final class Journey {
 			return $cases;
 		}
 		$text   = mb_substr( (string) ( $msg['text'] ?? '' ), 0, 200 );
+		$via    = 'email' === Customers::channel( $customer_id ) ? 'במייל או בטלפון (אין לו/ה וואטסאפ)' : 'בוואטסאפ';
 		$review = static function ( array $c, string $reason ) {
 			if ( Workflow::can( $c['workflow_state'], 'human_review' ) ) {
 				Workflow::transition( (int) $c['id'], 'human_review', $reason, null, array(), 'inbound' );
@@ -996,13 +1002,13 @@ final class Journey {
 					break;
 				case 'question':
 					$review( $c, 'התלמיד ביקש לשאול שאלה' );
-					Tasks::open( 'reply:' . $id, 'reply_review', array( 'append' => true, 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'התלמיד לחץ "' . self::BTN_QUESTION . '". לחזור אליו בוואטסאפ ולענות.' ) );
+					Tasks::open( 'reply:' . $id, 'reply_review', array( 'append' => true, 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'התלמיד לחץ "' . self::BTN_QUESTION . '". לחזור אליו ' . $via . ' ולענות.' ) );
 					$reply = 'j_question_ack';
 					break;
 				case 'declines_open':
 					if ( 'button' === $source ) {
 						self::decline( $id, 'button', 'התלמיד לחץ "' . self::BTN_DECLINE . '"' );
-						Tasks::open( 'crm_lost:' . $id, 'crm_lost', array( 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'התלמיד הודיע בוואטסאפ שלא יפתח חשבון. לסמן את הדיל כ-lost עם הסיבה "' . ( preg_split( '/\R/', (string) Settings::get( 'declined_lost_reasons' ) )[0] ?? '' ) . '". מערכת התשלומים כבר העבירה אותו למסלול המתאים.' ) );
+						Tasks::open( 'crm_lost:' . $id, 'crm_lost', array( 'case_id' => $id, 'customer_id' => $customer_id, 'reason' => 'התלמיד הודיע ' . ( 'email' === ( $msg['provider'] ?? '' ) ? 'במייל' : 'בוואטסאפ' ) . ' שלא יפתח חשבון. לסמן את הדיל כ-lost עם הסיבה "' . ( preg_split( '/\R/', (string) Settings::get( 'declined_lost_reasons' ) )[0] ?? '' ) . '". מערכת התשלומים כבר העבירה אותו למסלול המתאים.' ) );
 						$reply = 'j_declined_ack';
 					} else {
 						// Free text is not a decision: "not now" and "never" read alike.
@@ -1143,7 +1149,7 @@ final class Journey {
 	 *                     out of retries, a message voided before it went. The step is given back, nothing counted.
 	 */
 	public static function on_send_failed( int $message_id, bool $strike = true ): void {
-		$m = Db::row( 'SELECT id, case_id, customer_id, template_key FROM ' . Db::t( 'messages' ) . " WHERE id = %d AND direction = 'out' AND kind = 'commitment_reminder' AND channel = 'whatsapp'", $message_id );
+		$m = Db::row( 'SELECT id, case_id, customer_id, template_key FROM ' . Db::t( 'messages' ) . " WHERE id = %d AND direction = 'out' AND kind = 'commitment_reminder' AND channel IN ('whatsapp','email')", $message_id );
 		$case = $m && $m['case_id'] ? Workflow::get( (int) $m['case_id'] ) : null;
 		if ( ! $case || 'commitment' !== $case['phase'] || 'closed' === $case['workflow_state'] ) {
 			return;
@@ -1166,7 +1172,7 @@ final class Journey {
 			// Not this student's failure: kept apart from real ones, so it never counts as a strike later.
 			Db::exec( 'UPDATE ' . Db::t( 'messages' ) . " SET delivery_state = 'cancelled', updated_at = %s WHERE id = %d AND delivery_state = 'failed'", Clock::utc(), $message_id );
 		}
-		$prev  = Db::value( 'SELECT template_key FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND id < %d AND direction = 'out' AND channel = 'whatsapp' AND template_key IN (" . implode( ',', $keys ) . ") AND delivery_state IN ('accepted','sent','delivered','read','unknown') ORDER BY id DESC LIMIT 1", $case_id, $message_id );
+		$prev  = Db::value( 'SELECT template_key FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND id < %d AND direction = 'out' AND channel IN ('whatsapp','email') AND template_key IN (" . implode( ',', $keys ) . ") AND delivery_state IN ('accepted','sent','delivered','read','unknown') ORDER BY id DESC LIMIT 1", $case_id, $message_id );
 		$fails = $strike ? (int) Db::value( 'SELECT COUNT(*) FROM ' . Db::t( 'messages' ) . " WHERE case_id = %d AND direction = 'out' AND kind = 'commitment_reminder' AND delivery_state = 'failed' AND template_key IN (%s, %s)", $case_id, $step, $step . '_reply' ) : 0;
 		if ( $strike ) {
 			// Several students failing within the hour is WATI's problem (a template, the account), not theirs.

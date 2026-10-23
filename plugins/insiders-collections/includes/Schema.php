@@ -28,6 +28,7 @@ final class Schema {
 				first_name VARCHAR(100) NULL,
 				first_name_reliable TINYINT(1) NOT NULL DEFAULT 0,
 				name_checked_at DATETIME NULL,
+				whatsapp_missing_at DATETIME NULL,
 				phone_e164 VARCHAR(20) NULL,
 				email VARCHAR(190) NULL,
 				contact_status VARCHAR(20) NOT NULL DEFAULT 'unverified',
@@ -74,6 +75,7 @@ final class Schema {
 				deal_status VARCHAR(12) NULL,
 				lost_reason VARCHAR(190) NULL,
 				deal_checked_at DATETIME NULL,
+				pipedrive_owner_id BIGINT UNSIGNED NULL,
 				billing_policy_version INT NULL,
 				created_by BIGINT UNSIGNED NULL,
 				created_at DATETIME NULL,
@@ -692,6 +694,9 @@ final class Schema {
 			$wpdb->query( $wpdb->prepare( 'UPDATE ' . Db::t( 'exceptions' ) . " SET status = 'resolved', resolution = %s, resolved_at = %s WHERE status = 'open' AND exception_key LIKE 'unknown\\_sender:%%'", 'נסגר אוטומטית: הודעה ממספר שאינו לקוח במספר המשותף, אין מה לטפל', \Insiders\Collections\Support\Clock::utc() ) );
 		}
 		$out['customers.name_checked_at'] = self::ensure_column( 'customers', 'name_checked_at', 'DATETIME NULL AFTER first_name_reliable' );
+		// v13: the rep who owns the deal gets the Pipedrive activities; a student without WhatsApp gets email.
+		$out['agreements.pipedrive_owner_id']   = self::ensure_column( 'agreements', 'pipedrive_owner_id', 'BIGINT UNSIGNED NULL AFTER deal_checked_at' );
+		$out['customers.whatsapp_missing_at']   = self::ensure_column( 'customers', 'whatsapp_missing_at', 'DATETIME NULL AFTER name_checked_at' );
 		return $out;
 	}
 

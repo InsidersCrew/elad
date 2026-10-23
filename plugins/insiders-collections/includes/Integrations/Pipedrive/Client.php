@@ -44,7 +44,7 @@ final class Client {
 		if ( ! $row ) {
 			Db::insert( 'integration_tasks', array( 'destination' => 'pipedrive', 'internal_task_key' => $key, 'status' => 'pending', 'created_at' => Clock::utc(), 'updated_at' => Clock::utc() ) );
 		}
-		$owner = $task['assigned_to'] ? (int) get_user_meta( (int) $task['assigned_to'], 'icol_pipedrive_user_id', true ) : 0;
+		$owner = self::activity_owner( $task );
 		$body  = array(
 			'subject'  => mb_substr( ( Tasks::TYPES[ $task['type'] ]['label'] ?? $task['type'] ) . ' ' . $marker, 0, 250 ),
 			'type'     => 'task',
@@ -113,7 +113,7 @@ final class Client {
 				'due_date' => $day,
 				'note'     => mb_substr( implode( "\n", $lines ), 0, 3500 ) . ( $first['case_id'] ? "\n\nהתיק: " . admin_url( 'admin.php?page=icol#/cases/' . (int) $first['case_id'] ) : '' ),
 			);
-			$owner = $first['assigned_to'] ? (int) get_user_meta( (int) $first['assigned_to'], 'icol_pipedrive_user_id', true ) : 0;
+			$owner = self::activity_owner( $first );
 			if ( $owner ) {
 				$body['owner_id'] = $owner;
 			}
@@ -192,6 +192,21 @@ final class Client {
 		}
 		$id = (int) $items[0]['item']['id'];
 		return array( 'id' => $id ) + self::person( $id );
+	}
+
+	/**
+	 * Who the Pipedrive activity goes to. Without an owner Pipedrive gives it to the token's user (the
+	 * main account), which is how every task used to land on one person. A task handed to a team member
+	 * mapped to Pipedrive goes to them; otherwise to the rep who owns the deal; otherwise the assignee's mapping.
+	 */
+	private static function activity_owner( array $task ): int {
+		$assigned = (int) $task['assigned_to'];
+		$mapped   = $assigned ? (int) get_user_meta( $assigned, 'icol_pipedrive_user_id', true ) : 0;
+		if ( $mapped && $assigned !== (int) Settings::get( 'fallback_owner_id', 0 ) ) {
+			return $mapped;
+		}
+		$deal_owner = $task['case_id'] ? (int) Db::value( 'SELECT a.pipedrive_owner_id FROM ' . Db::t( 'cases' ) . ' c JOIN ' . Db::t( 'agreements' ) . ' a ON a.id = c.agreement_id WHERE c.id = %d', (int) $task['case_id'] ) : 0;
+		return $deal_owner ?: $mapped;
 	}
 
 	private static function base(): string {
@@ -381,7 +396,24 @@ final class Client {
 			return null;
 		}
 		$users = get_users( array( 'meta_key' => 'icol_pipedrive_user_id', 'meta_value' => (string) $pd_user_id, 'number' => 1, 'fields' => 'ID' ) );
-		return $users ? (int) $users[0] : null;
+		if ( $users ) {
+			return (int) $users[0];
+		}
+		// Not mapped yet: a team member here with the same email as the Pipedrive user is that rep.
+		static $tried = array();
+		if ( array_key_exists( $pd_user_id, $tried ) || ! self::configured() ) {
+			return $tried[ $pd_user_id ] ?? null;
+		}
+		$tried[ $pd_user_id ] = null;
+		$r    = Http::request( 'GET', self::base() . '/api/v1/users/' . $pd_user_id . '?api_token=' . rawurlencode( Settings::secret( 'pipedrive_token' ) ) );
+		$mail = strtolower( trim( (string) ( $r['json']['data']['email'] ?? '' ) ) );
+		$user = ( Http::OK === $r['outcome'] && is_email( $mail ) ) ? get_user_by( 'email', $mail ) : null;
+		if ( ! $user || '' === (string) get_user_meta( $user->ID, 'icol_role', true ) || '' !== (string) get_user_meta( $user->ID, 'icol_pipedrive_user_id', true ) ) {
+			return null; // no team member with that email, or one already mapped to another Pipedrive user
+		}
+		update_user_meta( $user->ID, 'icol_pipedrive_user_id', $pd_user_id );
+		\Insiders\Collections\Support\Audit::log( 'user.pipedrive_map', 'user', $user->ID, null, array( 'pipedrive_user_id' => $pd_user_id ), 'קושר לפייפדרייב לפי המייל' );
+		return $tried[ $pd_user_id ] = (int) $user->ID;
 	}
 
 	private static function find_by_marker( string $marker, ?array $customer ): ?string {
